@@ -1,16 +1,46 @@
-// pub: events.rs helpers aren't called yet (no worker to call them), so they need to be
-// reachable as public API or dead_code would flag them.
 pub mod ipc;
 mod scope;
 
+use std::sync::Mutex;
+use std::thread;
+
 use tauri::Manager;
 use tracing::{info, warn};
-use unottr_core::{Database, Paths};
+use unottr_core::media::FfmpegCli;
+use unottr_core::{Database, Event, IngestConfig, IngestService, ModelStore, Paths, PipelineConfig};
 
-/// Shared handles for the IPC commands that phase 05 adds.
+use ipc::events;
+use ipc::types::Status;
+
+/// Shared handles for the IPC commands.
 pub struct AppState {
     pub paths: Paths,
     pub db: Database,
+    /// `None` briefly during shutdown once `RunEvent::Exit` has taken it to call
+    /// `IngestService::shutdown`. Commands that touch it (retry_job/start_backfill) just
+    /// no-op if it's gone rather than erroring — the app is on its way out anyway.
+    pub ingest: Mutex<Option<IngestService>>,
+}
+
+fn forward_events(app: tauri::AppHandle, events_rx: std::sync::mpsc::Receiver<Event>) {
+    for event in events_rx {
+        let result = match event {
+            Event::Discovered { recording_id } => {
+                events::recording_discovered(&app, events::RecordingDiscovered { recording_id })
+            }
+            Event::Progress { recording_id, stage, pct } => events::job_progress(
+                &app,
+                events::JobProgress { recording_id, stage: Status::parse_lenient(stage.as_str()), pct },
+            ),
+            Event::Done { recording_id } => events::job_done(&app, events::JobDone { recording_id }),
+            Event::Failed { recording_id, error } => {
+                events::job_failed(&app, events::JobFailed { recording_id, error })
+            }
+        };
+        if let Err(e) = result {
+            warn!(error = %e, "failed to emit ingest event to the webview");
+        }
+    }
 }
 
 pub fn run() {
@@ -18,7 +48,7 @@ pub fn run() {
     paths.ensure().expect("create application directories");
     let _log_guard = unottr_core::logging::init(&paths).expect("init logging");
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             ipc::commands::list_recordings,
             ipc::commands::get_recording,
@@ -42,12 +72,31 @@ pub fn run() {
                 warn!(error = %e, "failed to seed asset protocol scope");
             }
 
-            app.manage(AppState {
-                paths: paths.clone(),
-                db,
-            });
+            // mirrors unottr-cli's `ingest run` defaults: auto device, no model overrides,
+            // models must already be present (no silent background downloads from the UI)
+            let backend = FfmpegCli::discover();
+            let store = ModelStore::new(paths.models_dir());
+            let (service, events_rx) =
+                IngestService::start(db.clone(), paths.clone(), backend, store, IngestConfig::default(), PipelineConfig::default())?;
+
+            let app_handle = app.handle().clone();
+            thread::spawn(move || forward_events(app_handle, events_rx));
+
+            app.manage(AppState { paths: paths.clone(), db, ingest: Mutex::new(Some(service)) });
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("run tauri application");
+        .build(tauri::generate_context!())
+        .expect("build tauri application");
+
+    app.run(|app_handle, event| {
+        // worker finishes its current chunk and checkpoints before shutdown returns
+        // (04-ingest.md) — deliberately blocks the exit path on that.
+        if let tauri::RunEvent::Exit = event
+            && let Some(state) = app_handle.try_state::<AppState>()
+            && let Some(service) = state.ingest.lock().unwrap_or_else(|e| e.into_inner()).take()
+        {
+            info!("shutting down ingest service");
+            service.shutdown();
+        }
+    });
 }

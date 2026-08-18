@@ -243,6 +243,20 @@ pub fn fail_or_retry(conn: &Connection, id: i64, error: &str, max_attempts: i64)
     }
 }
 
+/// Retry from the UI: only acts on a currently-`failed` row, clearing error/attempts and
+/// putting it back in the non-terminal set so the caller can `enqueue` it. `last_chunk_idx`
+/// is left alone — transcribe resumes from there instead of redoing finished chunks. Returns
+/// `false` (no-op) if the row wasn't `failed`, e.g. a stale/duplicate click.
+pub fn reset_for_retry(conn: &Connection, id: i64) -> Result<bool> {
+    let changed = conn.execute(
+        "UPDATE recordings SET status = 'discovered', error = NULL, attempts = 0,
+                stage_detail = NULL, updated_at = ?2
+         WHERE id = ?1 AND status = 'failed'",
+        params![id, now()],
+    )?;
+    Ok(changed > 0)
+}
+
 /// Ids in any non-terminal state — what startup reconciliation requeues.
 pub fn non_terminal(conn: &Connection) -> Result<Vec<i64>> {
     let mut stmt = conn.prepare("SELECT id FROM recordings WHERE status NOT IN ('done', 'failed')")?;
@@ -314,6 +328,28 @@ mod tests {
         assert!(fail_or_retry(&conn, id, "truncated", 3).unwrap());
         assert!(!fail_or_retry(&conn, id, "truncated", 3).unwrap());
         assert_eq!(status_of(&conn, id).unwrap(), Some(Status::Failed));
+    }
+
+    #[test]
+    fn reset_for_retry_requeues_a_failed_row_and_ignores_others() {
+        let (_d, db) = temp_db();
+        let conn = db.connect().unwrap();
+        let id = stub(&conn, Path::new("/tmp/a.mkv"), None).unwrap();
+        assert!(!fail_or_retry(&conn, id, "truncated", 1).unwrap(), "1 attempt parks immediately");
+        assert_eq!(status_of(&conn, id).unwrap(), Some(Status::Failed));
+
+        assert!(reset_for_retry(&conn, id).unwrap());
+        assert_eq!(status_of(&conn, id).unwrap(), Some(Status::Discovered));
+        let (attempts, error): (i64, Option<String>) = conn
+            .query_row("SELECT attempts, error FROM recordings WHERE id = ?1", [id], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(attempts, 0);
+        assert_eq!(error, None);
+
+        // already non-terminal: no-op
+        assert!(!reset_for_retry(&conn, id).unwrap());
     }
 
     #[test]

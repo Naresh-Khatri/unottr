@@ -44,11 +44,15 @@ pub fn rename_speaker(state: State<AppState>, speaker_id: i64, name: String) -> 
     queries::rename_speaker(&conn, speaker_id, &name).map_err(|e| e.to_string())
 }
 
-/// Stub until phase 04's worker exists: acknowledges the request and logs it, never fakes
-/// progress or flips status itself.
 #[tauri::command(rename_all = "snake_case")]
-pub fn retry_job(recording_id: i64) -> CmdResult<()> {
-    tracing::info!(recording_id, "retry_job requested (stub, no worker wired yet)");
+pub fn retry_job(state: State<AppState>, recording_id: i64) -> CmdResult<()> {
+    let was_failed = {
+        let conn = connect(&state)?;
+        queries::retry_job(&conn, recording_id).map_err(|e| e.to_string())?
+    };
+    if was_failed && let Ok(guard) = state.ingest.lock() && let Some(service) = guard.as_ref() {
+        service.enqueue(recording_id);
+    }
     Ok(())
 }
 
@@ -74,9 +78,22 @@ pub fn list_watch_folders(state: State<AppState>) -> CmdResult<Vec<WatchFolder>>
     queries::list_watch_folders(&conn).map_err(|e| e.to_string())
 }
 
-/// Stub until phase 04's worker exists: acknowledges and logs, never fakes a scan.
+/// Scans and confirms in one shot — the explicit-confirmation requirement (04-ingest.md) is
+/// satisfied by the user clicking the button that invokes this command in the first place.
 #[tauri::command(rename_all = "snake_case")]
-pub fn start_backfill(folder_id: i64) -> CmdResult<()> {
-    tracing::info!(folder_id, "start_backfill requested (stub, no worker wired yet)");
+pub fn start_backfill(state: State<AppState>, folder_id: i64) -> CmdResult<()> {
+    let folder = {
+        let conn = connect(&state)?;
+        unottr_core::db::watch_folders::get(&conn, folder_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("watch folder {folder_id} not found"))?
+    };
+    let ids = unottr_core::ingest::backfill::confirm(&state.db, &folder.path, &unottr_core::IngestConfig::default())
+        .map_err(|e| e.to_string())?;
+    if let Ok(guard) = state.ingest.lock() && let Some(service) = guard.as_ref() {
+        for id in ids {
+            service.enqueue(id);
+        }
+    }
     Ok(())
 }

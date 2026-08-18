@@ -120,6 +120,12 @@ pub fn rename_speaker(conn: &Connection, speaker_id: i64, name: &str) -> Result<
     Ok(())
 }
 
+/// Resets a failed row so the caller can `enqueue` it; `false` means it wasn't `failed` (a
+/// stale/duplicate click), and the caller must not enqueue.
+pub fn retry_job(conn: &Connection, recording_id: i64) -> Result<bool> {
+    unottr_core::db::recordings::reset_for_retry(conn, recording_id)
+}
+
 pub fn add_watch_folder(conn: &Connection, path: &str) -> Result<WatchFolder> {
     // idempotent: re-adding a known folder just re-enables it
     Ok(conn.query_row(
