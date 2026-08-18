@@ -1,13 +1,17 @@
 pub mod ipc;
 mod scope;
+mod tray;
 
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::thread;
 
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
+use tauri_plugin_autostart::MacosLauncher;
 use tracing::{info, warn};
 use unottr_core::media::FfmpegCli;
-use unottr_core::{Database, Event, IngestConfig, IngestService, ModelStore, Paths, PipelineConfig};
+use unottr_core::{CancelToken, Database, Event, IngestConfig, IngestService, ModelStore, Paths};
 
 use ipc::events;
 use ipc::types::Status;
@@ -20,10 +24,28 @@ pub struct AppState {
     /// `IngestService::shutdown`. Commands that touch it (retry_job/start_backfill) just
     /// no-op if it's gone rather than erroring — the app is on its way out anyway.
     pub ingest: Mutex<Option<IngestService>>,
+    /// `None` when this session has no tray to build onto (see `tray.rs`); `tray_available`
+    /// records that fact once, at startup, so commands don't need to re-check the option.
+    pub tray: Mutex<Option<tray::Tray>>,
+    pub tray_available: bool,
+    /// One in-flight cancel token per model tier download.
+    pub downloads: Mutex<HashMap<String, CancelToken>>,
+    /// (active, total) in-flight jobs, for the tray status line.
+    pub jobs: Mutex<(usize, usize)>,
 }
 
 fn forward_events(app: tauri::AppHandle, events_rx: std::sync::mpsc::Receiver<Event>) {
     for event in events_rx {
+        if let Some(state) = app.try_state::<AppState>() {
+            update_job_count(&state, &event);
+            if let Ok(guard) = state.tray.lock()
+                && let Some(tray) = guard.as_ref()
+            {
+                let (active, total) = *state.jobs.lock().unwrap_or_else(|e| e.into_inner());
+                tray.set_status(active, total);
+            }
+        }
+
         let result = match event {
             Event::Discovered { recording_id } => {
                 events::recording_discovered(&app, events::RecordingDiscovered { recording_id })
@@ -43,12 +65,29 @@ fn forward_events(app: tauri::AppHandle, events_rx: std::sync::mpsc::Receiver<Ev
     }
 }
 
+/// Worker concurrency is 1 (see ingest/worker.rs), so `active` only ever reaches 0 or 1 —
+/// `total` is the queue depth including the job in flight.
+fn update_job_count(state: &AppState, event: &Event) {
+    let mut jobs = state.jobs.lock().unwrap_or_else(|e| e.into_inner());
+    match event {
+        Event::Discovered { .. } => jobs.1 += 1,
+        Event::Progress { .. } => jobs.0 = 1,
+        Event::Done { .. } | Event::Failed { .. } => {
+            jobs.0 = 0;
+            jobs.1 = jobs.1.saturating_sub(1);
+        }
+    }
+}
+
 pub fn run() {
     let paths = Paths::resolve().expect("resolve application directories");
     paths.ensure().expect("create application directories");
     let _log_guard = unottr_core::logging::init(&paths).expect("init logging");
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             ipc::commands::list_recordings,
             ipc::commands::get_recording,
@@ -58,7 +97,20 @@ pub fn run() {
             ipc::commands::add_watch_folder,
             ipc::commands::remove_watch_folder,
             ipc::commands::list_watch_folders,
+            ipc::commands::set_watch_folder_enabled,
+            ipc::commands::set_watch_folder_track_rule,
             ipc::commands::start_backfill,
+            ipc::commands::backfill_estimate,
+            ipc::commands::get_settings,
+            ipc::commands::set_setting,
+            ipc::commands::list_models,
+            ipc::commands::detected_device,
+            ipc::commands::disk_usage,
+            ipc::commands::download_model,
+            ipc::commands::cancel_model_download,
+            ipc::commands::clear_cache,
+            ipc::commands::get_log_dir,
+            ipc::commands::export_transcript,
         ])
         .setup(move |app| {
             let db = Database::open(paths.db_file())?;
@@ -72,17 +124,75 @@ pub fn run() {
                 warn!(error = %e, "failed to seed asset protocol scope");
             }
 
-            // mirrors unottr-cli's `ingest run` defaults: auto device, no model overrides,
-            // models must already be present (no silent background downloads from the UI)
-            let backend = FfmpegCli::discover();
-            let store = ModelStore::new(paths.models_dir());
-            let (service, events_rx) =
-                IngestService::start(db.clone(), paths.clone(), backend, store, IngestConfig::default(), PipelineConfig::default())?;
+            let settings = {
+                let conn = db.connect()?;
+                unottr_core::db::settings::load(&conn)?
+            };
+
+            // both must be set to override discover() — leaves UNOTTR_FFMPEG/PATH lookup
+            // intact for the common case of overriding neither
+            let backend = if settings.ffmpeg_path.is_some() && settings.ffprobe_path.is_some() {
+                FfmpegCli::new(
+                    settings.ffmpeg_path.clone().unwrap(),
+                    settings.ffprobe_path.clone().unwrap(),
+                )
+            } else {
+                FfmpegCli::discover()
+            };
+
+            // settings' cache override only relocates the pcm cache subdir (Paths::with_cache_dir)
+            let run_paths = match &settings.cache_dir {
+                Some(dir) => paths.with_cache_dir(PathBuf::from(dir)),
+                None => paths.clone(),
+            };
+            run_paths.ensure()?;
+
+            let store = ModelStore::new(run_paths.models_dir());
+            let pipeline_cfg = {
+                let conn = db.connect()?;
+                unottr_core::db::settings::pipeline_config(&conn)?
+            };
+
+            // settings_aware=true: the worker re-reads pipeline_config from the db before
+            // every job, so tier/language/device/threshold changes apply without a restart
+            let (service, events_rx) = IngestService::start(
+                db.clone(),
+                run_paths.clone(),
+                backend,
+                store,
+                IngestConfig::default(),
+                pipeline_cfg,
+                true,
+            )?;
+
+            // tray build can fail (no notification area) — that's a degraded session, not
+            // a startup error; see tray.rs's doc comment for how CloseRequested then falls
+            // through to tauri's normal graceful exit path instead of hiding to tray.
+            let tray = tray::build(app.handle()).ok();
+            let tray_available = tray.is_some();
 
             let app_handle = app.handle().clone();
             thread::spawn(move || forward_events(app_handle, events_rx));
 
-            app.manage(AppState { paths: paths.clone(), db, ingest: Mutex::new(Some(service)) });
+            app.manage(AppState {
+                paths: run_paths,
+                db,
+                ingest: Mutex::new(Some(service)),
+                tray: Mutex::new(tray),
+                tray_available,
+                downloads: Mutex::new(HashMap::new()),
+                jobs: Mutex::new((0, 0)),
+            });
+
+            if let Some(window) = app.get_webview_window("main") {
+                let app_handle = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        handle_close_requested(&app_handle, api);
+                    }
+                });
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -99,4 +209,44 @@ pub fn run() {
             service.shutdown();
         }
     });
+}
+
+/// No tray -> `state.tray` is `None` -> this never intercepts, so the close falls through to
+/// tauri's default single-window-close-exits-app path, which already runs the graceful
+/// `IngestService::shutdown` via the `RunEvent::Exit` handler above. Tray present -> hide
+/// instead of closing, unless the user has turned close-to-tray off in settings.
+fn handle_close_requested(app: &tauri::AppHandle, api: &tauri::CloseRequestApi) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    let Ok(guard) = state.tray.lock() else { return };
+    let Some(tray) = guard.as_ref() else { return };
+
+    let close_to_tray = state
+        .db
+        .connect()
+        .ok()
+        .and_then(|conn| unottr_core::db::settings::load(&conn).ok())
+        .map(|s| s.close_to_tray)
+        .unwrap_or(true);
+    if !close_to_tray {
+        return; // let the close proceed as a normal quit
+    }
+
+    api.prevent_close();
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+
+    let already_explained = state
+        .db
+        .connect()
+        .ok()
+        .and_then(|conn| unottr_core::db::settings::close_to_tray_explained(&conn).ok())
+        .unwrap_or(false);
+    tray.hint_first_hide(already_explained);
+    if !already_explained
+        && let Ok(conn) = state.db.connect()
+        && let Err(e) = unottr_core::db::settings::mark_close_to_tray_explained(&conn)
+    {
+        warn!(error = %e, "failed to persist close-to-tray hint flag");
+    }
 }

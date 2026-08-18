@@ -73,6 +73,12 @@ impl Paths {
         self.state.join("logs")
     }
 
+    /// Settings' "cache location" override only relocates the pcm cache — data/state stay
+    /// put, so the db/models/logs a user already has don't move with it.
+    pub fn with_cache_dir(&self, cache: PathBuf) -> Self {
+        Self { cache, ..self.clone() }
+    }
+
     pub fn ensure(&self) -> Result<()> {
         for dir in [
             self.data.clone(),

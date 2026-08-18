@@ -86,6 +86,24 @@ pub fn remove(conn: &Connection, id: i64) -> Result<()> {
     Ok(())
 }
 
+pub fn set_enabled(conn: &Connection, id: i64, enabled: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE watch_folders SET enabled = ?1 WHERE id = ?2",
+        rusqlite::params![enabled, id],
+    )?;
+    Ok(())
+}
+
+/// `rule` is stored verbatim — `"auto"` or a JSON-serialized `TrackRule`, same convention
+/// `add` and `rule()` already use.
+pub fn set_track_rule(conn: &Connection, id: i64, rule: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE watch_folders SET track_rule = ?1 WHERE id = ?2",
+        rusqlite::params![rule, id],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,5 +142,19 @@ mod tests {
         let wf = add(&conn, Path::new("/rec")).unwrap();
         remove(&conn, wf.id).unwrap();
         assert!(get(&conn, wf.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn enabled_and_track_rule_are_settable() {
+        let (_d, db) = temp_db();
+        let conn = db.connect().unwrap();
+        let wf = add(&conn, Path::new("/rec")).unwrap();
+
+        set_enabled(&conn, wf.id, false).unwrap();
+        assert!(!get(&conn, wf.id).unwrap().unwrap().enabled);
+
+        set_track_rule(&conn, wf.id, r#"{"kind":"stream","stream":1}"#).unwrap();
+        let updated = get(&conn, wf.id).unwrap().unwrap();
+        assert_eq!(updated.rule(), TrackRule::Stream { stream: 1 });
     }
 }

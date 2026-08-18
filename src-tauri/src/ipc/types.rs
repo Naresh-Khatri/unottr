@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 
 // Same shape whisper writes into segments.words; reuse rather than duplicate.
 pub use unottr_core::transcribe::Word;
+// Already snake_case-serde'd in core; the settings screen's device picker is exactly this set.
+pub use unottr_core::transcribe::Device;
+// Read-only estimate from a folder scan (06-settings-and-shell.md backfill offer).
+pub use unottr_core::ingest::backfill::BackfillEstimate;
+// What `Device::Auto` actually resolves to on this machine — already snake_case-serde'd.
+pub use unottr_core::transcribe::Resolved;
 
 /// UI-facing status. Phase 04 owns the real state machine; legacy/CLI-only strings that
 /// predate it (e.g. "pending") don't fit this set, see `Status::parse_lenient`.
@@ -154,4 +160,41 @@ impl Default for RecordingSort {
     fn default() -> Self {
         Self { by: SortBy::RecordedAt, dir: SortDir::Desc }
     }
+}
+
+/// Mirrors `unottr_core::db::settings::Settings` on the wire, plus `tray_available` which
+/// core has no concept of (it's a tauri runtime fact, not a persisted setting). Kept as a
+/// separate struct so the ipc contract doesn't shift if the core representation does.
+#[derive(Debug, Clone, Serialize)]
+pub struct Settings {
+    pub model_tier: String,
+    pub language: Option<String>,
+    pub device: Device,
+    pub diarize_threshold: Option<f32>,
+    pub ffmpeg_path: Option<String>,
+    pub ffprobe_path: Option<String>,
+    pub cache_dir: Option<String>,
+    pub autostart: bool,
+    pub close_to_tray: bool,
+    /// If false, the tray menu/close-to-tray degrade to a plain quit-on-close app — see
+    /// `tray.rs`. Settings shows this as a permanent banner instead of a one-time toast.
+    pub tray_available: bool,
+    /// UI-only flag core's `Settings` struct has no field for — stored under the same
+    /// free-form kv table via the generic key set by `set_setting("first_run_complete", "1")`.
+    /// Gates the first-run wizard, not read by the pipeline.
+    pub first_run_complete: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelInfo {
+    pub tier: String,
+    pub name: String,
+    pub size: u64,
+    pub downloaded: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiskUsage {
+    pub models_bytes: u64,
+    pub cache_bytes: u64,
 }

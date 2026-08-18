@@ -48,7 +48,10 @@ pub struct IngestService {
 impl IngestService {
     /// Runs startup reconciliation synchronously — every non-terminal row is (re)queued before
     /// this returns — then spawns the watcher and worker threads. The returned `Receiver`
-    /// yields every `Event` the pipeline produces from here on.
+    /// yields every `Event` the pipeline produces from here on. `settings_aware` controls
+    /// whether the worker re-reads `PipelineConfig` from the `settings` table before each
+    /// job (the tauri app) or runs with `pipeline_cfg` for its whole lifetime (the cli, whose
+    /// config comes from explicit flags with no settings table backing).
     pub fn start(
         db: Database,
         paths: Paths,
@@ -56,6 +59,7 @@ impl IngestService {
         store: ModelStore,
         cfg: IngestConfig,
         pipeline_cfg: PipelineConfig,
+        settings_aware: bool,
     ) -> Result<(Self, Receiver<Event>)> {
         let cancel = CancelToken::new();
         let (job_tx, job_rx) = mpsc::channel::<i64>();
@@ -80,7 +84,8 @@ impl IngestService {
             let backend: Box<dyn MediaBackend> = Box::new(backend);
             let max_attempts = cfg.max_attempts;
             let cancel = cancel.clone();
-            let worker_ctx = worker::WorkerCtx { db, paths, backend, store, cfg: pipeline_cfg, max_attempts };
+            let worker_ctx =
+                worker::WorkerCtx { db, paths, backend, store, cfg: pipeline_cfg, max_attempts, settings_aware };
             thread::spawn(move || worker::run(worker_ctx, job_rx, event_tx, cancel))
         };
 

@@ -1,5 +1,6 @@
 mod migrations;
 pub mod recordings;
+pub mod settings;
 pub mod watch_folders;
 
 use std::path::{Path, PathBuf};

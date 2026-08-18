@@ -7,6 +7,7 @@ pub mod cancel;
 pub mod db;
 pub mod diarize;
 pub mod error;
+pub mod export;
 pub mod ingest;
 pub mod logging;
 pub mod media;

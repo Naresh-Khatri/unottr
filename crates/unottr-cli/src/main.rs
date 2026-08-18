@@ -749,7 +749,8 @@ fn ingest_run(paths: &Paths, pipeline_cfg: PipelineConfig) -> Result<()> {
     let store = ModelStore::new(paths.models_dir());
     let cfg = IngestConfig::default();
 
-    let (service, events) = IngestService::start(database, paths.clone(), backend, store, cfg, pipeline_cfg)?;
+    let (service, events) =
+        IngestService::start(database, paths.clone(), backend, store, cfg, pipeline_cfg, false)?;
     let cancel = service.cancel_handle();
     let _ = ctrlc::set_handler(move || cancel.cancel());
 

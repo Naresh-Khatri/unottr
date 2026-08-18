@@ -4,11 +4,13 @@
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, Row, named_params, params};
-use unottr_core::{Error, Result};
+use unottr_core::model::ModelStore;
+use unottr_core::{Error, Paths, Result};
 
 use super::types::{
-    Recording, RecordingDetail, RecordingFilter, RecordingSort, RecordingSummary, SearchHit,
-    Segment, SortBy, SortDir, Speaker, Status, WatchFolder, Word,
+    DiskUsage, ModelInfo, Recording, RecordingDetail, RecordingFilter, RecordingSort,
+    RecordingSummary, SearchHit, Segment, Settings, SortBy, SortDir, Speaker, Status,
+    WatchFolder, Word,
 };
 
 pub fn list_recordings(
@@ -147,6 +149,65 @@ pub fn list_watch_folders(conn: &Connection) -> Result<Vec<WatchFolder>> {
         conn.prepare("SELECT id, path, track_rule, enabled FROM watch_folders ORDER BY path")?;
     let rows = stmt.query_map([], row_to_watch_folder)?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn get_settings(conn: &Connection, tray_available: bool) -> Result<Settings> {
+    let s = unottr_core::db::settings::load(conn)?;
+    Ok(Settings {
+        model_tier: s.model_tier,
+        language: s.language,
+        device: s.device,
+        diarize_threshold: s.diarize_threshold,
+        ffmpeg_path: s.ffmpeg_path,
+        ffprobe_path: s.ffprobe_path,
+        cache_dir: s.cache_dir,
+        autostart: s.autostart,
+        close_to_tray: s.close_to_tray,
+        tray_available,
+        first_run_complete: unottr_core::db::settings::get_raw(conn, "first_run_complete")?
+            .is_some_and(|v| v == "1"),
+    })
+}
+
+/// Stores one key/value pair and returns the reloaded settings. Validation of `key`/`value`
+/// is the caller's job (`commands::set_setting`) — this just persists what it's given.
+pub fn set_setting(conn: &Connection, key: &str, value: &str, tray_available: bool) -> Result<Settings> {
+    unottr_core::db::settings::set_raw(conn, key, value)?;
+    get_settings(conn, tray_available)
+}
+
+/// `turbo`/`medium`/`small` only — `base.en` stays cli-only (see transcribe::model doc
+/// comment), so it's never offered in the settings screen's picker.
+pub fn list_models(store: &ModelStore) -> Vec<ModelInfo> {
+    unottr_core::transcribe::model::MODELS
+        .iter()
+        .filter(|m| m.name != "base.en")
+        .map(|m| ModelInfo {
+            tier: unottr_core::db::settings::model_name_to_tier(m.name).to_string(),
+            name: m.name.to_string(),
+            size: m.size,
+            downloaded: store.is_present(m),
+        })
+        .collect()
+}
+
+pub fn disk_usage(paths: &Paths) -> DiskUsage {
+    DiskUsage {
+        models_bytes: dir_size(&paths.models_dir()),
+        cache_bytes: dir_size(&paths.pcm_cache_dir()),
+    }
+}
+
+/// Non-recursive on purpose — models/pcm are both flat directories, never nested.
+fn dir_size(dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .filter_map(|e| e.metadata().ok())
+        .map(|m| m.len())
+        .sum()
 }
 
 fn filename(path: &str) -> String {
@@ -381,5 +442,32 @@ mod tests {
 
         remove_watch_folder(&conn, folder.id).unwrap();
         assert!(list_watch_folders(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn settings_round_trip_through_the_wire_type() {
+        let (_d, db) = seeded_db();
+        let conn = db.connect().unwrap();
+
+        let defaults = get_settings(&conn, true).unwrap();
+        assert_eq!(defaults.model_tier, "auto");
+        assert!(defaults.tray_available);
+
+        let updated = set_setting(&conn, "model_tier", "medium", false).unwrap();
+        assert_eq!(updated.model_tier, "medium");
+        assert!(!updated.tray_available, "tray_available reflects the caller's flag, not storage");
+
+        // re-reading confirms it actually persisted, not just echoed back
+        assert_eq!(get_settings(&conn, false).unwrap().model_tier, "medium");
+    }
+
+    #[test]
+    fn list_models_reports_the_three_settings_tiers_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ModelStore::new(dir.path());
+        let models = list_models(&store);
+        let tiers: Vec<_> = models.iter().map(|m| m.tier.as_str()).collect();
+        assert_eq!(tiers, vec!["turbo", "medium", "small"]);
+        assert!(models.iter().all(|m| !m.downloaded), "nothing downloaded into an empty dir");
     }
 }

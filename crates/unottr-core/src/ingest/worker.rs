@@ -26,6 +26,11 @@ pub struct WorkerCtx {
     pub store: ModelStore,
     pub cfg: PipelineConfig,
     pub max_attempts: i64,
+    /// When true, re-read `PipelineConfig` from the `settings` table before every job instead
+    /// of running with `cfg` forever — lets the tauri app honour a settings change on the
+    /// very next job with no service restart. The cli's explicit `--device`/`--model` flags
+    /// have no settings table backing them, so it always leaves this false.
+    pub settings_aware: bool,
 }
 
 pub fn run(ctx: WorkerCtx, jobs: Receiver<i64>, events: Sender<Event>, cancel: CancelToken) {
@@ -45,12 +50,29 @@ pub fn run(ctx: WorkerCtx, jobs: Receiver<i64>, events: Sender<Event>, cancel: C
 }
 
 fn run_with_retries(ctx: &WorkerCtx, id: i64, events: &Sender<Event>, cancel: &CancelToken) {
+    // fresh per-job read, not cached on ctx: a settings change must reach the very next job,
+    // and re-reading here (rather than pushing changes into a running WorkerCtx) keeps the
+    // worker thread free of any shared-mutable-config plumbing
+    let live_cfg;
+    let cfg = if ctx.settings_aware {
+        live_cfg = ctx
+            .db
+            .connect()
+            .and_then(|conn| crate::db::settings::pipeline_config(&conn))
+            .unwrap_or_else(|e| {
+                warn!(error = %e, "could not read settings; using the last known pipeline config");
+                ctx.cfg.clone()
+            });
+        &live_cfg
+    } else {
+        &ctx.cfg
+    };
     let pctx = PipelineCtx {
         db: &ctx.db,
         paths: &ctx.paths,
         backend: ctx.backend.as_ref(),
         store: &ctx.store,
-        cfg: &ctx.cfg,
+        cfg,
     };
     loop {
         let on_progress = |stage: Status, pct: f32| {
@@ -130,6 +152,7 @@ mod tests {
             store: ModelStore::new(dir.path().join("models")),
             cfg: PipelineConfig::default(),
             max_attempts: 2,
+            settings_aware: false,
         };
         let (events_tx, events_rx) = channel::<Event>();
         let cancel = CancelToken::new();
