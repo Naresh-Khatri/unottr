@@ -9,6 +9,7 @@ pub mod error;
 pub mod logging;
 pub mod media;
 pub mod paths;
+pub mod transcribe;
 
 pub use cancel::CancelToken;
 pub use db::Database;

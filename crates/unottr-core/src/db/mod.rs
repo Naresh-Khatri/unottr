@@ -1,4 +1,5 @@
 mod migrations;
+pub mod recordings;
 
 use std::path::{Path, PathBuf};
 

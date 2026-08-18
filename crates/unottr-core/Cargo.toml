@@ -6,6 +6,11 @@ license.workspace = true
 rust-version.workspace = true
 description = "Local meeting transcription pipeline: probe, extract, transcribe, diarize."
 
+[features]
+default = ["vulkan"]
+# forwarded to whisper-rs; off = cpu-only build (no libvulkan link)
+vulkan = ["whisper-rs/vulkan"]
+
 [dependencies]
 thiserror.workspace = true
 serde.workspace = true
@@ -16,6 +21,9 @@ directories = "6.0.0"
 time = "0.3.45"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-appender = "0.2.5"
+whisper-rs = { version = "0.16.0", default-features = false }
+ureq = "3.1.2"
+sha2 = "0.10.9"
 
 [dev-dependencies]
 tempfile = "3.27.0"

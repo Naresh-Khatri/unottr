@@ -69,3 +69,39 @@ pub fn pcm_bytes_for_ms(duration_ms: u64) -> u64 {
 pub fn pcm_duration_ms(bytes: u64) -> u64 {
     bytes * 1000 / (u64::from(TARGET_SAMPLE_RATE) * 2)
 }
+
+/// Load a whole pcm file as the f32 samples whisper wants. ~230 MB per hour of audio in
+/// memory; the alternative is decoding the same bytes once per chunk.
+pub fn read_pcm_f32(path: &Path) -> Result<Vec<f32>> {
+    use crate::error::IoResultExt;
+
+    let bytes = std::fs::read(path).at(path)?;
+    Ok(bytes
+        .chunks_exact(2)
+        .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0)
+        .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pcm_sizing_round_trips() {
+        assert_eq!(pcm_duration_ms(pcm_bytes_for_ms(90_000)), 90_000);
+    }
+
+    #[test]
+    fn reads_samples_as_normalised_floats() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.pcm");
+        // trailing odd byte is dropped rather than misread as half a sample
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&0i16.to_le_bytes());
+        raw.extend_from_slice(&i16::MIN.to_le_bytes());
+        raw.push(0x7f);
+        std::fs::write(&path, &raw).unwrap();
+
+        assert_eq!(read_pcm_f32(&path).unwrap(), vec![0.0, -1.0]);
+    }
+}

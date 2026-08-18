@@ -43,6 +43,9 @@ pub enum Error {
     #[error("model {name} is not downloaded")]
     ModelMissing { name: String },
 
+    #[error("could not download {name}: {reason}")]
+    Download { name: String, reason: String },
+
     #[error("cancelled")]
     Cancelled,
 
