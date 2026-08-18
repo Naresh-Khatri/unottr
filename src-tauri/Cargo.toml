@@ -1,0 +1,21 @@
+[package]
+name = "unottr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Local, private meeting transcription with speaker diarization."
+
+[lib]
+name = "unottr_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = "2.6.3"
+
+[dependencies]
+unottr-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tauri = { version = "2.11.5", features = ["tray-icon"] }

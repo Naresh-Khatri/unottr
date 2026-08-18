@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #0f0f12;
+  --color-panel: #17171a;
+  --color-line: #2a2a30;
+  --color-ink: #e8e8ea;
+  --color-muted: #8b8b94;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
