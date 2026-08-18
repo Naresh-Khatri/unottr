@@ -7,6 +7,7 @@ pub mod cancel;
 pub mod db;
 pub mod diarize;
 pub mod error;
+pub mod ingest;
 pub mod logging;
 pub mod media;
 pub mod model;
@@ -16,6 +17,7 @@ pub mod transcribe;
 pub use cancel::CancelToken;
 pub use db::Database;
 pub use error::{Error, Result};
+pub use ingest::{Event, IngestConfig, IngestService, PipelineConfig};
 pub use model::{ModelSpec, ModelStore};
 pub use paths::Paths;
 

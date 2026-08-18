@@ -25,6 +25,8 @@ whisper-rs = { version = "0.16.0", default-features = false }
 ureq = "3.1.2"
 sha2 = "0.10.9"
 sherpa-rs = { version = "0.6.8", default-features = false, features = ["download-binaries"] }
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+blake3 = "1"
 
 [dev-dependencies]
 tempfile = "3.27.0"

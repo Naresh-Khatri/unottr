@@ -87,7 +87,7 @@ pub fn run(
 
     let segments = count_segments(&conn, job.recording_id)?;
     conn.execute(
-        "UPDATE recordings SET status = 'transcribed', stage_detail = NULL, error = NULL, updated_at = ?2
+        "UPDATE recordings SET status = 'diarizing', stage_detail = NULL, error = NULL, updated_at = ?2
          WHERE id = ?1",
         params![job.recording_id, recordings::now()],
     )?;

@@ -53,6 +53,29 @@ pub enum Error {
     NoBaseDir(&'static str),
 }
 
+impl Error {
+    /// Short typed-error slug for the UI (05-ipc-contract.md: `job_failed { error: string }`).
+    /// Stable across variant field changes — never derive this from `{0}`/`Display`.
+    pub fn slug(&self) -> &'static str {
+        match self {
+            Error::Io { .. } => "io_error",
+            Error::Db(_) => "db_error",
+            Error::FfmpegMissing => "ffmpeg_missing",
+            Error::Ffmpeg(_) => "ffmpeg_failed",
+            Error::Probe { .. } => "probe_failed",
+            Error::NoAudio { .. } => "no_audio",
+            Error::Truncated { .. } => "truncated",
+            Error::Whisper(_) => "whisper_failed",
+            Error::GpuOom => "gpu_oom",
+            Error::Diarize(_) => "diarize_failed",
+            Error::ModelMissing { .. } => "model_missing",
+            Error::Download { .. } => "download_failed",
+            Error::Cancelled => "cancelled",
+            Error::NoBaseDir(_) => "no_base_dir",
+        }
+    }
+}
+
 /// Attaches the offending path to io errors, which std does not carry.
 pub trait IoResultExt<T> {
     fn at(self, path: impl Into<PathBuf>) -> Result<T>;

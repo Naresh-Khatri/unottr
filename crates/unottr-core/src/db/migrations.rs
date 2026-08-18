@@ -5,7 +5,7 @@ use crate::error::Result;
 
 /// Forward-only migrations, applied in order. Never edit a migration that has shipped;
 /// append a new one. Index = target `user_version`.
-pub const MIGRATIONS: &[&str] = &[V1, V2];
+pub const MIGRATIONS: &[&str] = &[V1, V2, V3];
 
 pub fn current_version(conn: &Connection) -> Result<u32> {
     Ok(conn.query_row("PRAGMA user_version", [], |row| row.get(0))?)
@@ -112,4 +112,12 @@ CREATE TABLE settings (
 const V2: &str = r#"
 ALTER TABLE segments ADD COLUMN split_of INTEGER;
 CREATE INDEX idx_segments_split ON segments(recording_id, split_of);
+"#;
+
+/// Phase 02/03 wrote provisional status strings before the phase 04/05 contract froze the
+/// real state machine (discovered/probing/.../done/failed). Map any that survived.
+const V3: &str = r#"
+UPDATE recordings SET status = 'discovered' WHERE status = 'pending';
+UPDATE recordings SET status = 'diarizing' WHERE status = 'transcribed';
+UPDATE recordings SET status = 'done' WHERE status = 'diarized';
 "#;

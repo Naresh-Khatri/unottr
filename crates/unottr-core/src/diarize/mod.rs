@@ -263,7 +263,7 @@ fn persist(
     }
 
     tx.execute(
-        "UPDATE recordings SET status = 'diarized', stage_detail = NULL, error = NULL, updated_at = ?2
+        "UPDATE recordings SET status = 'done', stage_detail = NULL, error = NULL, updated_at = ?2
          WHERE id = ?1",
         params![recording_id, recordings::now()],
     )?;
@@ -612,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn the_recording_ends_up_marked_diarized() {
+    fn the_recording_ends_up_marked_done() {
         let (_d, db, id) = db_with_segments(1);
         let mut conn = db.connect().unwrap();
         let d = Diarization::default();
@@ -626,7 +626,7 @@ mod tests {
                 r.get(0)
             })
             .unwrap();
-        assert_eq!(status, "diarized");
+        assert_eq!(status, "done");
     }
 
     #[test]

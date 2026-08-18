@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use unottr_core::diarize;
+use unottr_core::ingest::{self, IngestConfig, IngestService, PipelineConfig};
 use unottr_core::media::{FfmpegCli, MediaBackend, Selection, TrackRule};
 use unottr_core::transcribe::{self, Device, Job, ModelStore, Options};
-use unottr_core::{CancelToken, Database, ModelSpec, Paths};
+use unottr_core::{CancelToken, Database, Event, ModelSpec, Paths};
 
 #[derive(Parser)]
 #[command(name = "unottr", version, about = "Local meeting transcription")]
@@ -82,11 +83,59 @@ enum Command {
         #[arg(long)]
         print: bool,
     },
-    /// Run the full pipeline on one file
-    Run { file: PathBuf },
+    /// Manage watched folders (phase 04)
+    #[command(subcommand)]
+    Watch(WatchCommand),
+    /// Run the ingest watcher + worker, or backfill an existing folder (phase 04)
+    #[command(subcommand)]
+    Ingest(IngestCommand),
     /// Inspect the local database
     #[command(subcommand)]
     Db(DbCommand),
+}
+
+#[derive(Subcommand)]
+enum WatchCommand {
+    /// Start watching a folder for new recordings (idempotent)
+    Add { path: PathBuf },
+    /// Stop watching a folder. Existing recordings and transcripts are untouched.
+    Remove { id: i64 },
+    /// List configured watch folders
+    List,
+}
+
+#[derive(Subcommand)]
+enum IngestCommand {
+    /// Watch every configured folder and process discovered recordings until ctrl-c
+    Run {
+        /// Whisper model name; defaults to the best one for the device
+        #[arg(long)]
+        model: Option<String>,
+        /// Diarization embedding model name
+        #[arg(long)]
+        embedding_model: Option<String>,
+        #[arg(long, value_enum, default_value_t = DeviceArg::Auto)]
+        device: DeviceArg,
+        #[arg(long)]
+        language: Option<String>,
+        #[arg(long)]
+        threads: Option<i32>,
+        #[arg(long)]
+        threshold: Option<f32>,
+        #[arg(long)]
+        speakers: Option<u32>,
+        /// Download missing models instead of erroring
+        #[arg(long)]
+        download: bool,
+    },
+    /// Report what a folder full of pre-existing files would cost to process. Does nothing
+    /// until confirmed with --yes.
+    Backfill {
+        folder: PathBuf,
+        /// Actually enqueue the files (registers the folder as watched, too)
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -190,7 +239,8 @@ fn main() -> Result<()> {
             },
             &paths,
         ),
-        Command::Run { .. } => unimplemented("run", 4),
+        Command::Watch(cmd) => watch(cmd, &paths),
+        Command::Ingest(cmd) => ingest_cmd(cmd, &paths),
     }
 }
 
@@ -631,6 +681,122 @@ fn models(cmd: ModelCommand, paths: &Paths) -> Result<()> {
     Ok(())
 }
 
+fn watch(cmd: WatchCommand, paths: &Paths) -> Result<()> {
+    paths.ensure()?;
+    let database = Database::open(paths.db_file())?;
+    let conn = database.connect()?;
+    match cmd {
+        WatchCommand::Add { path } => {
+            let path = path
+                .canonicalize()
+                .with_context(|| format!("resolving {}", path.display()))?;
+            let wf = unottr_core::db::watch_folders::add(&conn, &path)?;
+            println!("#{} {} ({})", wf.id, wf.path.display(), wf.track_rule);
+        }
+        WatchCommand::Remove { id } => {
+            unottr_core::db::watch_folders::remove(&conn, id)?;
+            println!("removed #{id}");
+        }
+        WatchCommand::List => {
+            for wf in unottr_core::db::watch_folders::list(&conn)? {
+                println!(
+                    "#{:<4} {:<5} {:<6} {}",
+                    wf.id,
+                    wf.track_rule,
+                    if wf.enabled { "on" } else { "off" },
+                    wf.path.display()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn ingest_cmd(cmd: IngestCommand, paths: &Paths) -> Result<()> {
+    match cmd {
+        IngestCommand::Run {
+            model,
+            embedding_model,
+            device,
+            language,
+            threads,
+            threshold,
+            speakers,
+            download,
+        } => ingest_run(
+            paths,
+            PipelineConfig {
+                device: device.into(),
+                threads,
+                language,
+                whisper_model: model,
+                embedding_model,
+                diarize_threshold: threshold,
+                diarize_speakers: speakers,
+                download_models: download,
+            },
+        ),
+        IngestCommand::Backfill { folder, yes } => ingest_backfill(&folder, yes, paths),
+    }
+}
+
+/// Watches every enabled folder and runs the worker until ctrl-c. The worker finishes its
+/// current chunk and checkpoints before `shutdown` returns (04-ingest.md).
+fn ingest_run(paths: &Paths, pipeline_cfg: PipelineConfig) -> Result<()> {
+    paths.ensure()?;
+    let database = Database::open(paths.db_file())?;
+    let backend = FfmpegCli::discover();
+    let store = ModelStore::new(paths.models_dir());
+    let cfg = IngestConfig::default();
+
+    let (service, events) = IngestService::start(database, paths.clone(), backend, store, cfg, pipeline_cfg)?;
+    let cancel = service.cancel_handle();
+    let _ = ctrlc::set_handler(move || cancel.cancel());
+
+    eprintln!("watching; ctrl-c to stop");
+    for event in events {
+        match event {
+            Event::Discovered { recording_id } => println!("#{recording_id} discovered"),
+            Event::Progress { recording_id, stage, pct } => {
+                eprint!("\r#{recording_id} {stage} {:>3}%", (pct * 100.0) as i32);
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
+            Event::Done { recording_id } => println!("\n#{recording_id} done"),
+            Event::Failed { recording_id, error } => println!("\n#{recording_id} failed: {error}"),
+        }
+    }
+    service.shutdown();
+    Ok(())
+}
+
+fn ingest_backfill(folder: &Path, yes: bool, paths: &Paths) -> Result<()> {
+    paths.ensure()?;
+    let folder = folder
+        .canonicalize()
+        .with_context(|| format!("resolving {}", folder.display()))?;
+    let cfg = IngestConfig::default();
+    let backend = FfmpegCli::discover();
+    let estimate = ingest::backfill::scan(&folder, &cfg, &backend)?;
+    println!(
+        "{} matching file(s), {:.1}s audio, ~{:.1}s estimated processing",
+        estimate.count,
+        estimate.total_duration_ms as f64 / 1000.0,
+        estimate.estimated_processing_ms as f64 / 1000.0,
+    );
+    if !yes {
+        println!("pass --yes to enqueue");
+        return Ok(());
+    }
+    let database = Database::open(paths.db_file())?;
+    {
+        let conn = database.connect()?;
+        unottr_core::db::watch_folders::add(&conn, &folder)?;
+    }
+    let ids = ingest::backfill::confirm(&database, &folder, &cfg)?;
+    println!("enqueued {} recording(s)", ids.len());
+    Ok(())
+}
+
 fn db(cmd: DbCommand, paths: &Paths) -> Result<()> {
     match cmd {
         DbCommand::Path => {
@@ -671,6 +837,3 @@ fn db(cmd: DbCommand, paths: &Paths) -> Result<()> {
     Ok(())
 }
 
-fn unimplemented(name: &str, phase: u8) -> Result<()> {
-    anyhow::bail!("`{name}` arrives in phase {phase:02}")
-}

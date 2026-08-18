@@ -91,3 +91,16 @@ fn env_dir(key: &str) -> Option<PathBuf> {
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
 }
+
+#[cfg(test)]
+impl Paths {
+    /// Bypasses `directories`/env lookups so tests can get a concrete `Paths` pointed at a
+    /// temp dir without racing on process-global env vars across parallel tests.
+    pub fn for_test(root: &Path) -> Self {
+        Self {
+            data: root.join("data"),
+            cache: root.join("cache"),
+            state: root.join("state"),
+        }
+    }
+}
