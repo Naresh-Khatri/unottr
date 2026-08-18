@@ -10,3 +10,6 @@
 
 # tauri-build generated
 /src-tauri/gen/schemas
+
+# fetched at package time by scripts/fetch-ffmpeg.sh (decision #21)
+/src-tauri/resources

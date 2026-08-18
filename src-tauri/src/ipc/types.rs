@@ -183,6 +183,10 @@ pub struct Settings {
     /// free-form kv table via the generic key set by `set_setting("first_run_complete", "1")`.
     /// Gates the first-run wizard, not read by the pipeline.
     pub first_run_complete: bool,
+    /// Runtime fact (07's ffmpeg preflight), not a persisted setting — re-checked on every
+    /// `get_settings`/`set_setting` call so editing ffmpeg_path and re-fetching settings is
+    /// how the frontend clears its persistent "ffmpeg missing" banner, with no extra event.
+    pub ffmpeg_ok: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

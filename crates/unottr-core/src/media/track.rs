@@ -242,4 +242,25 @@ mod tests {
     fn no_audio_is_an_error() {
         assert!(select(&probe(vec![]), &TrackRule::Auto).is_err());
     }
+
+    /// 07-hardening-and-packaging.md's robustness pass: OBS can record with any number of
+    /// tracks (per-app capture etc). Nothing in `auto` is hardcoded to a track count, so this
+    /// just confirms 6 unidentifiable tracks degrades the same way 2 does, not a panic.
+    #[test]
+    fn six_unidentifiable_tracks_still_fall_back_to_the_first_not_a_panic() {
+        let p = probe((0..6).map(|i| stream(i, 2, Some("Track"))).collect());
+        let choice = select(&p, &TrackRule::Auto).unwrap();
+        assert_eq!(choice.selection, Selection::Blind { stream: 0 });
+    }
+
+    /// Same track count, but named this time — proves the heuristic still finds the right
+    /// pair rather than only working by luck on small inputs.
+    #[test]
+    fn six_tracks_with_named_mic_and_desktop_are_still_found() {
+        let mut streams: Vec<_> = (0..6).map(|i| stream(i, 2, Some("App Capture"))).collect();
+        streams[3] = stream(3, 1, Some("Microphone"));
+        streams[5] = stream(5, 2, Some("Desktop Audio"));
+        let choice = select(&probe(streams), &TrackRule::Auto).unwrap();
+        assert_eq!(choice.selection, Selection::MicDesktop { mic: 3, desktop: 5 });
+    }
 }

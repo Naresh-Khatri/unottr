@@ -119,7 +119,15 @@ pub fn process_recording(
     on_progress(Status::Extracting, 1.0);
 
     // --- transcribing (checkpointed inside transcribe::run) ---
-    let device = transcribe::resolve(cfg.device);
+    // a prior run on this recording may have gpu-oom'd (worker's fallback persists this,
+    // see `recordings::set_force_cpu`) — read it back so the override survives a restart,
+    // not just the one automatic in-process retry
+    let force_cpu = {
+        let conn = db.connect()?;
+        recordings::force_cpu_of(&conn, id)?
+    };
+    let device_pref = if force_cpu { crate::transcribe::Device::Cpu } else { cfg.device };
+    let device = transcribe::resolve(device_pref);
     let whisper_spec = match &cfg.whisper_model {
         Some(name) => transcribe::model::find(name).ok_or_else(|| crate::Error::ModelMissing {
             name: name.clone(),
@@ -134,7 +142,7 @@ pub fn process_recording(
         pcm: main_pcm.clone(),
         model: whisper_model,
         vad_model: vad_model.clone(),
-        device: cfg.device,
+        device: device_pref,
         options: Options {
             language: cfg.language.clone(),
             threads: cfg.threads.unwrap_or_else(transcribe::engine::default_threads),

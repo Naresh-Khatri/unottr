@@ -10,6 +10,20 @@ use super::{AudioStream, MediaBackend, Probe, TARGET_SAMPLE_RATE};
 use crate::cancel::CancelToken;
 use crate::error::{Error, IoResultExt, Result};
 
+/// `current_exe`'s directory is checked for `name`; falls back to the bare name so
+/// `Command` resolves it against `PATH` instead.
+fn bundled_or(name: &str) -> PathBuf {
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+    name.into()
+}
+
 /// Drives the system ffmpeg/ffprobe binaries.
 #[derive(Debug, Clone)]
 pub struct FfmpegCli {
@@ -24,11 +38,17 @@ impl Default for FfmpegCli {
 }
 
 impl FfmpegCli {
-    /// Env overrides exist so a bundled pair (phase 07) and tests can redirect us.
+    /// Priority: explicit env override, then a binary bundled next to the running
+    /// executable (how `scripts/package-tarball.sh`'s fallback ships ffmpeg; the AppImage
+    /// path instead points the env vars at its resource dir at startup, see src-tauri's
+    /// `run()`), then bare name for the OS to resolve against `PATH`. No Tauri knowledge
+    /// needed here — packaging just has to get `ffmpeg`/`ffprobe` in front of one of these.
     pub fn discover() -> Self {
         Self {
-            ffmpeg: env::var_os("UNOTTR_FFMPEG").map_or_else(|| "ffmpeg".into(), PathBuf::from),
-            ffprobe: env::var_os("UNOTTR_FFPROBE").map_or_else(|| "ffprobe".into(), PathBuf::from),
+            ffmpeg: env::var_os("UNOTTR_FFMPEG")
+                .map_or_else(|| bundled_or("ffmpeg"), PathBuf::from),
+            ffprobe: env::var_os("UNOTTR_FFPROBE")
+                .map_or_else(|| bundled_or("ffprobe"), PathBuf::from),
         }
     }
 
@@ -36,6 +56,16 @@ impl FfmpegCli {
         Self {
             ffmpeg: ffmpeg.into(),
             ffprobe: ffprobe.into(),
+        }
+    }
+
+    /// Both settings must be set to override `discover()` — leaves `UNOTTR_FFMPEG`/`PATH`
+    /// lookup intact for the common case of overriding neither. Shared by the tauri app's
+    /// startup backend construction and its ffmpeg-preflight check so the two never drift.
+    pub fn from_settings(ffmpeg_path: Option<&str>, ffprobe_path: Option<&str>) -> Self {
+        match (ffmpeg_path, ffprobe_path) {
+            (Some(f), Some(p)) if !f.is_empty() && !p.is_empty() => Self::new(f, p),
+            _ => Self::discover(),
         }
     }
 
@@ -335,5 +365,60 @@ mod tests {
             cli.probe(Path::new("/etc/hostname")),
             Err(Error::FfmpegMissing)
         ));
+    }
+
+    fn have_ffmpeg() -> bool {
+        FfmpegCli::discover().check().is_ok()
+    }
+
+    /// 07-hardening-and-packaging.md's robustness pass: hostile inputs must produce a typed
+    /// error, never a panic. A 0-byte file has no moov atom either, so most ffprobe builds
+    /// report it the same way as a truncated recording; accept either typed outcome since
+    /// the exact wording isn't the point.
+    #[test]
+    fn a_zero_byte_file_is_a_typed_error_not_a_panic() {
+        if !have_ffmpeg() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.mp4");
+        std::fs::File::create(&path).unwrap();
+        let err = FfmpegCli::discover().probe(&path).unwrap_err();
+        assert!(matches!(err, Error::Probe { .. } | Error::Truncated { .. }), "got {err}");
+    }
+
+    /// Plain text with a media extension — ffprobe can't sniff a container out of it at all.
+    #[test]
+    fn a_text_file_disguised_as_mkv_is_a_typed_error_not_a_panic() {
+        if !have_ffmpeg() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notes.mkv");
+        std::fs::write(&path, b"just some plain text, not a container at all\n").unwrap();
+        let err = FfmpegCli::discover().probe(&path).unwrap_err();
+        assert!(matches!(err, Error::Probe { .. } | Error::Truncated { .. }), "got {err}");
+    }
+
+    /// Simulates the file vanishing between discovery and extraction (watch folder on a
+    /// removable drive, user deletes the source, etc). `extract_pcm` re-probes internally, so
+    /// this exercises the same vanished-file path as a mid-pipeline disappearance would.
+    #[test]
+    fn a_file_deleted_before_extraction_is_a_typed_error_not_a_panic() {
+        if !have_ffmpeg() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vanishing.mp4");
+        std::fs::write(&path, b"not real media, just bytes").unwrap();
+        let out = dir.path().join("out.pcm");
+        let cancel = CancelToken::new();
+        std::fs::remove_file(&path).unwrap();
+
+        let err = FfmpegCli::discover()
+            .extract_pcm(&path, 0, &out, &|_| {}, &cancel)
+            .unwrap_err();
+        assert!(matches!(err, Error::Io { .. } | Error::Probe { .. } | Error::Ffmpeg(_)), "got {err}");
+        assert!(!out.exists());
     }
 }

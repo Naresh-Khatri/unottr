@@ -153,6 +153,14 @@ pub fn list_watch_folders(conn: &Connection) -> Result<Vec<WatchFolder>> {
 
 pub fn get_settings(conn: &Connection, tray_available: bool) -> Result<Settings> {
     let s = unottr_core::db::settings::load(conn)?;
+    // cheap enough to run every call (two `-version` spawns): this is only hit on settings
+    // screen loads/saves, never per-recording
+    let ffmpeg_ok = unottr_core::media::FfmpegCli::from_settings(
+        s.ffmpeg_path.as_deref(),
+        s.ffprobe_path.as_deref(),
+    )
+    .check()
+    .is_ok();
     Ok(Settings {
         model_tier: s.model_tier,
         language: s.language,
@@ -166,6 +174,7 @@ pub fn get_settings(conn: &Connection, tray_available: bool) -> Result<Settings>
         tray_available,
         first_run_complete: unottr_core::db::settings::get_raw(conn, "first_run_complete")?
             .is_some_and(|v| v == "1"),
+        ffmpeg_ok,
     })
 }
 

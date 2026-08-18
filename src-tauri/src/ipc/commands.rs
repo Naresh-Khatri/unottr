@@ -85,7 +85,13 @@ pub fn retry_job(state: State<AppState>, recording_id: i64) -> CmdResult<()> {
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn add_watch_folder(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<WatchFolder> {
+    // preflight (07-hardening-and-packaging.md): refuse rather than register a folder whose
+    // every discovered file is certain to park on FfmpegMissing
     let conn = connect(&state)?;
+    let s = unottr_core::db::settings::load(&conn).map_err(|e| e.to_string())?;
+    unottr_core::media::FfmpegCli::from_settings(s.ffmpeg_path.as_deref(), s.ffprobe_path.as_deref())
+        .check()
+        .map_err(|_| "ffmpeg/ffprobe not found — fix that in Settings before adding a folder".to_string())?;
     let folder = queries::add_watch_folder(&conn, &path).map_err(|e| e.to_string())?;
     if let Err(e) = scope::allow_watch_folder(&app, &folder.path) {
         tracing::warn!(error = %e, path = %folder.path, "failed to extend asset protocol scope");

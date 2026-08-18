@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
-use crate::error::Result;
+use crate::error::{Error, Result, RetryPolicy};
 
 /// Seconds since the epoch. Everything in the schema stores integer unix time.
 pub fn now() -> i64 {
@@ -220,19 +220,27 @@ pub fn path_of(conn: &Connection, id: i64) -> Result<Option<PathBuf>> {
     Ok(raw.map(PathBuf::from))
 }
 
-/// Bumps `attempts` and records the error; parks the row `Failed` once `max_attempts` is hit.
-/// Returns `true` if it will be retried, `false` if it just parked. `Cancelled` never reaches
-/// here — the worker treats a graceful shutdown as "leave it exactly as it is".
-pub fn fail_or_retry(conn: &Connection, id: i64, error: &str, max_attempts: i64) -> Result<bool> {
+/// Bumps `attempts`, records the error slug, and applies `error`'s `retry_policy` (07's
+/// failure taxonomy — `Terminal`/`OnFix` park after this one failure, `Bounded` parks once
+/// `max_attempts` is hit). Returns `true` if it will be retried, `false` if it just parked.
+/// `Cancelled` never reaches here — the worker treats a graceful shutdown as "leave it
+/// exactly as it is".
+pub fn fail_or_retry(conn: &Connection, id: i64, error: &Error, max_attempts: i64) -> Result<bool> {
+    let slug = error.slug();
     let attempts: i64 = conn.query_row(
         "UPDATE recordings SET attempts = attempts + 1, error = ?2, updated_at = ?3
          WHERE id = ?1
          RETURNING attempts",
-        params![id, error, now()],
+        params![id, slug, now()],
         |row| row.get(0),
     )?;
 
-    if attempts >= max_attempts {
+    let park = match error.retry_policy(max_attempts) {
+        RetryPolicy::Terminal | RetryPolicy::OnFix => true,
+        RetryPolicy::Bounded(n) => attempts >= n,
+    };
+
+    if park {
         conn.execute(
             "UPDATE recordings SET status = 'failed', stage_detail = NULL, updated_at = ?2 WHERE id = ?1",
             params![id, now()],
@@ -241,6 +249,28 @@ pub fn fail_or_retry(conn: &Connection, id: i64, error: &str, max_attempts: i64)
     } else {
         Ok(true)
     }
+}
+
+/// Persists the "this recording's whisper stage ran into a GPU OOM, use CPU from now on"
+/// fallback (07-hardening-and-packaging.md decision #19). Sticky across retries and restarts
+/// — a card that OOMs on a file will OOM on it again, so `pipeline::process_recording` reads
+/// this back every run rather than the worker re-detecting it each time.
+pub fn set_force_cpu(conn: &Connection, id: i64, force_cpu: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE recordings SET force_cpu = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, force_cpu, now()],
+    )?;
+    Ok(())
+}
+
+pub fn force_cpu_of(conn: &Connection, id: i64) -> Result<bool> {
+    Ok(conn
+        .query_row("SELECT force_cpu FROM recordings WHERE id = ?1", [id], |row| {
+            row.get::<_, i64>(0)
+        })
+        .optional()?
+        .unwrap_or(0)
+        != 0)
 }
 
 /// Retry from the UI: only acts on a currently-`failed` row, clearing error/attempts and
@@ -317,17 +347,61 @@ mod tests {
         assert_eq!(attempts, 3, "relink must not touch retry state");
     }
 
+    /// A `Bounded`-policy error (io/whisper/diarize all behave the same way here).
+    fn bounded_err() -> Error {
+        Error::Whisper("decode failed".into())
+    }
+
     #[test]
-    fn failing_retries_twice_then_parks() {
+    fn a_bounded_error_retries_twice_then_parks() {
         let (_d, db) = temp_db();
         let conn = db.connect().unwrap();
         let id = stub(&conn, Path::new("/tmp/a.mkv"), None).unwrap();
 
-        assert!(fail_or_retry(&conn, id, "truncated", 3).unwrap());
+        assert!(fail_or_retry(&conn, id, &bounded_err(), 3).unwrap());
         assert_eq!(status_of(&conn, id).unwrap(), Some(Status::Discovered));
-        assert!(fail_or_retry(&conn, id, "truncated", 3).unwrap());
-        assert!(!fail_or_retry(&conn, id, "truncated", 3).unwrap());
+        assert!(fail_or_retry(&conn, id, &bounded_err(), 3).unwrap());
+        assert!(!fail_or_retry(&conn, id, &bounded_err(), 3).unwrap());
         assert_eq!(status_of(&conn, id).unwrap(), Some(Status::Failed));
+    }
+
+    #[test]
+    fn a_terminal_error_parks_after_one_failure_regardless_of_max_attempts() {
+        let (_d, db) = temp_db();
+        let conn = db.connect().unwrap();
+        let id = stub(&conn, Path::new("/tmp/a.mkv"), None).unwrap();
+        let err = Error::Truncated { path: PathBuf::from("/tmp/a.mkv") };
+
+        assert!(!fail_or_retry(&conn, id, &err, 10).unwrap(), "terminal errors never retry");
+        assert_eq!(status_of(&conn, id).unwrap(), Some(Status::Failed));
+        let error: Option<String> = conn
+            .query_row("SELECT error FROM recordings WHERE id = ?1", [id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(error.as_deref(), Some("truncated"));
+    }
+
+    #[test]
+    fn an_on_fix_error_parks_after_one_failure_but_is_meant_to_be_retried_manually() {
+        let (_d, db) = temp_db();
+        let conn = db.connect().unwrap();
+        let id = stub(&conn, Path::new("/tmp/a.mkv"), None).unwrap();
+
+        assert!(!fail_or_retry(&conn, id, &Error::FfmpegMissing, 10).unwrap());
+        assert_eq!(status_of(&conn, id).unwrap(), Some(Status::Failed));
+        // the point of OnFix vs Terminal is purely UI-facing (install hint + Retry button);
+        // the mechanics of unparking are the same reset_for_retry every failed row gets
+        assert!(reset_for_retry(&conn, id).unwrap());
+    }
+
+    #[test]
+    fn force_cpu_round_trips_and_defaults_false() {
+        let (_d, db) = temp_db();
+        let conn = db.connect().unwrap();
+        let id = stub(&conn, Path::new("/tmp/a.mkv"), None).unwrap();
+        assert!(!force_cpu_of(&conn, id).unwrap());
+
+        set_force_cpu(&conn, id, true).unwrap();
+        assert!(force_cpu_of(&conn, id).unwrap());
     }
 
     #[test]
@@ -335,7 +409,7 @@ mod tests {
         let (_d, db) = temp_db();
         let conn = db.connect().unwrap();
         let id = stub(&conn, Path::new("/tmp/a.mkv"), None).unwrap();
-        assert!(!fail_or_retry(&conn, id, "truncated", 1).unwrap(), "1 attempt parks immediately");
+        assert!(!fail_or_retry(&conn, id, &bounded_err(), 1).unwrap(), "1 attempt parks immediately");
         assert_eq!(status_of(&conn, id).unwrap(), Some(Status::Failed));
 
         assert!(reset_for_retry(&conn, id).unwrap());

@@ -74,6 +74,14 @@ fn run_with_retries(ctx: &WorkerCtx, id: i64, events: &Sender<Event>, cancel: &C
         store: &ctx.store,
         cfg,
     };
+    // whether this job has already used its one automatic gpu-oom-then-cpu retry — read
+    // back rather than assumed false, in case a previous run already forced cpu for this
+    // recording (persisted, see `recordings::force_cpu_of`), so we don't retry-in-place twice
+    let mut already_forced_cpu = ctx
+        .db
+        .connect()
+        .and_then(|conn| recordings::force_cpu_of(&conn, id))
+        .unwrap_or(false);
     loop {
         let on_progress = |stage: Status, pct: f32| {
             let _ = events.send(Event::Progress { recording_id: id, stage, pct });
@@ -90,13 +98,33 @@ fn run_with_retries(ctx: &WorkerCtx, id: i64, events: &Sender<Event>, cancel: &C
                 info!(recording_id = id, "job interrupted by shutdown");
                 return;
             }
+            // 07's GpuOom decision: silent to the user, one automatic cpu retry. Bypasses
+            // `fail_or_retry` entirely — this isn't a normal failure/attempt, it's a
+            // transparent device switch.
+            Err(Error::GpuOom) if !already_forced_cpu => {
+                warn!(
+                    recording_id = id,
+                    "gpu ran out of memory transcribing this recording; falling back to cpu \
+                     and retrying once (if this fires often, the default model tier is too \
+                     big for this gpu)"
+                );
+                already_forced_cpu = true;
+                if let Err(e) = ctx
+                    .db
+                    .connect()
+                    .and_then(|conn| recordings::set_force_cpu(&conn, id, true))
+                {
+                    warn!(recording_id = id, error = %e, "failed to persist cpu fallback");
+                }
+                continue;
+            }
             Err(e) => {
                 let slug = e.slug();
                 warn!(recording_id = id, error = slug, "job failed");
                 let will_retry = ctx
                     .db
                     .connect()
-                    .and_then(|conn| recordings::fail_or_retry(&conn, id, slug, ctx.max_attempts))
+                    .and_then(|conn| recordings::fail_or_retry(&conn, id, &e, ctx.max_attempts))
                     .unwrap_or(false);
                 if will_retry {
                     continue;
@@ -129,9 +157,12 @@ mod tests {
     }
 
     /// A file that fails to probe -> `process_recording` errors before any model is ever
-    /// touched, so this needs no whisper/embedding model to be present.
+    /// touched, so this needs no whisper/embedding model to be present. `garbage.mp4`'s
+    /// exact ffprobe error (and so its slug/retry policy — `truncated` is `Terminal`,
+    /// `probe_failed` is `Bounded`) depends on the installed ffmpeg's wording, so this
+    /// accepts either but checks the attempt count matches whichever policy actually fired.
     #[test]
-    fn a_truncated_file_fails_with_a_typed_error_after_bounded_retries() {
+    fn a_garbage_file_fails_with_a_typed_error_and_the_right_attempt_count() {
         if !have_ffmpeg() {
             return;
         }
@@ -165,7 +196,7 @@ mod tests {
                 failed = Some((recording_id, error));
             }
         }
-        let (failed_id, error) = failed.expect("must emit Failed after bounded retries");
+        let (failed_id, error) = failed.expect("must emit Failed eventually");
         assert_eq!(failed_id, id);
         assert!(
             error == "truncated" || error == "probe_failed",
@@ -177,6 +208,9 @@ mod tests {
         let attempts: i64 = conn
             .query_row("SELECT attempts FROM recordings WHERE id = ?1", [id], |r| r.get(0))
             .unwrap();
-        assert_eq!(attempts, 2, "must retry exactly max_attempts times before parking");
+        // truncated is Terminal (parks on the first failure); probe_failed is Bounded and
+        // parks once max_attempts (2, from ctx above) is reached
+        let expected = if error == "truncated" { 1 } else { 2 };
+        assert_eq!(attempts, expected, "attempt count must match {error}'s retry policy");
     }
 }

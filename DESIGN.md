@@ -217,6 +217,37 @@ The fragment + rejoin second pass roughly doubles wall time over a single sherpa
 (~4.7× vs ~6.4× realtime) — accepted for correctness. Still comfortably faster than
 realtime, and it runs after transcription in the same background job.
 
+### Phase 07: memory and diarization-vs-ASR cost
+
+Light pass, same hardware, a 3-minute real-recording clip (163 s of speech after VAD),
+`small` model, via the isolated CLI so nothing else was competing for the GPU:
+
+| Stage | Wall | RTF | Peak RSS |
+|---|---|---|---|
+| Transcribe, CPU | 118.9 s | 0.9× | ~608 MB |
+| Transcribe, GPU | 4.6 s | 35.8× | ~128 MB |
+| Diarize (CPU-only) | 25.4 s | 7.1× | ~245 MB |
+
+Peak RSS stays well under a gigabyte even for the CPU path (whisper.cpp's largest resident
+buffers are the model weights themselves, already sized by the tier table above); nothing
+here is the memory-bounded case decision #22 already worried about (that's the ingest
+watcher's directory-scan bookkeeping, not the ASR/diarization workers). VRAM wasn't
+measurable in this environment (no `nvidia-smi`/`rocm-smi` equivalent for this AMD card
+that gives a single-shot per-process read); peak RSS is the portable number instead.
+
+Diarization's cost is CPU-bound and roughly fixed per minute of audio regardless of what
+device ASR used, so **what fraction of the pipeline diarization eats depends entirely on
+where ASR ran**: against this clip's GPU transcribe pass (4.6 s) diarization is ~5.5× the
+ASR time — the dominant cost of the job. Against the CPU transcribe pass (118.9 s)
+diarization is only ~21% on top. In other words: get a GPU and diarization becomes the
+long pole; stay on CPU and it is not.
+
+Search latency at scale: a synthetic 30,000-segment / 120-recording corpus (roughly the
+scale of ~50 hours of transcript at typical segment density) inserted into `segments_fts`
+(the real production schema, decision — SQLite FTS5, `unicode61`). Four representative
+phrase queries with `snippet()` and a rank-ordered `LIMIT 50` each returned in 2-7 ms.
+Full-text search is not a scaling concern at any realistic library size for this app.
+
 ## Out of v1
 
 Summaries or any LLM, transcript editing, live/in-progress transcription, cross-meeting

@@ -5,7 +5,7 @@ use crate::error::Result;
 
 /// Forward-only migrations, applied in order. Never edit a migration that has shipped;
 /// append a new one. Index = target `user_version`.
-pub const MIGRATIONS: &[&str] = &[V1, V2, V3];
+pub const MIGRATIONS: &[&str] = &[V1, V2, V3, V4];
 
 pub fn current_version(conn: &Connection) -> Result<u32> {
     Ok(conn.query_row("PRAGMA user_version", [], |row| row.get(0))?)
@@ -120,4 +120,10 @@ const V3: &str = r#"
 UPDATE recordings SET status = 'discovered' WHERE status = 'pending';
 UPDATE recordings SET status = 'diarizing' WHERE status = 'transcribed';
 UPDATE recordings SET status = 'done' WHERE status = 'diarized';
+"#;
+
+/// Phase 07 GPU OOM fallback (decision #19): sticky per-recording "whisper OOM'd on the gpu
+/// here, use cpu" flag, read back by the pipeline on every run so it survives restarts.
+const V4: &str = r#"
+ALTER TABLE recordings ADD COLUMN force_cpu INTEGER NOT NULL DEFAULT 0;
 "#;

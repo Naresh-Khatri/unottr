@@ -74,6 +74,33 @@ impl Error {
             Error::NoBaseDir(_) => "no_base_dir",
         }
     }
+
+    /// What the worker should do about this failure (07-hardening-and-packaging.md's failure
+    /// taxonomy table). `max_attempts` only matters for `Bounded` — the file-is-the-problem
+    /// and fix-then-retry cases park after a single failure regardless of it.
+    pub fn retry_policy(&self, max_attempts: i64) -> RetryPolicy {
+        match self {
+            // the file itself is the problem; no amount of retrying fixes it
+            Error::NoAudio { .. } | Error::Truncated { .. } => RetryPolicy::Terminal,
+            // parked until the user fixes the cause (installs ffmpeg, downloads the model),
+            // then the existing "Retry" path (`reset_for_retry`) requeues it
+            Error::FfmpegMissing | Error::ModelMissing { .. } => RetryPolicy::OnFix,
+            // GpuOom is handled specially by the worker (force-cpu-and-retry-once) before it
+            // ever reaches `fail_or_retry`; this arm only fires if it somehow still does.
+            _ => RetryPolicy::Bounded(max_attempts),
+        }
+    }
+}
+
+/// Whether/how a failed job gets retried. Distinct from `slug`, which only names the error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetryPolicy {
+    /// Never retry, not even manually — table says "none, terminal".
+    Terminal,
+    /// Parks after one failure; retryable once the user acts (install/download + Retry).
+    OnFix,
+    /// Automatic retries up to `n` total attempts, then parks.
+    Bounded(i64),
 }
 
 /// Attaches the offending path to io errors, which std does not carry.

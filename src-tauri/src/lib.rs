@@ -3,6 +3,7 @@ mod scope;
 mod tray;
 
 use std::collections::HashMap;
+use std::env;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::thread;
@@ -85,6 +86,15 @@ pub fn run() {
     let _log_guard = unottr_core::logging::init(&paths).expect("init logging");
 
     let app = tauri::Builder::default()
+        // must be the first plugin registered (tauri-plugin-single-instance docs) — a second
+        // launch fires this callback in the first instance and exits itself before .setup runs
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                let _ = window.unminimize();
+            }
+        }))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -124,21 +134,33 @@ pub fn run() {
                 warn!(error = %e, "failed to seed asset protocol scope");
             }
 
+            // packaging (07): AppImage carries its own ffmpeg/ffprobe as bundle resources.
+            // Point the existing env-override knob at them so `FfmpegCli::discover()` (used by
+            // every from_settings() call, including the settings-screen preflight) picks them
+            // up for free — a settings override still wins since from_settings checks that first.
+            if let Ok(res_dir) = app.path().resource_dir() {
+                for (var, name) in [("UNOTTR_FFMPEG", "ffmpeg"), ("UNOTTR_FFPROBE", "ffprobe")] {
+                    let bundled = res_dir.join(name);
+                    if env::var_os(var).is_none() && bundled.is_file() {
+                        // safe: still single-threaded, before any worker thread is spawned
+                        unsafe { env::set_var(var, bundled) };
+                    }
+                }
+            }
+
             let settings = {
                 let conn = db.connect()?;
                 unottr_core::db::settings::load(&conn)?
             };
 
-            // both must be set to override discover() — leaves UNOTTR_FFMPEG/PATH lookup
-            // intact for the common case of overriding neither
-            let backend = if settings.ffmpeg_path.is_some() && settings.ffprobe_path.is_some() {
-                FfmpegCli::new(
-                    settings.ffmpeg_path.clone().unwrap(),
-                    settings.ffprobe_path.clone().unwrap(),
-                )
-            } else {
-                FfmpegCli::discover()
-            };
+            let backend =
+                FfmpegCli::from_settings(settings.ffmpeg_path.as_deref(), settings.ffprobe_path.as_deref());
+            // preflight (07-hardening-and-packaging.md): never fatal to startup — a missing
+            // ffmpeg just means every job parks with a typed, retryable error; the frontend
+            // polls `get_settings().ffmpeg_ok` for the persistent banner instead of an event
+            if let Err(e) = backend.check() {
+                warn!(error = %e, "ffmpeg/ffprobe not usable at startup; jobs will park until fixed");
+            }
 
             // settings' cache override only relocates the pcm cache subdir (Paths::with_cache_dir)
             let run_paths = match &settings.cache_dir {

@@ -188,10 +188,10 @@ impl Transcriber {
         let mut state = self
             .ctx
             .create_state()
-            .map_err(|e| Error::Whisper(e.to_string()))?;
+            .map_err(|e| self.whisper_error(&e.to_string()))?;
         state
             .full(params, samples)
-            .map_err(|e| Error::Whisper(e.to_string()))?;
+            .map_err(|e| self.whisper_error(&e.to_string()))?;
 
         let eot = self.ctx.token_eot();
         let mut out = Vec::new();
@@ -231,6 +231,27 @@ impl Transcriber {
 
         Ok(out)
     }
+
+    /// whisper-rs/ggml surface one flat error string for every encode/decode failure — there
+    /// is no distinct OOM variant to match on. This is a heuristic: a Vulkan allocation
+    /// failure's message reliably mentions one of these, and only ever happens on the gpu
+    /// path, so a cpu-side failure never gets misread as OOM. Good enough per 07's spec
+    /// ("if detecting OOM distinctly is genuinely impossible, implement heuristic detection").
+    fn whisper_error(&self, msg: &str) -> Error {
+        if self.device.is_gpu() && is_oom_message(msg) {
+            Error::GpuOom
+        } else {
+            Error::Whisper(msg.to_string())
+        }
+    }
+}
+
+/// See `Transcriber::whisper_error`.
+fn is_oom_message(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    ["out of device memory", "out of memory", "vk_error_out_of_device_memory", "oom", "allocation failed"]
+        .iter()
+        .any(|needle| m.contains(needle))
 }
 
 /// Whisper timestamps are centiseconds, everywhere, segments and tokens alike.
@@ -365,5 +386,20 @@ mod tests {
     fn centiseconds_become_milliseconds() {
         assert_eq!(cs_to_ms(300), 3_000);
         assert_eq!(cs_to_ms(-1), 0);
+    }
+
+    #[test]
+    fn oom_messages_are_recognized_case_insensitively() {
+        assert!(is_oom_message("vk_error_out_of_device_memory"));
+        assert!(is_oom_message("ggml_vulkan: Device Memory allocation failed"));
+        assert!(is_oom_message("CUDA out of memory"));
+        assert!(!is_oom_message("failed to decode audio"));
+    }
+
+    #[test]
+    fn oom_only_reported_on_the_gpu_path() {
+        let device = Resolved::Cpu;
+        let is_gpu_msg = device.is_gpu() && is_oom_message("out of memory");
+        assert!(!is_gpu_msg, "a cpu run can't gpu-oom, whatever the message says");
     }
 }

@@ -11,7 +11,7 @@ name = "unottr_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
-tauri-build = "2.6.3"
+tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
 unottr-core.workspace = true
@@ -24,6 +24,7 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-opener = "2.5.4"
+tauri-plugin-single-instance = "2.4.3"
 
 [dev-dependencies]
 tempfile = "3.27.0"

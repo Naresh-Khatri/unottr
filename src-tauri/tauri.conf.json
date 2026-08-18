@@ -7,6 +7,7 @@
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm build",
+    "beforeBundleCommand": "patchelf --add-rpath '$ORIGIN/../lib/unottr' target/release/unottr",
     "frontendDist": "../dist"
   },
   "app": {
@@ -31,6 +32,13 @@
   "bundle": {
     "active": true,
     "targets": ["appimage"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png"]
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png"],
+    "resources": {
+      "resources/ffmpeg": "ffmpeg",
+      "resources/ffprobe": "ffprobe",
+      "../target/release/libonnxruntime.so": "libonnxruntime.so",
+      "../target/release/libsherpa-onnx-c-api.so": "libsherpa-onnx-c-api.so",
+      "../target/release/libsherpa-onnx-cxx-api.so": "libsherpa-onnx-cxx-api.so"
+    }
   }
 }
