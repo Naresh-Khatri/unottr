@@ -3,11 +3,14 @@
 //! Deliberately free of any Tauri dependency so the pipeline is testable headless and
 //! drivable from the `unottr` CLI.
 
+pub mod cancel;
 pub mod db;
 pub mod error;
 pub mod logging;
+pub mod media;
 pub mod paths;
 
+pub use cancel::CancelToken;
 pub use db::Database;
 pub use error::{Error, Result};
 pub use paths::Paths;

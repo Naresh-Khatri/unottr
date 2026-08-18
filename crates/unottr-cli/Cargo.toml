@@ -16,3 +16,4 @@ serde_json.workspace = true
 tracing.workspace = true
 clap = { version = "4.6.6", features = ["derive"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+ctrlc = "3.5.2"
