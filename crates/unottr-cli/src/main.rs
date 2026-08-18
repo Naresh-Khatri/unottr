@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use unottr_core::media::{FfmpegCli, MediaBackend, TrackRule};
+use unottr_core::diarize;
+use unottr_core::media::{FfmpegCli, MediaBackend, Selection, TrackRule};
 use unottr_core::transcribe::{self, Device, Job, ModelStore, Options};
-use unottr_core::{CancelToken, Database, Paths};
+use unottr_core::{CancelToken, Database, ModelSpec, Paths};
 
 #[derive(Parser)]
 #[command(name = "unottr", version, about = "Local meeting transcription")]
@@ -61,8 +62,26 @@ enum Command {
     /// Manage the local whisper models
     #[command(subcommand)]
     Models(ModelCommand),
-    /// Diarize a file (phase 03)
-    Diarize { file: PathBuf },
+    /// Label who spoke when, over an already-transcribed recording (phase 03)
+    Diarize {
+        file: PathBuf,
+        /// Cosine distance at which two voices stop being the same person. Lower splits
+        /// more. Ignored when --speakers is given.
+        #[arg(long)]
+        threshold: Option<f32>,
+        /// Force an exact speaker count instead of letting clustering decide
+        #[arg(long)]
+        speakers: Option<u32>,
+        /// Embedding model name from `unottr models list`
+        #[arg(long)]
+        embedding_model: Option<String>,
+        /// Download missing models instead of erroring
+        #[arg(long)]
+        download: bool,
+        /// Print the labelled transcript when it finishes
+        #[arg(long)]
+        print: bool,
+    },
     /// Run the full pipeline on one file
     Run { file: PathBuf },
     /// Inspect the local database
@@ -153,7 +172,24 @@ fn main() -> Result<()> {
             },
             &paths,
         ),
-        Command::Diarize { .. } => unimplemented("diarize", 3),
+        Command::Diarize {
+            file,
+            threshold,
+            speakers,
+            embedding_model,
+            download,
+            print,
+        } => diarize_file(
+            &file,
+            DiarizeArgs {
+                threshold,
+                speakers,
+                embedding_model,
+                download,
+                print,
+            },
+            &paths,
+        ),
         Command::Run { .. } => unimplemented("run", 4),
     }
 }
@@ -246,7 +282,7 @@ fn transcribe_file(file: &Path, args: TranscribeArgs, paths: &Paths) -> Result<(
     // small enough that asking first would be theatre
     let vad_model = fetch(&store, &transcribe::VAD, &cancel)?;
 
-    let pcm = pcm_for(file, paths, &cancel)?;
+    let pcm = tracks_for(file, paths, &cancel)?.main;
     let database = Database::open(paths.db_file())?;
     let recording_id = {
         let conn = database.connect()?;
@@ -303,28 +339,183 @@ fn transcribe_file(file: &Path, args: TranscribeArgs, paths: &Paths) -> Result<(
     Ok(())
 }
 
+/// What each stage listens to.
+struct Tracks {
+    /// Transcription input. On a two-track file this is the mixdown: whisper has to hear
+    /// both sides or half the meeting goes missing.
+    main: PathBuf,
+    /// `(mic, desktop)`, set only when phase 01 identified a mic track.
+    split: Option<(PathBuf, PathBuf)>,
+}
+
 /// Accepts either a raw pcm or a media file, extracting (once) in the latter case. Phase 04
 /// owns this orchestration properly; here it just keeps the cli usable on real recordings.
-fn pcm_for(file: &Path, paths: &Paths, cancel: &CancelToken) -> Result<PathBuf> {
+fn tracks_for(file: &Path, paths: &Paths, cancel: &CancelToken) -> Result<Tracks> {
     if file.extension().is_some_and(|e| e == "pcm") {
-        return Ok(file.to_path_buf());
+        return Ok(Tracks {
+            main: file.to_path_buf(),
+            split: None,
+        });
     }
 
     let backend = FfmpegCli::discover();
     let probe = backend.probe(file)?;
     let choice = unottr_core::media::select(&probe, &TrackRule::Auto)?;
-    let audio_index = match choice.selection {
-        unottr_core::media::Selection::Blind { stream } => stream,
-        unottr_core::media::Selection::MicDesktop { mic, .. } => mic,
+    let cache = paths.pcm_cache_dir();
+
+    let extract_track = |audio_index: u32| -> Result<PathBuf> {
+        let out = transcribe::pcm_path_for(&cache, file, audio_index);
+        if out.exists() {
+            return Ok(out);
+        }
+        backend.extract_pcm(file, audio_index, &out, &percent("extracting"), cancel)?;
+        eprintln!();
+        Ok(out)
     };
 
-    let out = transcribe::pcm_path_for(&paths.pcm_cache_dir(), file, audio_index);
-    if out.exists() {
-        return Ok(out);
+    match choice.selection {
+        Selection::Blind { stream } => Ok(Tracks {
+            main: extract_track(stream)?,
+            split: None,
+        }),
+        Selection::MicDesktop { mic, desktop } => {
+            let (mic, desktop) = (extract_track(mic)?, extract_track(desktop)?);
+            let stem = file.file_stem().unwrap_or_default().to_string_lossy();
+            let mix = cache.join(format!("{stem}.mix.pcm"));
+            if !mix.exists() {
+                unottr_core::media::mix_pcm(&[&mic, &desktop], &mix)?;
+            }
+            Ok(Tracks {
+                main: mix,
+                split: Some((mic, desktop)),
+            })
+        }
     }
-    backend.extract_pcm(file, audio_index, &out, &percent("extracting"), cancel)?;
+}
+
+struct DiarizeArgs {
+    threshold: Option<f32>,
+    speakers: Option<u32>,
+    embedding_model: Option<String>,
+    download: bool,
+    print: bool,
+}
+
+fn diarize_file(file: &Path, args: DiarizeArgs, paths: &Paths) -> Result<()> {
+    paths.ensure()?;
+    let cancel = CancelToken::new();
+    let on_signal = cancel.clone();
+    let _ = ctrlc::set_handler(move || on_signal.cancel());
+
+    let store = ModelStore::new(paths.models_dir());
+    let embedding_spec = match &args.embedding_model {
+        Some(name) => diarize::find_embedding(name).with_context(|| {
+            format!("unknown embedding model `{name}`; try `unottr models list`")
+        })?,
+        None => diarize::default_embedding(),
+    };
+    let get = |spec: &'static ModelSpec| -> Result<PathBuf> {
+        if args.download || store.is_present(spec) {
+            fetch(&store, spec, &cancel)
+        } else {
+            store.locate(spec).with_context(|| {
+                format!("run `unottr models get {}` (or pass --download)", spec.name)
+            })
+        }
+    };
+    let segmentation = get(&diarize::SEGMENTATION)?;
+    let embedding = get(embedding_spec)?;
+    let vad_model = fetch(&store, &transcribe::VAD, &cancel)?;
+
+    let tracks = tracks_for(file, paths, &cancel)?;
+    let database = Database::open(paths.db_file())?;
+    let recording_id = {
+        let conn = database.connect()?;
+        unottr_core::db::recordings::stub(&conn, file, None)?
+    };
+
+    // clustering would still run, but with nothing to attach itself to
+    let transcribed: i64 = database.connect()?.query_row(
+        "SELECT COUNT(*) FROM segments WHERE recording_id = ?1",
+        [recording_id],
+        |row| row.get(0),
+    )?;
+    if transcribed == 0 {
+        anyhow::bail!(
+            "no transcript for {}; run `unottr transcribe` on it first",
+            file.display()
+        );
+    }
+
+    let (pcm, mic_pcm) = match &tracks.split {
+        Some((mic, desktop)) => (desktop.clone(), Some(mic.clone())),
+        None => (tracks.main.clone(), None),
+    };
+    let job = diarize::Job {
+        recording_id,
+        pcm,
+        mic_pcm,
+        segmentation,
+        embedding,
+        vad_model,
+        config: diarize::Config {
+            threshold: args.threshold.unwrap_or(diarize::DEFAULT_THRESHOLD),
+            speakers: args.speakers,
+        },
+    };
+
+    let started = std::time::Instant::now();
+    let report = diarize::run(&database, &job, &percent("diarizing"), &cancel)?;
     eprintln!();
-    Ok(out)
+
+    let audio_ms = unottr_core::media::pcm_duration_ms(std::fs::metadata(&job.pcm)?.len());
+    let elapsed = started.elapsed().as_secs_f64();
+    println!(
+        "{} speakers, {} turns over {} segments{}",
+        report.speakers,
+        report.turns,
+        report.segments,
+        if report.mic_track { " (mic track)" } else { "" },
+    );
+    println!(
+        "{} split, {} unattributed",
+        report.split, report.unattributed
+    );
+    println!(
+        "{elapsed:.1}s wall, {:.1}x realtime",
+        if elapsed > 0.0 {
+            audio_ms as f64 / 1000.0 / elapsed
+        } else {
+            0.0
+        }
+    );
+
+    if args.print {
+        let conn = database.connect()?;
+        let mut stmt = conn.prepare(
+            "SELECT s.start_ms, s.end_ms, COALESCE(k.display_name, k.label), s.text
+             FROM segments s LEFT JOIN speakers k ON k.id = s.speaker_id
+             WHERE s.recording_id = ?1 ORDER BY s.start_ms, s.id",
+        )?;
+        let rows = stmt.query_map([recording_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        for row in rows {
+            let (start, end, who, text) = row?;
+            println!(
+                "[{} -> {}] {:<10} {text}",
+                clock(start),
+                clock(end),
+                who.unwrap_or_else(|| "?".into())
+            );
+        }
+    }
+    Ok(())
 }
 
 fn fetch(
@@ -362,6 +553,15 @@ fn clock(ms: i64) -> String {
     )
 }
 
+/// Every model any stage can ask for, looked up by the name `models list` prints.
+fn spec_for(name: &str) -> Option<&'static ModelSpec> {
+    transcribe::model::find(name)
+        .or_else(|| diarize::find_embedding(name))
+        .or([&transcribe::VAD, &diarize::SEGMENTATION]
+            .into_iter()
+            .find(|s| s.name == name))
+}
+
 fn models(cmd: ModelCommand, paths: &Paths) -> Result<()> {
     paths.ensure()?;
     let store = ModelStore::new(paths.models_dir());
@@ -370,9 +570,9 @@ fn models(cmd: ModelCommand, paths: &Paths) -> Result<()> {
         ModelCommand::List => {
             let device = transcribe::resolve(Device::Auto);
             let default = transcribe::model::default_for(device.is_gpu());
-            for spec in unottr_core::transcribe::MODELS {
+            let row = |spec: &ModelSpec, note: &str| {
                 println!(
-                    "{:<16} {:>6} MB  {:<12} {}",
+                    "{:<22} {:>6} MB  {:<12} {note}",
                     spec.name,
                     spec.size / 1_000_000,
                     if store.is_present(spec) {
@@ -380,17 +580,31 @@ fn models(cmd: ModelCommand, paths: &Paths) -> Result<()> {
                     } else {
                         "-"
                     },
-                    if spec.name == default.name {
-                        "(default here)"
-                    } else {
-                        ""
-                    },
                 );
+            };
+            println!("transcription");
+            for spec in unottr_core::transcribe::MODELS {
+                let note = if spec.name == default.name {
+                    "(default here)"
+                } else {
+                    ""
+                };
+                row(spec, note);
+            }
+            row(&transcribe::VAD, "(voice activity)");
+            println!("\ndiarization");
+            row(&diarize::SEGMENTATION, "(segmentation)");
+            for spec in diarize::EMBEDDINGS {
+                let note = if spec.name == diarize::default_embedding().name {
+                    "(default embedding)"
+                } else {
+                    ""
+                };
+                row(spec, note);
             }
         }
         ModelCommand::Get { name } => {
-            let spec = transcribe::model::find(&name)
-                .with_context(|| format!("unknown model `{name}`"))?;
+            let spec = spec_for(&name).with_context(|| format!("unknown model `{name}`"))?;
             let cancel = CancelToken::new();
             let on_signal = cancel.clone();
             let _ = ctrlc::set_handler(move || on_signal.cancel());

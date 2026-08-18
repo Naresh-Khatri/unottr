@@ -5,7 +5,7 @@ use crate::error::Result;
 
 /// Forward-only migrations, applied in order. Never edit a migration that has shipped;
 /// append a new one. Index = target `user_version`.
-pub const MIGRATIONS: &[&str] = &[V1];
+pub const MIGRATIONS: &[&str] = &[V1, V2];
 
 pub fn current_version(conn: &Connection) -> Result<u32> {
     Ok(conn.query_row("PRAGMA user_version", [], |row| row.get(0))?)
@@ -104,4 +104,12 @@ CREATE TABLE settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+"#;
+
+/// Diarization splits a transcript segment when a speaker change runs through it. Without a
+/// back-pointer the pieces are indistinguishable from whisper's own rows, so re-diarizing
+/// would split the pieces again and whisper's segmentation could never be recovered.
+const V2: &str = r#"
+ALTER TABLE segments ADD COLUMN split_of INTEGER;
+CREATE INDEX idx_segments_split ON segments(recording_id, split_of);
 "#;
