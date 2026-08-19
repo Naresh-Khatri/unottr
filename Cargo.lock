@@ -4908,6 +4908,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "unottr-core",
+ "zbus",
 ]
 
 [[package]]

@@ -80,21 +80,49 @@ fn update_job_count(state: &AppState, event: &Event) {
     }
 }
 
+/// Mirrors `identifier` in tauri.conf.json. Handed to the single-instance plugin explicitly so the
+/// handoff check and the plugin can't drift onto different names.
+const DBUS_ID: &str = "dev.unottr.app";
+
+/// The plugin exits from inside its own setup when the name is already owned, before our code gets
+/// a chance to run -> a hijacked launch (usually a stale bundle still running) vanishes silently.
+/// Say so first; logging goes to stderr as well as the file.
+#[cfg(target_os = "linux")]
+fn warn_if_second_instance() {
+    let name = format!("{DBUS_ID}.SingleInstance");
+    let owned = zbus::blocking::Connection::session().ok().and_then(|conn| {
+        let bus_name = zbus::names::BusName::try_from(name.as_str()).ok()?;
+        zbus::blocking::fdo::DBusProxy::new(&conn).ok()?.name_has_owner(bus_name).ok()
+    });
+    if owned == Some(true) {
+        warn!(dbus_name = %name, "another unottr already holds the single-instance name; handing off to it and exiting");
+    }
+}
+
 pub fn run() {
     let paths = Paths::resolve().expect("resolve application directories");
     paths.ensure().expect("create application directories");
     let _log_guard = unottr_core::logging::init(&paths).expect("init logging");
 
+    #[cfg(target_os = "linux")]
+    warn_if_second_instance();
+
     let app = tauri::Builder::default()
         // must be the first plugin registered (tauri-plugin-single-instance docs) — a second
         // launch fires this callback in the first instance and exits itself before .setup runs
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-                let _ = window.unminimize();
-            }
-        }))
+        .plugin(
+            tauri_plugin_single_instance::Builder::new()
+                .dbus_id(DBUS_ID)
+                .callback(|app, _argv, _cwd| {
+                    info!("a second instance launched; focusing this window instead");
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        let _ = window.unminimize();
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
