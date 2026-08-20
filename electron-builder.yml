@@ -1,0 +1,58 @@
+# every native dep here ships a n-api prebuild (better-sqlite3, sherpa-onnx, whisper), so a
+# rebuild would only swap a working binary for a locally compiled one — and would break the
+# node-side test run against the same node_modules
+npmRebuild: false
+
+appId: dev.unottr.app
+productName: unottr
+copyright: unottr contributors
+directories:
+  output: release
+
+files:
+  - out/**
+  - package.json
+  # the renderer is bundled; nothing under src/ ships
+  - "!**/{.vscode,.github,docs,test,fixtures,scripts,crates,src-tauri,src}/**"
+
+# native addons cannot be dlopen'd from inside an asar, and the two prebuilt packages carry
+# the .so files those addons need next to them
+asarUnpack:
+  - "**/*.node"
+  - node_modules/sherpa-onnx-linux-x64/**
+  - node_modules/@fugood/node-whisper-linux-x64-vulkan/**
+  - node_modules/better-sqlite3/**
+
+# lands in <appdir>/resources/, which is what media/ffmpeg.ts and tray.ts look at
+extraResources:
+  - from: resources/bin
+    to: bin
+    filter: ["ffmpeg", "ffprobe", "ffmpeg-LICENSE.txt"]
+  - from: resources/icons
+    to: icons
+  - from: THIRD-PARTY.md
+    to: THIRD-PARTY.md
+
+# next to the electron binary, which is on the AppImage AppRun's LD_LIBRARY_PATH — the only
+# place the loader will actually find it, since the addon's RUNPATH points at a ci machine.
+# LD_LIBRARY_PATH is read at process start, so setting it from js would be too late.
+extraFiles:
+  - from: resources/lib/libvulkan.so.1
+    to: libvulkan.so.1
+
+linux:
+  target: [AppImage]
+  category: AudioVideo
+  icon: resources/icons
+  synopsis: Local transcription of screen recordings
+  description: >-
+    Watches folders for recordings, transcribes and diarizes them on this machine,
+    and keeps everything searchable. Nothing leaves the device.
+  desktop:
+    entry:
+      # matches the autostart entry we write ourselves, so both launch the same way
+      Terminal: "false"
+      Type: Application
+
+appImage:
+  artifactName: ${productName}-${version}-${arch}.AppImage

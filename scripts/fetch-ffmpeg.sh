@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Fetches the LGPL-licensed static ffmpeg/ffprobe build to bundle into the AppImage/tarball
-# (decision #21). Not checked into git (224 MB) — run this before `pnpm tauri build`.
+# (decision #21). Not checked into git (224 MB) — run this before `pnpm dist`.
 #
 # LGPL, not GPL: this build is BtbN's "linux64-lgpl" flavor, configured with
 # --enable-version3 and *without* --enable-gpl (no libx264/libx265 etc). A GPL-configured
 # ffmpeg would force GPL onto the whole application. Verify with:
-#   src-tauri/resources/ffmpeg -version
+#   resources/bin/ffmpeg -version
 # and confirm the `configuration:` line has no --enable-gpl.
 set -euo pipefail
 
 URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-lgpl.tar.xz"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEST="$ROOT/src-tauri/resources"
+DEST="$ROOT/resources/bin"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
