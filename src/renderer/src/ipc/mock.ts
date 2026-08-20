@@ -1,0 +1,267 @@
+// Zero-backend mock of the IPC surface, matching docs/plan/05-ipc-contract.md.
+// Carried over from phase 05; 08.1 runs the whole renderer on it while the main process
+// has no data layer. 08.2 flips USE_MOCK back off.
+
+import type {
+  BackfillEstimate,
+  DiskUsage,
+  JobDone,
+  JobFailed,
+  JobProgress,
+  ModelDownloadProgress,
+  ModelInfo,
+  RecordingDetail,
+  RecordingDiscovered,
+  RecordingFilter,
+  RecordingSort,
+  RecordingSummary,
+  Resolved,
+  SearchHit,
+  Segment,
+  Settings,
+  Speaker,
+  WatchFolder,
+} from "./types";
+
+const speakers9001: Speaker[] = [
+  { id: 9101, recording_id: 9001, label: "Speaker 1", display_name: "Priya" },
+  { id: 9102, recording_id: 9001, label: "Speaker 2", display_name: null },
+];
+
+const segments9001: Segment[] = [
+  { id: 1, chunk_idx: 0, start_ms: 1360, end_ms: 4200,
+    text: "Yeah, let's start with the quarterly roadmap review.",
+    words: [
+      { text: "Yeah,", start_ms: 1360, end_ms: 1900, p: 0.93 },
+      { text: "let's", start_ms: 2100, end_ms: 2600, p: 0.9 },
+    ], speaker_id: 9101, split_of: null },
+  { id: 2, chunk_idx: 0, start_ms: 4200, end_ms: 7800,
+    text: "Sounds good, I pulled the numbers this morning.",
+    words: [], speaker_id: 9102, split_of: null },
+  { id: 3, chunk_idx: 1, start_ms: 7800, end_ms: 11200,
+    text: "Great, walk me through the search latency first.",
+    words: [], speaker_id: 9101, split_of: null },
+  { id: 4, chunk_idx: 1, start_ms: 11200, end_ms: 13000,
+    text: "(crosstalk)", words: [], speaker_id: null, split_of: null },
+];
+
+const recordings: RecordingSummary[] = [
+  { id: 9001, path: "/home/naresh/fixtures/2025-10-06 roadmap-review.mp4",
+    filename: "2025-10-06 roadmap-review.mp4", recorded_at: 1759754411,
+    duration_ms: 2130000, status: "done", stage_detail: null, error: null,
+    speaker_count: 2, available: true, has_video: true },
+  { id: 9002, path: "/home/naresh/fixtures/2026-08-18 standup.mp4",
+    filename: "2026-08-18 standup.mp4", recorded_at: 1765000332,
+    duration_ms: 1980000, status: "transcribing", stage_detail: "chunk 12/44",
+    error: null, speaker_count: 0, available: true, has_video: true },
+  { id: 9003, path: "/home/naresh/fixtures/2025-10-12 interrupted.mp4",
+    filename: "2025-10-12 interrupted.mp4", recorded_at: 1760276883,
+    duration_ms: null, status: "failed", stage_detail: null, error: "Truncated",
+    speaker_count: 0, available: false, has_video: false },
+];
+
+let folders: WatchFolder[] = [
+  { id: 1, path: "/home/naresh", track_rule: "auto", enabled: true },
+];
+
+const wait = <T>(v: T, ms = 120): Promise<T> =>
+  new Promise((r) => setTimeout(() => r(v), ms));
+
+export const mockCommands = {
+  list_recordings(filter?: RecordingFilter, sort?: RecordingSort) {
+    let rows = recordings.slice();
+    if (filter?.status) rows = rows.filter((r) => r.status === filter.status);
+    if (filter?.available !== undefined)
+      rows = rows.filter((r) => r.available === filter.available);
+    if (sort) {
+      const dir = sort.dir === "asc" ? 1 : -1;
+      rows.sort((a, b) => {
+        const av = a[sort.by] ?? 0, bv = b[sort.by] ?? 0;
+        return av < bv ? -dir : av > bv ? dir : 0;
+      });
+    }
+    return wait(rows);
+  },
+  get_recording(id: number): Promise<RecordingDetail> {
+    const summary = recordings.find((r) => r.id === id)!;
+    return wait({
+      recording: { ...summary, container: "mov,mp4,m4a" },
+      segments: id === 9001 ? segments9001 : [],
+      speakers: id === 9001 ? speakers9001 : [],
+    });
+  },
+  search(query: string): Promise<SearchHit[]> {
+    const q = query.toLowerCase();
+    const hits = segments9001
+      .filter((s) => s.text.toLowerCase().includes(q))
+      .map((s) => ({
+        recording_id: 9001, filename: recordings[0].filename,
+        segment_id: s.id, start_ms: s.start_ms,
+        snippet: s.text.replace(new RegExp(`(${query})`, "ig"), "<b>$1</b>"),
+      }));
+    return wait(hits);
+  },
+  rename_speaker(speaker_id: number, name: string) {
+    const s = speakers9001.find((x) => x.id === speaker_id);
+    if (s) s.display_name = name || null;
+    return wait(undefined);
+  },
+  retry_job: (_id: number) => wait(undefined),
+  add_watch_folder(path: string) {
+    const f = { id: folders.length + 1, path, track_rule: "auto", enabled: true };
+    folders.push(f);
+    return wait(f);
+  },
+  remove_watch_folder(id: number) {
+    folders = folders.filter((f) => f.id !== id);
+    return wait(undefined);
+  },
+  list_watch_folders: () => wait(folders.slice()),
+  start_backfill: (_folderId: number) => wait(undefined),
+
+  // phase 06 surface
+  backfill_estimate(folder_id: number): Promise<BackfillEstimate> {
+    const f = folders.find((x) => x.id === folder_id);
+    return wait({
+      folder: f?.path ?? "/home/naresh",
+      count: 7,
+      total_duration_ms: 7 * 1800_000,
+      estimated_processing_ms: 7 * 1800_000 / 8,
+    });
+  },
+  set_watch_folder_enabled(id: number, enabled: boolean) {
+    const f = folders.find((x) => x.id === id);
+    if (f) f.enabled = enabled;
+    return wait(undefined);
+  },
+  set_watch_folder_track_rule(id: number, track_rule: string) {
+    const f = folders.find((x) => x.id === id);
+    if (f) f.track_rule = track_rule;
+    return wait(undefined);
+  },
+  get_settings: () => wait({ ...settings }),
+  set_setting(key: string, value: string): Promise<Settings> {
+    switch (key) {
+      case "model_tier": settings.model_tier = value; break;
+      case "language": settings.language = value || null; break;
+      case "device": settings.device = value as Settings["device"]; break;
+      case "diarize_threshold": settings.diarize_threshold = value ? Number(value) : null; break;
+      case "ffmpeg_path": settings.ffmpeg_path = value || null; break;
+      case "ffprobe_path": settings.ffprobe_path = value || null; break;
+      case "cache_dir": settings.cache_dir = value || null; break;
+      case "autostart": settings.autostart = value === "1"; break;
+      case "close_to_tray": settings.close_to_tray = value === "1"; break;
+      case "first_run_complete": settings.first_run_complete = value === "1"; break;
+    }
+    return wait({ ...settings });
+  },
+  list_models: () => wait(models.map((m) => ({ ...m }))),
+  detected_device: () => wait<Resolved>("gpu"),
+  disk_usage: () => wait<DiskUsage>({ models_bytes: 1_624_000_000, cache_bytes: 412_000_000 }),
+  download_model(tier: string) {
+    const m = models.find((x) => x.tier === tier);
+    if (!m) return wait(undefined);
+    let pct = 0;
+    clearInterval(downloads.get(tier));
+    downloads.set(tier, setInterval(() => {
+      pct = Math.min(1, pct + 0.05);
+      emit("model_download_progress", { model: tier, pct });
+      if (pct >= 1) {
+        clearInterval(downloads.get(tier));
+        downloads.delete(tier);
+        m.downloaded = true;
+      }
+    }, 250));
+    return wait(undefined);
+  },
+  cancel_model_download(tier: string) {
+    clearInterval(downloads.get(tier));
+    downloads.delete(tier);
+    return wait(undefined);
+  },
+  clear_cache: () => wait(undefined),
+  get_log_dir: () => wait("/home/naresh/.local/state/unottr/logs"),
+  export_transcript: (_id: number, _format: string, _dest: string) => wait(undefined),
+  open_in_default_player: (_id: number) => wait(undefined),
+};
+
+const settings: Settings = {
+  model_tier: "auto",
+  language: null,
+  device: "auto",
+  diarize_threshold: null,
+  ffmpeg_path: null,
+  ffprobe_path: null,
+  cache_dir: null,
+  autostart: false,
+  close_to_tray: true,
+  tray_available: true,
+  first_run_complete: true,
+  ffmpeg_ok: true,
+};
+
+const models: ModelInfo[] = [
+  { tier: "turbo", name: "large-v3-turbo", size: 1_624_000_000, downloaded: true },
+  { tier: "medium", name: "medium", size: 1_530_000_000, downloaded: false },
+  { tier: "small", name: "small", size: 488_000_000, downloaded: false },
+];
+
+const downloads = new Map<string, ReturnType<typeof setInterval>>();
+
+// A tiny event bus so the mock can push the same five events the main process will.
+type Payloads = {
+  job_progress: JobProgress;
+  job_done: JobDone;
+  job_failed: JobFailed;
+  recording_discovered: RecordingDiscovered;
+  model_download_progress: ModelDownloadProgress;
+};
+
+const subscribers: { [K in keyof Payloads]: Set<(p: Payloads[K]) => void> } = {
+  job_progress: new Set(),
+  job_done: new Set(),
+  job_failed: new Set(),
+  recording_discovered: new Set(),
+  model_download_progress: new Set(),
+};
+
+function emit<K extends keyof Payloads>(event: K, payload: Payloads[K]): void {
+  for (const cb of subscribers[event]) cb(payload);
+}
+
+function subscribe<K extends keyof Payloads>(event: K) {
+  return (cb: (p: Payloads[K]) => void): () => void => {
+    subscribers[event].add(cb);
+    return () => {
+      subscribers[event].delete(cb);
+    };
+  };
+}
+
+export const mockEvents = {
+  job_progress(cb: (p: JobProgress) => void) {
+    startTicking();
+    return subscribe("job_progress")(cb);
+  },
+  job_done: subscribe("job_done"),
+  job_failed: subscribe("job_failed"),
+  recording_discovered: subscribe("recording_discovered"),
+  model_download_progress: subscribe("model_download_progress"),
+};
+
+// Fake progress for recording 9002 so the live progress bar has something to render.
+// Starts with the first subscriber and never restarts — one stream, however many listeners.
+let ticking = false;
+function startTicking(): void {
+  if (ticking) return;
+  ticking = true;
+  let pct = 12 / 44;
+  const t = setInterval(() => {
+    pct = Math.min(1, pct + 0.02);
+    emit("job_progress", { recording_id: 9002, stage: "transcribing", pct });
+    if (pct >= 1) {
+      clearInterval(t);
+      emit("job_done", { recording_id: 9002 });
+    }
+  }, 500);
+}

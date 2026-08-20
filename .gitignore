@@ -1,6 +1,8 @@
 /target
 /node_modules
 /dist
+/out
+/release
 /src-tauri/target
 *.pcm
 *.db
@@ -11,5 +13,6 @@
 # tauri-build generated
 /src-tauri/gen/schemas
 
-# fetched at package time by scripts/fetch-ffmpeg.sh (decision #21)
-/src-tauri/resources
+# staged at package time by scripts/fetch-ffmpeg.sh (224 MB) and fetch-vulkan-loader.sh
+/resources/bin/
+/resources/lib/

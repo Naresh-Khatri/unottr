@@ -1,0 +1,9 @@
+allowBuilds:
+  better-sqlite3: true
+  electron: true
+  esbuild: true
+  # windows installer; never built here
+  electron-winstaller: false
+  # postinstall is just a platform-package presence check; the binary comes from the
+  # optional @fugood/node-whisper-linux-x64-vulkan dep, which needs no build
+  '@fugood/whisper.node': false

@@ -1,22 +1,24 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022"],
     "module": "ESNext",
-    "skipLibCheck": true,
     "moduleResolution": "bundler",
+    "types": ["node"],
+    "useDefineForClassFields": true,
+    "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "esModuleInterop": true,
     "noEmit": true,
-    "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "paths": { "@/*": ["./src/*"] },
-    "types": ["vite/client", "node"]
+    "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "vite.config.ts"]
+  // inherited by every child config (only `include` is overridden), so the one ambient
+  // declaration sherpa-onnx-node needs is in scope wherever it is imported from
+  "files": ["src/worker/sherpa-onnx-node.d.ts"],
+  "include": ["electron.vite.config.ts", "drizzle.config.ts", "vitest.config.ts", "test"]
 }
