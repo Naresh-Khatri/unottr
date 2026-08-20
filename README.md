@@ -7,8 +7,8 @@ folder, walk away, come back to a transcript. No cloud, no accounts, no LLM.
 ## What it does
 
 - Watches folders you pick; any new recording is transcribed and diarized automatically.
-- Local speech-to-text (whisper.cpp) with automatic speaker separation (sherpa-onnx) —
-  anonymous speaker labels, renameable per recording.
+- Local speech-to-text (whisper.cpp) with automatic speaker separation (sherpa-onnx).
+  Name a speaker once and later recordings recognise them by voice.
 - Full-text search across every transcript, click a search hit to jump to that moment in
   the video.
 - Export to `.txt` / `.json` / `.srt` / `.vtt`.

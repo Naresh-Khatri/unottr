@@ -4,12 +4,23 @@
 //   pnpm seed                  -> seeds the real database
 //   import { seed } from …     -> seeds an in-memory one in tests
 
-import { inArray, like, or } from "drizzle-orm";
+import { eq, inArray, like, or } from "drizzle-orm";
 import type { Db } from "../src/main/db/client";
-import { recordings, segments, speakers } from "../src/main/db/schema";
+import { toBlob } from "../src/main/db/embedding";
+import { people, recordings, segments, speakers } from "../src/main/db/schema";
 
 const IDS = [9001, 9002, 9003];
 const PREFIX = "/home/naresh/fixtures/";
+const PERSON = 9201;
+
+/** Stand-in centroids: unit length in the first two dims, so they are matchable and distinct. */
+const voiceprint = (x: number, y: number): Buffer => {
+  const v = new Float32Array(192);
+  const n = Math.hypot(x, y);
+  v[0] = x / n;
+  v[1] = y / n;
+  return toBlob(v);
+};
 
 export function seed(db: Db): void {
   // segments and speakers go with them — the fks are ON DELETE CASCADE
@@ -70,10 +81,24 @@ export function seed(db: Db): void {
     ])
     .run();
 
+  // 9101 is the global case (name comes from `people`), 9102 the anonymous-but-matchable one
+  db.delete(people).where(eq(people.id, PERSON)).run();
+  db.insert(people)
+    .values({
+      id: PERSON,
+      name: "Priya",
+      nameKey: "priya",
+      embedding: voiceprint(1, 0),
+      samples: 1,
+      createdAt: 1759754400,
+      updatedAt: 1759754400,
+    })
+    .run();
+
   db.insert(speakers)
     .values([
-      { id: 9101, recordingId: 9001, label: "Speaker 1", displayName: "Priya" },
-      { id: 9102, recordingId: 9001, label: "Speaker 2", displayName: null },
+      { id: 9101, recordingId: 9001, label: "Speaker 1", personId: PERSON, embedding: voiceprint(1, 0) },
+      { id: 9102, recordingId: 9001, label: "Speaker 2", embedding: voiceprint(0, 1) },
     ])
     .run();
 

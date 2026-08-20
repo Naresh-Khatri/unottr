@@ -24,6 +24,9 @@ export function runMigrations(db: Db): void {
   db.$client.pragma("user_version = 4");
 }
 
+/** 0000_init + 0001_fts, the two that rust V4 already describes. Everything after is ours to run. */
+const RUST_V4_MIGRATIONS = 2;
+
 /**
  * The other half of the bridge. A database the rust build created already has these tables,
  * so drizzle's migrator would die on `CREATE TABLE recordings`. Rust V4 and `0000_init.sql`
@@ -42,9 +45,11 @@ function adoptRustSchema(db: Db): void {
   // hashes are content-derived, so a throwaway database produces exactly the rows this one needs
   const donor = new Database(":memory:");
   migrate(drizzle(donor), { migrationsFolder: migrationsDir() });
-  const rows = donor
-    .prepare("select id, hash, created_at from __drizzle_migrations")
-    .all() as { id: number; hash: string; created_at: number }[];
+  const rows = (
+    donor
+      .prepare("select id, hash, created_at from __drizzle_migrations order by id")
+      .all() as { id: number; hash: string; created_at: number }[]
+  ).slice(0, RUST_V4_MIGRATIONS);
   donor.close();
 
   sqlite.exec(

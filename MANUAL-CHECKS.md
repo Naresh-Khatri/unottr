@@ -52,8 +52,27 @@ acceptance criteria in `docs/plan/05-ui.md`, re-pointed at the Electron app by p
 - [ ] Rename a speaker inline (click the label, edit, blur/Enter). All of that speaker's
       segments in the transcript update immediately.
 - [ ] Restart the app (or just re-open the recording) -> the renamed speaker name persists.
-- [ ] Rename does not affect the same speaker's label in a *different* recording (per-recording
-      only, decision #4).
+- [ ] A second rename box offers the name as a completion (datalist), so the same voice does
+      not end up with two spellings.
+
+## Global speaker identity
+
+- [ ] Name a speaker in recording A, then let a *new* recording with the same person finish
+      diarizing -> that speaker comes out already named, with nobody typing.
+- [ ] The auto-named speaker is the right one: skim a few of their segments before trusting
+      it. A wrong match here is the failure mode the 0.45 cut exists to prevent.
+- [ ] Naming a speaker in an *older* recording does not retro-name anyone else (forward only,
+      by decision).
+- [ ] Two different people in one recording never collapse onto the same name, even when
+      their voices are close.
+- [ ] Settings -> People lists everyone with a recording count. Rename there -> the new name
+      shows in every recording they appear in.
+- [ ] Forget a person -> their speakers go back to `Speaker N` everywhere, and the next
+      recording no longer auto-names them.
+- [ ] Re-run a recording (Retry) after naming its speakers -> the names survive re-diarization
+      and no speaker gets re-matched to someone else.
+- [ ] Export a transcript with a globally-named speaker -> the person's name appears, not the
+      `Speaker N` label.
 
 ## Find-in-transcript
 

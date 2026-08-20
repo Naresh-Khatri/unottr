@@ -51,6 +51,23 @@ export const recordings = sqliteTable(
   ],
 );
 
+/**
+ * A voice that outlives one recording. `embedding` is the running mean of every speaker
+ * centroid a user has confirmed as this person (unit length, `samples` of them), which is
+ * what the next recording's clusters get matched against.
+ */
+export const people = sqliteTable("people", {
+  id: integer("id").primaryKey(),
+  name: text("name").notNull(),
+  /** case-folded name — the real uniqueness key, so "Priya" and "priya" are one person */
+  nameKey: text("name_key").notNull().unique(),
+  /** null until the first confirmed speaker enrolls one; never crosses ipc */
+  embedding: blob("embedding", { mode: "buffer" }),
+  samples: integer("samples").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const speakers = sqliteTable(
   "speakers",
   {
@@ -59,11 +76,13 @@ export const speakers = sqliteTable(
       .notNull()
       .references(() => recordings.id, { onDelete: "cascade" }),
     label: text("label").notNull(),
+    /** a name with no voiceprint behind it: this recording only. `person_id` is the global one. */
     displayName: text("display_name"),
+    personId: integer("person_id").references(() => people.id, { onDelete: "set null" }),
     /** never crosses ipc */
     embedding: blob("embedding", { mode: "buffer" }),
   },
-  (t) => [unique().on(t.recordingId, t.label)],
+  (t) => [unique().on(t.recordingId, t.label), index("idx_speakers_person").on(t.personId)],
 );
 
 export const segments = sqliteTable(

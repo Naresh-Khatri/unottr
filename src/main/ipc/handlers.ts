@@ -3,6 +3,7 @@ import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import type { ModelInfo, RecordingFilter, RecordingSort, SystemStats } from "../../shared/ipc";
 import { getAutostart, setAutostart } from "../autostart";
 import { db } from "../db";
+import * as peopleDb from "../db/people";
 import * as queries from "../db/queries";
 import { resetForRetry } from "../db/recordings";
 import * as settingsDb from "../db/settings";
@@ -76,7 +77,15 @@ const handlers: Record<string, Handler> = {
 
   search: (a) => queries.search(db(), str(a?.query) ?? "", num(a?.limit) ?? 50),
 
+  /** Names the person behind the cluster, not just this row — see db/people.ts. */
   rename_speaker: (a) => queries.renameSpeaker(db(), requireId(a, "speaker_id"), str(a?.name) ?? ""),
+
+  // ----------------------------------------------------------------------- people
+
+  list_people: () => peopleDb.list(db()),
+  rename_person: (a) => peopleDb.rename(db(), requireId(a, "id"), str(a?.name) ?? ""),
+  /** Drops the voiceprint too, so a bad match stops spreading. */
+  forget_person: (a) => peopleDb.forget(db(), requireId(a, "id")),
 
   // ---------------------------------------------------------------- watch folders
 

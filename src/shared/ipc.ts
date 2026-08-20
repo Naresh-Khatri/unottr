@@ -42,7 +42,17 @@ export interface Speaker {
   id: number;
   recording_id: number;
   label: string; // "Speaker 1"
-  display_name: string | null; // user rename; embedding never crosses ipc
+  display_name: string | null; // the person's name if linked, else a local rename; null = anonymous
+  person_id: number | null; // global identity; null = named here only, or not named at all
+}
+
+/** A voice known across recordings. The voiceprint itself never crosses ipc. */
+export interface Person {
+  id: number;
+  name: string;
+  samples: number; // confirmed clusters behind the voiceprint; 0 = named but never matchable
+  recordings: number; // recordings they currently appear in
+  created_at: number; // unix seconds
 }
 
 export interface RecordingSummary {

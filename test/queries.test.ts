@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Db, openDatabase } from "../src/main/db/client";
 import { runMigrations } from "../src/main/db/migrate";
+import * as peopleDb from "../src/main/db/people";
 import * as q from "../src/main/db/queries";
 import { segments } from "../src/main/db/schema";
 import * as settingsDb from "../src/main/db/settings";
@@ -97,12 +98,20 @@ describe("search", () => {
 });
 
 describe("renameSpeaker", () => {
+  const speaker = (id: number) => q.getRecording(db, 9001)?.speakers.find((s) => s.id === id);
+
   it("round trips and an empty name clears it", () => {
     q.renameSpeaker(db, 9102, "Dana");
-    expect(q.getRecording(db, 9001)?.speakers.find((s) => s.id === 9102)?.display_name).toBe("Dana");
+    expect(speaker(9102)).toMatchObject({ display_name: "Dana", person_id: expect.any(Number) });
 
     q.renameSpeaker(db, 9101, "");
-    expect(q.getRecording(db, 9001)?.speakers.find((s) => s.id === 9101)?.display_name).toBeNull();
+    expect(speaker(9101)).toMatchObject({ display_name: null, person_id: null });
+  });
+
+  it("reads the name off the linked person, so a global rename follows", () => {
+    expect(speaker(9101)?.display_name).toBe("Priya");
+    peopleDb.rename(db, speaker(9101)!.person_id!, "Priya R");
+    expect(speaker(9101)?.display_name).toBe("Priya R");
   });
 
   it("throws on an unknown speaker id", () => {

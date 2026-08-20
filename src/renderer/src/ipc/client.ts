@@ -3,7 +3,7 @@
 // main process and get a "not implemented until 08.x" error until their sub-phase lands.
 import type {
   BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress, ModelInfo,
-  RecordingDetail, RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary,
+  Person, RecordingDetail, RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary,
   Resolved, SearchHit, Settings, SystemStats, WatchFolder,
 } from "./types";
 import { mockCommands, mockEvents } from "./mock";
@@ -19,6 +19,12 @@ export const api = {
     USE_MOCK ? mockCommands.search(query) : invoke("search", { query, limit }),
   renameSpeaker: (speaker_id: number, name: string): Promise<void> =>
     USE_MOCK ? mockCommands.rename_speaker(speaker_id, name) : invoke("rename_speaker", { speaker_id, name }),
+  listPeople: (): Promise<Person[]> =>
+    USE_MOCK ? mockCommands.list_people() : invoke("list_people"),
+  renamePerson: (id: number, name: string): Promise<void> =>
+    USE_MOCK ? mockCommands.rename_person(id, name) : invoke("rename_person", { id, name }),
+  forgetPerson: (id: number): Promise<void> =>
+    USE_MOCK ? mockCommands.forget_person(id) : invoke("forget_person", { id }),
   retryJob: (recording_id: number): Promise<void> =>
     USE_MOCK ? mockCommands.retry_job(recording_id) : invoke("retry_job", { recording_id }),
   listWatchFolders: (): Promise<WatchFolder[]> =>

@@ -4,7 +4,7 @@ import {
   VideoCameraSlash,
 } from "@phosphor-icons/react";
 import { api, os } from "@/ipc/client";
-import type { ExportFormat, RecordingDetail, Segment, Speaker } from "@/ipc/types";
+import type { ExportFormat, Person, RecordingDetail, Segment, Speaker } from "@/ipc/types";
 import { hms } from "@/lib/format";
 import { canPlayContainer } from "@/lib/media";
 import { useVirtual } from "@/lib/virtual";
@@ -28,6 +28,7 @@ export function TranscriptView({ id, onBack, initialMs = 0 }: {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
   const [currentMs, setCurrentMs] = useState(initialMs);
   const [videoFailed, setVideoFailed] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -52,6 +53,9 @@ export function TranscriptView({ id, onBack, initialMs = 0 }: {
     setCurrentMs(initialMs);
     return () => { stale = true; };
   }, [id, initialMs, reloadKey]);
+
+  // the names already known to the app, offered as completions so one voice gets one spelling
+  useEffect(() => { api.listPeople().then(setPeople, () => {}); }, []);
 
   const blocks = useMemo(() => {
     const list: { sid: number | null; segs: Segment[] }[] = [];
@@ -127,7 +131,10 @@ export function TranscriptView({ id, onBack, initialMs = 0 }: {
 
   async function rename(sid: number, name: string) {
     await api.renameSpeaker(sid, name);
-    setSpeakers((prev) => prev.map((s) => (s.id === sid ? { ...s, display_name: name || null } : s)));
+    // the name is now a person, so re-read: a fresh one has to show up in the completions
+    const [fresh, known] = await Promise.all([api.getRecording(id), api.listPeople()]);
+    setSpeakers(fresh.speakers);
+    setPeople(known);
   }
 
   async function doExport() {
@@ -255,7 +262,12 @@ export function TranscriptView({ id, onBack, initialMs = 0 }: {
                 if (it.kind === "header") {
                   return (
                     <div key={`h-${it.blockIdx}`} ref={virtual.measureRef(idx)} className="px-4 pt-4 pb-1">
-                      <SpeakerName sid={it.sid} name={nameFor(it.sid)} onRename={rename} />
+                      <SpeakerName
+                        sid={it.sid}
+                        name={nameFor(it.sid)}
+                        known={people}
+                        onRename={rename}
+                      />
                     </div>
                   );
                 }
@@ -294,8 +306,8 @@ export function TranscriptView({ id, onBack, initialMs = 0 }: {
   );
 }
 
-function SpeakerName({ sid, name, onRename }: {
-  sid: number | null; name: string; onRename: (sid: number, name: string) => void;
+function SpeakerName({ sid, name, known, onRename }: {
+  sid: number | null; name: string; known: Person[]; onRename: (sid: number, name: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -306,13 +318,18 @@ function SpeakerName({ sid, name, onRename }: {
 
   if (editing)
     return (
-      <Input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => { setEditing(false); if (draft !== name) onRename(sid, draft); }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") { setDraft(name); setEditing(false); }
-        }}
-        className="h-6 w-40 text-xs font-semibold tracking-wide uppercase" />
+      <>
+        <datalist id="known-people">
+          {known.map((p) => <option key={p.id} value={p.name} />)}
+        </datalist>
+        <Input autoFocus list="known-people" value={draft} onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => { setEditing(false); if (draft !== name) onRename(sid, draft); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") { setDraft(name); setEditing(false); }
+          }}
+          className="h-6 w-40 text-xs font-semibold tracking-wide uppercase" />
+      </>
     );
 
   return (

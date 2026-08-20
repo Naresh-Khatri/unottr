@@ -4,7 +4,7 @@ import { basename } from "node:path";
 import { asc, eq, sql } from "drizzle-orm";
 import type { ExportFormat } from "../shared/ipc";
 import type { Db } from "./db/client";
-import { recordings, segments, speakers } from "./db/schema";
+import { people, recordings, segments, speakers } from "./db/schema";
 
 const FORMATS: ExportFormat[] = ["txt", "json", "srt", "vtt"];
 
@@ -40,10 +40,11 @@ export function load(db: Db, recordingId: number): Transcript {
       start_ms: segments.startMs,
       end_ms: segments.endMs,
       text: segments.text,
-      speaker: sql<string | null>`coalesce(${speakers.displayName}, ${speakers.label})`,
+      speaker: sql<string | null>`coalesce(${people.name}, ${speakers.displayName}, ${speakers.label})`,
     })
     .from(segments)
     .leftJoin(speakers, eq(speakers.id, segments.speakerId))
+    .leftJoin(people, eq(people.id, speakers.personId))
     .where(eq(segments.recordingId, recordingId))
     .orderBy(asc(segments.startMs), asc(segments.id))
     .all();

@@ -5,7 +5,7 @@ import {
 } from "@phosphor-icons/react";
 import { api, onModelDownloadProgress, os } from "@/ipc/client";
 import type {
-  BackfillEstimate, DiskUsage, ModelInfo, Resolved, Settings as SettingsT, WatchFolder,
+  BackfillEstimate, DiskUsage, ModelInfo, Person, Resolved, Settings as SettingsT, WatchFolder,
 } from "@/ipc/types";
 import { bytesLabel, durationLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -36,19 +36,22 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
   const [detected, setDetected] = useState<Resolved | null>(null);
   const [progressByTier, setProgressByTier] = useState<Record<string, number>>({});
   const [autostartOn, setAutostartOn] = useState(false);
+  const [people, setPeople] = useState<Person[]>([]);
 
   const loadFolders = useCallback(() => { api.listWatchFolders().then(setFolders); }, []);
   const loadModels = useCallback(() => { api.listModels().then(setModels); }, []);
   const loadDisk = useCallback(() => { api.diskUsage().then(setDisk); }, []);
+  const loadPeople = useCallback(() => { api.listPeople().then(setPeople); }, []);
 
   useEffect(() => {
     api.getSettings().then((s) => { setSettings(s); onFfmpegChange?.(s.ffmpeg_ok); });
     loadFolders();
     loadModels();
     loadDisk();
+    loadPeople();
     api.detectedDevice().then(setDetected);
     os.getAutostart().then(setAutostartOn).catch(() => {});
-  }, [loadFolders, loadModels, loadDisk]);
+  }, [loadFolders, loadModels, loadDisk, loadPeople]);
 
   useEffect(
     () =>
@@ -100,6 +103,8 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
 
         <WatchFoldersCard folders={folders} onChange={loadFolders} />
 
+        <PeopleCard people={people} onChange={loadPeople} />
+
         <ModelCard
           models={models}
           activeTier={settings.model_tier}
@@ -121,6 +126,77 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
 
         <AdvancedCard settings={settings} onChange={setSetting} onClearCache={() => api.clearCache()} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The voices the app knows. Names typed on a transcript land here; forgetting one drops its
+ * voiceprint, which is how a wrong auto-match gets undone.
+ */
+function PeopleCard({ people, onChange }: { people: Person[]; onChange: () => void }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>People</CardTitle>
+        <CardDescription>
+          Naming a speaker teaches the app that voice, and later recordings label them
+          automatically.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {people.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nobody yet — name a speaker on a transcript to start.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {people.map((p) => <PersonRow key={p.id} person={p} onChange={onChange} />)}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PersonRow({ person, onChange }: { person: Person; onChange: () => void }) {
+  const [draft, setDraft] = useState(person.name);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => setDraft(person.name), [person.name]);
+
+  async function commit() {
+    const name = draft.trim();
+    if (!name || name === person.name) { setDraft(person.name); return; }
+    try { await api.renamePerson(person.id, name); setError(null); onChange(); }
+    catch (e) { setError(String(e)); setDraft(person.name); }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") { setDraft(person.name); e.currentTarget.blur(); }
+        }}
+        className="h-8 w-56"
+      />
+      <span className="flex-1 text-xs text-muted-foreground">
+        {person.recordings === 1 ? "1 recording" : `${person.recordings} recordings`}
+        {person.samples === 0 && " · no voiceprint yet"}
+      </span>
+      {error && <span className="text-xs text-destructive">{error}</span>}
+      <Button
+        size="xs"
+        variant="ghost"
+        title="Forget this voice — their speakers go back to unnamed"
+        onClick={async () => { await api.forgetPerson(person.id); onChange(); }}
+      >
+        <Trash />Forget
+      </Button>
     </div>
   );
 }

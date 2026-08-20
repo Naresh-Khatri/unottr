@@ -3,7 +3,7 @@
 
 import { readdirSync, statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
-import { type SQL, and, asc, desc, eq, like } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, like, sql } from "drizzle-orm";
 import type {
   DiskUsage,
   Recording,
@@ -21,7 +21,8 @@ import type {
 import { check, fromSettings } from "../media/ffmpeg";
 import { modelsDir, pcmCacheDir } from "../paths";
 import type { Db } from "./client";
-import { STATUSES, recordings, segments, speakerCount, speakers } from "./schema";
+import * as peopleDb from "./people";
+import { STATUSES, people, recordings, segments, speakerCount, speakers } from "./schema";
 import * as settingsDb from "./settings";
 
 // ---------------------------------------------------------------------------- recordings
@@ -100,14 +101,17 @@ export function getRecording(db: Db, id: number): RecordingDetail | null {
     .orderBy(asc(segments.startMs), asc(segments.id))
     .all();
 
+  // a linked person outranks a local rename; the two are never both set (see people.nameSpeaker)
   const speakerRows = db
     .select({
       id: speakers.id,
       recording_id: speakers.recordingId,
       label: speakers.label,
-      display_name: speakers.displayName,
+      display_name: sql<string | null>`coalesce(${people.name}, ${speakers.displayName})`,
+      person_id: speakers.personId,
     })
     .from(speakers)
+    .leftJoin(people, eq(people.id, speakers.personId))
     .where(eq(speakers.recordingId, id))
     .orderBy(asc(speakers.label))
     .all();
@@ -168,15 +172,11 @@ export function search(db: Db, query: string, limit: number): SearchHit[] {
 
 // ----------------------------------------------------------------------------- speakers
 
-/** Empty name clears the rename. No row changed = a stale speaker id, which is an error. */
-export function renameSpeaker(db: Db, speakerId: number, name: string): void {
-  const changed = db
-    .update(speakers)
-    .set({ displayName: name.length > 0 ? name : null })
-    .where(eq(speakers.id, speakerId))
-    .run();
-  if (changed.changes === 0) throw new Error(`no speaker with id ${speakerId}`);
-}
+/**
+ * Naming a speaker names a *person*: the cluster's voiceprint is enrolled so later recordings
+ * recognise them. Empty name clears it. Unknown speaker id is an error.
+ */
+export const renameSpeaker = peopleDb.nameSpeaker;
 
 // ----------------------------------------------------------------------------- settings
 

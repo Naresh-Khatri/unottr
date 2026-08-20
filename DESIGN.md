@@ -10,7 +10,7 @@ locally with speaker diarization. No cloud, no accounts, no LLM.
 | 1 | Platform | Linux v1; stack keeps macOS/Windows open |
 | 2 | Scope | watch -> transcribe -> diarize -> browse/read/search |
 | 3 | Input | Any container ffmpeg reads; no conventions forced on users |
-| 4 | Diarization bar | Anonymous speakers + per-recording rename |
+| 4 | Diarization bar | Anonymous speakers; naming one enrolls a voiceprint, so later recordings recognise them (see *Global identity*) |
 | 5 | Speed | Batch background job |
 | 6 | Shell | Electron 43 (was Tauri v2 — see *Why Electron* below) |
 | 8 | ASR | whisper.cpp via `@fugood/whisper.node` + the `-linux-x64-vulkan` prebuild |
@@ -99,13 +99,18 @@ Each stage is a persisted queue state, so a crash resumes at a boundary.
 recordings(id, path, fp_size, fp_head, fp_tail, container, duration_ms,
            recorded_at, status, error, attempts, last_chunk_idx, available)
 segments(id, recording_id, start_ms, end_ms, text, speaker_id)
-speakers(id, recording_id, label, display_name, embedding BLOB)
+speakers(id, recording_id, label, display_name, person_id, embedding BLOB)
+people(id, name, name_key UNIQUE, embedding BLOB, samples)
 segments_fts    -- FTS5 over segments.text
 watch_folders(id, path, track_rule, enabled)
 settings(key, value)
 ```
 
 `available = false` when the video is gone; transcript stays searchable, player disabled.
+
+A `speakers` row is one recording's cluster, a `people` row is the person behind it. The
+displayed name is `coalesce(people.name, speakers.display_name, speakers.label)`, so a
+global identity outranks a name typed on one transcript.
 
 ## Known risks
 
@@ -215,6 +220,25 @@ overlaps are within 20 % **and** a turn boundary falls strictly inside, split at
 NULL. Splits are recorded via `segments.split_of` so re-diarizing rejoins the pieces first
 and never fragments further (idempotent).
 
+## Global identity
+
+A name is worth typing once. `people.embedding` is the running mean of every cluster
+centroid a user has confirmed as that person; at the end of diarization each unnamed
+cluster is matched against all of them and takes the name if it fits.
+
+- **Threshold 0.45** cosine, against 0.6 within a recording. That cut compares fragments
+  minutes apart through one mic; this one compares across sessions, rooms and months, where
+  a false match silently puts words in someone's mouth.
+- **Tie refusal.** Two people within 0.05 of a cluster are not tellable apart, so it stays
+  anonymous rather than taking the marginally nearer one.
+- **One person, one speaker.** Assignment is greedy by distance with a taken set: the
+  runner-up cluster finds someone else or stays anonymous.
+- **Only naming enrolls.** An auto-match never feeds itself back, so a wrong match cannot
+  compound. Forgetting a person drops the voiceprint and un-names their speakers — the
+  escape hatch when it does go wrong.
+- **Forward only.** Existing recordings are not rescanned when a person is created;
+  re-diarizing keeps whatever the user already decided, by label.
+
 ## Measured performance
 
 5 minutes of a real corpus recording. RX 6700 XT (RADV, Navi22) vs 12 CPU threads.
@@ -287,8 +311,8 @@ Full-text search is not a scaling concern at any realistic library size for this
 
 ## Out of v1
 
-Summaries or any LLM, transcript editing, live/in-progress transcription, cross-meeting
-speaker recognition, calendar/Zoom/Meet integration, sharing, sync, mobile.
+Summaries or any LLM, transcript editing, live/in-progress transcription, calendar/Zoom/Meet
+integration, sharing, sync, mobile.
 
 ## Plan
 

@@ -10,6 +10,7 @@ import type {
   JobProgress,
   ModelDownloadProgress,
   ModelInfo,
+  Person,
   RecordingDetail,
   RecordingDiscovered,
   RecordingFilter,
@@ -25,9 +26,11 @@ import type {
 } from "./types";
 
 const speakers9001: Speaker[] = [
-  { id: 9101, recording_id: 9001, label: "Speaker 1", display_name: "Priya" },
-  { id: 9102, recording_id: 9001, label: "Speaker 2", display_name: null },
+  { id: 9101, recording_id: 9001, label: "Speaker 1", display_name: "Priya", person_id: 1 },
+  { id: 9102, recording_id: 9001, label: "Speaker 2", display_name: null, person_id: null },
 ];
+
+let people: Person[] = [{ id: 1, name: "Priya", samples: 3, recordings: 2, created_at: 1759700000 }];
 
 const segments9001: Segment[] = [
   { id: 1, chunk_idx: 0, start_ms: 1360, end_ms: 4200,
@@ -104,7 +107,31 @@ export const mockCommands = {
   },
   rename_speaker(speaker_id: number, name: string) {
     const s = speakers9001.find((x) => x.id === speaker_id);
-    if (s) s.display_name = name || null;
+    if (!s) return wait(undefined);
+    s.display_name = name || null;
+    if (!name) s.person_id = null;
+    else {
+      const found = people.find((p) => p.name.toLowerCase() === name.toLowerCase());
+      const person = found ?? { id: people.length + 1, name, samples: 0, recordings: 1, created_at: 0 };
+      if (!found) people.push(person);
+      person.samples++;
+      s.person_id = person.id;
+    }
+    return wait(undefined);
+  },
+
+  list_people: () => wait(people.slice()),
+  rename_person(id: number, name: string) {
+    const p = people.find((x) => x.id === id);
+    if (p) p.name = name;
+    for (const s of speakers9001) if (s.person_id === id) s.display_name = name;
+    return wait(undefined);
+  },
+  forget_person(id: number) {
+    people = people.filter((p) => p.id !== id);
+    for (const s of speakers9001) {
+      if (s.person_id === id) { s.person_id = null; s.display_name = null; }
+    }
     return wait(undefined);
   },
   retry_job: (_id: number) => wait(undefined),

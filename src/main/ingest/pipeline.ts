@@ -7,15 +7,18 @@
 // now runs before dispatch, so the worker is told which chunk to start at instead of asking.
 
 import { join } from "node:path";
-import { and, eq, gt, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { utilityProcess } from "electron";
 import type { Resolved } from "../../shared/ipc";
 import type { Chunk } from "../../worker/chunk";
 import type { Config } from "../../worker/diarize";
+import { isEmbedded } from "../../worker/cluster";
 import { type Assigned, type Segment, isSplit } from "../../worker/merge";
 import type { DiarizeJob, Reply, Request, TranscribeJob } from "../../worker/protocol";
 import type { Options, Utterance, Word } from "../../worker/whisper";
 import type { Db } from "../db/client";
+import { toBlob } from "../db/embedding";
+import * as peopleDb from "../db/people";
 import { lastChunkIdx, now } from "../db/recordings";
 import { recordings, segments, speakers } from "../db/schema";
 import { PipelineError, err } from "../errors";
@@ -56,6 +59,8 @@ export interface DiarizeReport {
   split: number;
   /** Segments no turn overlapped. Rendered without a name rather than guessed at. */
   unattributed: number;
+  /** Speakers a known voiceprint claimed, so they came out named without anyone typing. */
+  identified: number;
   micTrack: boolean;
 }
 
@@ -153,6 +158,7 @@ export async function diarize(
     segments: loaded.length,
     split: counts.split,
     unattributed: counts.unattributed,
+    identified: counts.identified,
     micTrack: spec.micPcm !== null,
   };
 }
@@ -340,29 +346,41 @@ function persist(
   embeddings: Float32Array[],
   loaded: Loaded[],
   assigned: Assigned[],
-): { split: number; unattributed: number } {
+): { split: number; unattributed: number; identified: number } {
   let split = 0;
   let unattributed = 0;
+  let identified = 0;
 
   db.transaction((tx) => {
-    const renames = existingNames(tx, recordingId);
+    const prior = priorNames(tx, recordingId);
+    const pinned = labels.map((label) => prior.get(label) ?? null);
 
     // cascades speaker_id back to NULL on every segment, so nothing points at a stale row
     tx.delete(speakers).where(eq(speakers.recordingId, recordingId)).run();
 
-    const speakerIds = labels.map(
-      (label, i) =>
-        tx
-          .insert(speakers)
-          .values({
-            recordingId,
-            label,
-            displayName: renames.get(label) ?? null,
-            embedding: embeddings[i] ? toBlob(embeddings[i]) : null,
-          })
-          .returning({ id: speakers.id })
-          .get().id,
+    // whoever this recording already names is off the table: a person is one speaker here
+    const spokenFor = new Set(pinned.flatMap((p) => (p?.personId == null ? [] : [p.personId])));
+    const known = peopleDb.voiceprints(tx).filter((v) => !spokenFor.has(v.id));
+    const matched = peopleDb.identify(
+      labels.map((_, i) => (pinned[i] ? null : centroidOf(embeddings[i]))),
+      known,
     );
+
+    const speakerIds = labels.map((label, i) => {
+      const personId = pinned[i]?.personId ?? matched[i];
+      if (pinned[i]?.personId == null && personId !== null) identified++;
+      return tx
+        .insert(speakers)
+        .values({
+          recordingId,
+          label,
+          displayName: pinned[i]?.displayName ?? null,
+          personId,
+          embedding: embeddings[i] ? toBlob(embeddings[i]) : null,
+        })
+        .returning({ id: speakers.id })
+        .get().id;
+    });
     const idOf = (speaker: number | null): number | null =>
       speaker === null ? null : (speakerIds[speaker] ?? null);
 
@@ -406,34 +424,35 @@ function persist(
       .run();
   });
 
-  return { split, unattributed };
+  return { split, unattributed, identified };
+}
+
+interface PriorName {
+  displayName: string | null;
+  personId: number | null;
 }
 
 /**
- * Decision #4 lets users rename speakers per recording. Re-diarizing must not silently throw
- * that away, so names come back by label.
+ * Decision #4 lets users name speakers. Re-diarizing must not silently throw that away, so
+ * both the local name and the person link come back by label — and a label that comes back
+ * named is never re-matched by voice, because the user already said who it is.
  */
-function existingNames(tx: Tx, recordingId: number): Map<string, string> {
+function priorNames(tx: Tx, recordingId: number): Map<string, PriorName> {
   const rows = tx
-    .select({ label: speakers.label, displayName: speakers.displayName })
+    .select({ label: speakers.label, displayName: speakers.displayName, personId: speakers.personId })
     .from(speakers)
-    .where(and(eq(speakers.recordingId, recordingId), isNotNull(speakers.displayName)))
+    .where(
+      and(
+        eq(speakers.recordingId, recordingId),
+        or(isNotNull(speakers.displayName), isNotNull(speakers.personId)),
+      ),
+    )
     .all();
-  return new Map(rows.map((r) => [r.label, r.displayName as string]));
+  return new Map(rows.map((r) => [r.label, { displayName: r.displayName, personId: r.personId }]));
 }
 
-/** Little-endian f32, the same bytes the rust wrote. */
-export function toBlob(v: Float32Array): Buffer {
-  const out = Buffer.allocUnsafe(v.length * 4);
-  for (let i = 0; i < v.length; i++) out.writeFloatLE(v[i], i * 4);
-  return out;
-}
-
-export function fromBlob(bytes: Buffer): Float32Array {
-  const n = bytes.length >> 2; // a trailing partial float is dropped, not misread
-  const out = new Float32Array(n);
-  for (let i = 0; i < n; i++) out[i] = bytes.readFloatLE(i * 4);
-  return out;
-}
+/** A cluster too short to embed comes back all zeros; it can be stored but never matched. */
+const centroidOf = (embedding: Float32Array | undefined): Float32Array | null =>
+  embedding && isEmbedded(embedding) ? embedding : null;
 
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));

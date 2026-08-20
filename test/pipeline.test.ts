@@ -8,16 +8,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type Db, openDatabase } from "../src/main/db/client";
 import { runMigrations } from "../src/main/db/migrate";
 import { now } from "../src/main/db/recordings";
-import { recordings, segments, speakers } from "../src/main/db/schema";
+import * as q from "../src/main/db/queries";
+import { people, recordings, segments, speakers } from "../src/main/db/schema";
 import { PipelineError } from "../src/main/errors";
-import {
-  type DiarizeSpec,
-  type TranscribeSpec,
-  diarize,
-  fromBlob,
-  toBlob,
-  transcribe,
-} from "../src/main/ingest/pipeline";
+import { fromBlob, toBlob } from "../src/main/db/embedding";
+import { type DiarizeSpec, type TranscribeSpec, diarize, transcribe } from "../src/main/ingest/pipeline";
 import type { Chunk } from "../src/worker/chunk";
 import type { Assigned } from "../src/worker/merge";
 import type { Reply, Request, TranscribeJob } from "../src/worker/protocol";
@@ -308,7 +303,9 @@ describe("diarize", () => {
     const seen: number[] = [];
     const report = await diarize(db, diarizeSpec, (f) => seen.push(f));
 
-    expect(report).toEqual({ speakers: 2, segments: 2, split: 0, unattributed: 0, micTrack: false });
+    expect(report).toEqual({
+      speakers: 2, segments: 2, split: 0, unattributed: 0, identified: 0, micTrack: false,
+    });
     expect(seen).toEqual([0.5, 1]);
 
     const people = db.select().from(speakers).where(eq(speakers.recordingId, ID)).all();
@@ -396,6 +393,86 @@ describe("diarize", () => {
     const report = await diarize(db, diarizeSpec, () => {});
     expect(report.unattributed).toBe(1);
     expect(db.select({ speakerId: segments.speakerId }).from(segments).get()!.speakerId).toBeNull();
+  });
+
+  /** Unit vectors, because identification is a cosine cut and the scripted ones are not. */
+  const scriptedVoices = (embeddings: Float32Array[], labels = ["A", "B"]) => {
+    Fake.respond = (fake, request) => {
+      if (request.type !== "diarize") return;
+      fake.reply({
+        type: "diarized",
+        labels,
+        embeddings,
+        assigned: request.job.segments.map((s) => ({
+          id: s.id,
+          chunk_idx: s.chunk_idx,
+          pieces: [
+            { start_ms: s.start_ms, end_ms: s.end_ms, text: s.text, words: s.words, speaker: 0 },
+          ],
+        })),
+      });
+    };
+  };
+
+  const enrol = (name: string, v: Float32Array): number =>
+    db
+      .insert(people)
+      .values({
+        name,
+        nameKey: name.toLowerCase(),
+        embedding: toBlob(v),
+        samples: 1,
+        createdAt: 0,
+        updatedAt: 0,
+      })
+      .returning({ id: people.id })
+      .get().id;
+
+  it("names a speaker a known voiceprint recognises, without being asked", async () => {
+    insertSegment({});
+    const priya = enrol("Priya", new Float32Array([1, 0]));
+    scriptedVoices([new Float32Array([1, 0]), new Float32Array([0, 1])]);
+
+    const report = await diarize(db, diarizeSpec, () => {});
+
+    expect(report.identified).toBe(1);
+    const rows = db.select().from(speakers).where(eq(speakers.recordingId, ID)).all();
+    expect(rows.map((r) => r.personId)).toEqual([priya, null]);
+    expect(q.getRecording(db, ID)?.speakers.map((s) => s.display_name)).toEqual(["Priya", null]);
+  });
+
+  it("leaves a stranger anonymous rather than reaching for the nearest name", async () => {
+    insertSegment({});
+    enrol("Priya", new Float32Array([1, 0]));
+    scriptedVoices([new Float32Array([0, 1])], ["A"]);
+
+    const report = await diarize(db, diarizeSpec, () => {});
+    expect(report.identified).toBe(0);
+    expect(db.select().from(speakers).get()?.personId).toBeNull();
+  });
+
+  it("gives one person to one speaker, not to every cluster that resembles them", async () => {
+    insertSegment({});
+    const priya = enrol("Priya", new Float32Array([1, 0]));
+    // both clusters are inside the cut; only the nearer one gets to be her
+    scriptedVoices([new Float32Array([0.9, 0.436]), new Float32Array([1, 0])]);
+
+    const report = await diarize(db, diarizeSpec, () => {});
+    expect(report.identified).toBe(1);
+    expect(db.select().from(speakers).where(eq(speakers.recordingId, ID)).all().map((r) => r.personId))
+      .toEqual([null, priya]);
+  });
+
+  it("keeps a person the user picked and does not re-match that label", async () => {
+    insertSegment({});
+    const priya = enrol("Priya", new Float32Array([1, 0]));
+    db.insert(speakers).values({ recordingId: ID, label: "A", personId: priya }).run();
+    // A's voice now looks nothing like her; the user's call still stands
+    scriptedVoices([new Float32Array([0, 1]), new Float32Array([1, 0])]);
+
+    await diarize(db, diarizeSpec, () => {});
+    expect(db.select().from(speakers).where(eq(speakers.recordingId, ID)).all().map((r) => r.personId))
+      .toEqual([priya, null]);
   });
 
   it("carries a user's speaker rename across a re-run, by label", async () => {
