@@ -3,7 +3,7 @@
 
 import type { Db } from "../db/client";
 import type { FfmpegCli } from "../media/ffmpeg";
-import { modelsDir as defaultModelsDir, pcmCacheDir } from "../paths";
+import { modelsDir as defaultModelsDir, pcmCacheDir, thumbsCacheDir } from "../paths";
 import {
   type IngestConfig,
   type PipelineConfig,
@@ -23,6 +23,7 @@ export interface ServiceOptions {
   cli: FfmpegCli;
   onEvent: (event: IngestEvent) => void;
   cacheDir?: string;
+  thumbsDir?: string;
   modelsDir?: string;
   cfg?: IngestConfig;
   /** The config every job runs with when `settingsAware` is false. */
@@ -45,6 +46,7 @@ export class IngestService {
   static start(o: ServiceOptions): IngestService {
     const cfg = o.cfg ?? defaultIngestConfig();
     const cacheDir = o.cacheDir ?? pcmCacheDir();
+    const thumbsDir = o.thumbsDir ?? thumbsCacheDir();
     const modelsDir = o.modelsDir ?? defaultModelsDir();
     const fallback = o.pipelineCfg ?? defaultPipelineConfig();
 
@@ -52,6 +54,7 @@ export class IngestService {
       db: o.db,
       cli: o.cli,
       cacheDir,
+      thumbsDir,
       modelsDir,
       cfg: o.settingsAware ? live(o.db, fallback) : fallback,
     });

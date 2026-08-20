@@ -22,4 +22,5 @@ export const paths = {
 export const dbFile = (): string => join(paths.data, "unottr.db");
 export const modelsDir = (): string => join(paths.data, "models");
 export const pcmCacheDir = (): string => join(paths.cache, "pcm");
+export const thumbsCacheDir = (): string => join(paths.cache, "thumbs");
 export const logsDir = (): string => join(paths.state, "logs");

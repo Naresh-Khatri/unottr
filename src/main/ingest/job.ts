@@ -12,9 +12,10 @@ import { DEFAULT_THRESHOLD } from "../../worker/cluster";
 import type { Db } from "../db/client";
 import { forceCpuOf, pathOf, setProbeResult, setStatus } from "../db/recordings";
 import { findByPath as folderByPath } from "../db/watch-folders";
-import { err } from "../errors";
-import { type FfmpegCli, extractPcm, probe } from "../media/ffmpeg";
+import { err, isCancelled } from "../errors";
+import { type FfmpegCli, extractPcm, extractThumbnails, probe } from "../media/ffmpeg";
 import { mixPcm } from "../media/pcm";
+import { PREVIEW_COUNT, previewPathFor, thumbPathFor } from "../media/thumbs";
 import { AUTO, type TrackRule, parseRule, select } from "../media/track";
 import {
   type ModelSpec,
@@ -34,6 +35,7 @@ export interface JobCtx {
   db: Db;
   cli: FfmpegCli;
   cacheDir: string;
+  thumbsDir: string;
   modelsDir: string;
   cfg: PipelineConfig;
 }
@@ -50,7 +52,7 @@ export async function processRecording(
   onProgress: OnProgress,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { db, cli, cacheDir, cfg } = ctx;
+  const { db, cli, cacheDir, thumbsDir, cfg } = ctx;
   check(signal);
   const path = pathOf(db, id);
   if (path === null) throw err.probe("", `recording ${id} vanished from the database`);
@@ -61,6 +63,21 @@ export async function processRecording(
   const probed = await probe(cli, path);
   setProbeResult(db, id, probed.container, probed.duration_ms);
   onProgress("probing", 1);
+
+  if (probed.has_video && probed.duration_ms) {
+    try {
+      await extractThumbnails(cli, path, {
+        durationMs: probed.duration_ms,
+        thumb: thumbPathFor(thumbsDir, id),
+        previews: Array.from({ length: PREVIEW_COUNT }, (_, i) => previewPathFor(thumbsDir, id, i)),
+        signal,
+      });
+    } catch (e) {
+      // cancellation must still abort the job; any other failure just means no thumbnails
+      if (isCancelled(e)) throw e;
+      console.warn(`thumbnail generation failed for recording ${id}: ${String(e)}`);
+    }
+  }
 
   const choice = select(probed, owningTrackRule(db, path));
 

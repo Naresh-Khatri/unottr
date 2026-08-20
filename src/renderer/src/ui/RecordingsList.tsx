@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowClockwise, FolderOpen, Gear, Users } from "@phosphor-icons/react";
-import { api, onJobDone, onJobFailed, onJobProgress, onRecordingDiscovered } from "@/ipc/client";
-import type { RecordingSummary, WatchFolder } from "@/ipc/types";
+import {
+  api, onJobDone, onJobFailed, onJobProgress, onRecordingDiscovered,
+  PREVIEW_COUNT, previewUrl, thumbUrl,
+} from "@/ipc/client";
+import type { RecordingSummary, Status, WatchFolder } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
 import { dateLabel, durationLabel } from "@/lib/format";
 import { errorInfo } from "@/lib/errors";
@@ -14,7 +17,47 @@ import {
 } from "@/components/ui/table";
 
 const ROW_ESTIMATE = 56; // measured hook corrects this once rows with progress/error mount
-const COLS = 5;
+const COLS = 6;
+
+/**
+ * Cover frame at rest; hovering cycles the PREVIEW_COUNT frames as a slideshow. `status` is
+ * only read to reset `available` on each stage change — thumbnails land during probing, so a
+ * freshly discovered row's first paint 404s and should retry once the job moves past it.
+ */
+function Thumbnail({ id, hasVideo, status }: { id: number; hasVideo: boolean; status: Status }) {
+  const [hovering, setHovering] = useState(false);
+  const [frame, setFrame] = useState(0);
+  const [available, setAvailable] = useState(true);
+
+  useEffect(() => setAvailable(true), [status]);
+
+  useEffect(() => {
+    if (!hovering) return;
+    setFrame(0);
+    const t = setInterval(() => setFrame((f) => (f + 1) % PREVIEW_COUNT), 450);
+    return () => clearInterval(t);
+  }, [hovering]);
+
+  if (!hasVideo || !available) {
+    return <div className="size-10 shrink-0 rounded-md bg-muted" />;
+  }
+
+  return (
+    <img
+      src={hovering ? previewUrl(id, frame) : thumbUrl(id)}
+      alt=""
+      className="size-10 shrink-0 rounded-md bg-muted object-cover"
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      onError={(e) => {
+        // a preview 404 mid-slideshow just holds the cover frame instead of a broken-image
+        // icon; the cover frame itself missing is what actually hides the cell
+        if (hovering) (e.target as HTMLImageElement).src = thumbUrl(id);
+        else setAvailable(false);
+      }}
+    />
+  );
+}
 
 export function RecordingsList({ onOpen, onOpenSettings }: {
   onOpen: (id: number) => void;
@@ -68,6 +111,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-14" />
                   <TableHead>Name</TableHead>
                   <TableHead className="w-28">Recorded</TableHead>
                   <TableHead className="w-20 text-right">Length</TableHead>
@@ -82,6 +126,9 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                   const live = IN_FLIGHT.includes(r.status);
                   return (
                     <TableRow key={r.id} ref={virtual.measureRef(idx)} onClick={() => onOpen(r.id)} className="cursor-pointer">
+                      <TableCell>
+                        <Thumbnail id={r.id} hasVideo={r.has_video} status={r.status} />
+                      </TableCell>
                       <TableCell className="max-w-0">
                         <div className="truncate font-medium">{r.filename}</div>
                         {!r.available && (

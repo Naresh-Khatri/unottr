@@ -9,6 +9,7 @@ import { load } from "../db/settings";
 import { events } from "../events";
 import { check, fromSettings } from "../media/ffmpeg";
 import { modelsDir, pcmCacheDir } from "../paths";
+import { thumbsDirFor } from "../media/thumbs";
 import { IngestService } from ".";
 import type { IngestEvent } from "./queue";
 
@@ -24,14 +25,17 @@ export function startIngest(): void {
   // typed, retryable error, and the ui reads `get_settings().ffmpeg_ok` for its banner
   if (!check(cli)) console.warn("ffmpeg/ffprobe not usable at startup; jobs will park until fixed");
 
-  // the settings override relocates only the pcm cache; data and state stay put
+  // the settings override relocates only the pcm/thumbs caches; data and state stay put
   const cacheDir = s.cache_dir ? join(s.cache_dir, "pcm") : pcmCacheDir();
+  const thumbsDir = thumbsDirFor(s.cache_dir);
   mkdirSync(cacheDir, { recursive: true });
+  mkdirSync(thumbsDir, { recursive: true });
 
   service = IngestService.start({
     db: db(),
     cli,
     cacheDir,
+    thumbsDir,
     modelsDir: modelsDir(),
     settingsAware: true,
     onEvent: forward,

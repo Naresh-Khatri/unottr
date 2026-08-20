@@ -13,7 +13,7 @@ export const keys = {
   DIARIZE_THRESHOLD: "diarize_threshold", // float, absent = engine default
   FFMPEG_PATH: "ffmpeg_path",
   FFPROBE_PATH: "ffprobe_path",
-  CACHE_DIR: "cache_dir", // overrides the pcm cache subdir only
+  CACHE_DIR: "cache_dir", // overrides the pcm/thumbs cache subdirs only
   AUTOSTART: "autostart", // "1" | "0"
   CLOSE_TO_TRAY: "close_to_tray", // "1" | "0", default "1"
   CLOSE_TO_TRAY_EXPLAINED: "close_to_tray_explained",

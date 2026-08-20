@@ -4,6 +4,8 @@ import { Readable } from "node:stream";
 import { protocol } from "electron";
 import { db } from "./db";
 import { recordingPath } from "./db/queries";
+import { load } from "./db/settings";
+import { PREVIEW_COUNT, previewPathFor, thumbPathFor, thumbsDirFor } from "./media/thumbs";
 
 export const MEDIA_SCHEME = "unottr";
 
@@ -25,25 +27,55 @@ const MIME_BY_EXT: Record<string, string> = {
 };
 
 /**
- * `unottr://media/<recording_id>`. The renderer names an id, never a path — which is what
- * deletes the whole asset-scope problem: it can only ask for recordings that exist.
+ * `unottr://media|thumb|preview/<recording_id>[/<index>]`. The renderer names an id, never a
+ * path — which is what deletes the whole asset-scope problem: it can only ask for recordings
+ * that exist.
  */
 export function registerMediaProtocol(): void {
   protocol.handle(MEDIA_SCHEME, (request) => {
     const url = new URL(request.url);
-    if (url.hostname !== "media") return plain(404, "not found");
-
-    const id = Number(url.pathname.slice(1));
-    if (!Number.isInteger(id) || id <= 0) return plain(400, "bad recording id");
-
-    const path = recordingPath(db(), id);
-    if (!path || !existsSync(path)) return plain(404, "not found");
-
-    // deliberately not net.fetch(file://): that answers a range request with a whole-file
-    // 200 and no Accept-Ranges, which chromium reads as "not seekable"
-    return fileResponse(path, request.headers.get("Range"));
+    switch (url.hostname) {
+      case "media":
+        return mediaResponse(request, url);
+      case "thumb":
+        return imageResponse(thumbFile(url));
+      case "preview":
+        return imageResponse(previewFile(url));
+      default:
+        return plain(404, "not found");
+    }
   });
 }
+
+function mediaResponse(request: Request, url: URL): Response {
+  const id = Number(url.pathname.slice(1));
+  if (!Number.isInteger(id) || id <= 0) return plain(400, "bad recording id");
+
+  const path = recordingPath(db(), id);
+  if (!path || !existsSync(path)) return plain(404, "not found");
+
+  // deliberately not net.fetch(file://): that answers a range request with a whole-file
+  // 200 and no Accept-Ranges, which chromium reads as "not seekable"
+  return fileResponse(path, request.headers.get("Range"));
+}
+
+/** `unottr://thumb/<id>` — missing until the ingest job's probe stage reaches it. */
+function thumbFile(url: URL): string | null {
+  const id = Number(url.pathname.slice(1));
+  return Number.isInteger(id) && id > 0 ? thumbPathFor(cacheThumbsDir(), id) : null;
+}
+
+/** `unottr://preview/<id>/<index>`, index in [0, PREVIEW_COUNT). */
+function previewFile(url: URL): string | null {
+  const [idStr, indexStr] = url.pathname.slice(1).split("/");
+  const id = Number(idStr);
+  const index = Number(indexStr);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  if (!Number.isInteger(index) || index < 0 || index >= PREVIEW_COUNT) return null;
+  return previewPathFor(cacheThumbsDir(), id, index);
+}
+
+const cacheThumbsDir = (): string => thumbsDirFor(load(db()).cache_dir);
 
 function fileResponse(path: string, range: string | null): Response {
   const size = statSync(path).size;
@@ -83,6 +115,15 @@ function fileResponse(path: string, range: string | null): Response {
       "Content-Range": `bytes ${start}-${end}/${size}`,
       "Accept-Ranges": "bytes",
     },
+  });
+}
+
+/** Small jpegs, always read whole — no range support needed at this size. */
+function imageResponse(path: string | null): Response {
+  if (!path || !existsSync(path)) return plain(404, "not found");
+  return new Response(body(createReadStream(path)), {
+    status: 200,
+    headers: { "Content-Type": "image/jpeg", "Content-Length": String(statSync(path).size) },
   });
 }
 

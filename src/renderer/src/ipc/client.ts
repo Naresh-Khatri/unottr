@@ -74,6 +74,16 @@ export const os = {
 /** `<video src>` for a recording. The renderer never handles a filesystem path. */
 export const mediaUrl = (recording_id: number): string => `unottr://media/${recording_id}`;
 
+/** Must match PREVIEW_COUNT in src/main/media/thumbs.ts. */
+export const PREVIEW_COUNT = 10;
+
+/** Cover frame, generated once video recordings finish probing. 404s until then. */
+export const thumbUrl = (recording_id: number): string => `unottr://thumb/${recording_id}`;
+
+/** One of PREVIEW_COUNT frames evenly spaced across the recording, for hover slideshows. */
+export const previewUrl = (recording_id: number, index: number): string =>
+  `unottr://preview/${recording_id}/${index}`;
+
 export function onJobProgress(cb: (p: JobProgress) => void): () => void {
   if (USE_MOCK) return mockEvents.job_progress(cb);
   return listen<JobProgress>("job_progress", cb);

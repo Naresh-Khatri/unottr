@@ -2,10 +2,10 @@
 // ffmpeg only ever writes the pcm we name.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { err } from "../errors";
+import { err, isCancelled } from "../errors";
 import type { AudioStream, Probe } from "./types";
 import { TARGET_SAMPLE_RATE } from "./types";
 
@@ -152,6 +152,78 @@ export async function extractPcm(cli: FfmpegCli, path: string, o: ExtractOptions
   }
 
   o.onProgress?.(1);
+}
+
+export interface ThumbnailOptions {
+  durationMs: number;
+  thumb: string;
+  previews: string[];
+  signal?: AbortSignal;
+}
+
+/**
+ * One cover frame (10% in — frame 0 is often black) plus `previews`, evenly spaced across the
+ * rest of the recording. Idempotent per file, like extractPcm. A single frame that fails to
+ * grab (e.g. a seek past a variable-framerate gap) is logged and skipped rather than failing
+ * the whole job — thumbnails are not on the critical path the way transcription is.
+ */
+export async function extractThumbnails(
+  cli: FfmpegCli,
+  path: string,
+  o: ThumbnailOptions,
+): Promise<void> {
+  throwIfAborted(o.signal);
+  await mkdir(dirname(o.thumb), { recursive: true });
+
+  const seconds = (f: number): number => (o.durationMs / 1000) * f;
+  const targets: { out: string; at: number; width: number }[] = [
+    { out: o.thumb, at: seconds(0.1), width: 320 },
+    ...o.previews.map((out, i) => ({
+      out,
+      at: seconds((i + 1) / (o.previews.length + 1)),
+      width: 160,
+    })),
+  ];
+
+  for (const t of targets) {
+    if (existsSync(t.out)) continue;
+    throwIfAborted(o.signal);
+    try {
+      await grabFrame(cli, path, t.at, t.width, t.out, o.signal);
+    } catch (e) {
+      if (isCancelled(e)) throw e;
+      console.warn(`thumbnail frame failed for ${path} at ${t.at}s: ${String(e)}`);
+    }
+  }
+}
+
+async function grabFrame(
+  cli: FfmpegCli,
+  path: string,
+  seconds: number,
+  width: number,
+  out: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const tmp = `${out}.tmp`;
+  const args = [
+    "-nostdin", "-v", "error", "-y",
+    "-ss", seconds.toFixed(3), "-i", path,
+    "-frames:v", "1", "-vf", `scale=${width}:-2`, "-q:v", "4",
+    tmp,
+  ];
+
+  const result = await run(cli.ffmpeg, args, { signal });
+  if (result.aborted) {
+    discard(tmp);
+    throw err.cancelled();
+  }
+  if (result.code !== 0) {
+    discard(tmp);
+    const lines = result.stderr.trim().split("\n").filter((l) => l !== "");
+    throw err.ffmpeg(`${path}: ${lines.at(-1) ?? "no output"}`);
+  }
+  renameSync(tmp, out);
 }
 
 /**
