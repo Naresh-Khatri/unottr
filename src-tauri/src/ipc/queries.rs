@@ -84,6 +84,10 @@ pub fn get_recording(conn: &Connection, id: i64) -> Result<Option<RecordingDetai
     Ok(Some(RecordingDetail { recording, segments, speakers }))
 }
 
+pub fn recording_path(conn: &Connection, id: i64) -> Result<String> {
+    Ok(conn.query_row("SELECT path FROM recordings WHERE id = ?1", [id], |r| r.get(0))?)
+}
+
 pub fn search(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchHit>> {
     // whole query as one phrase — keeps arbitrary user input out of fts5's query syntax
     let phrase = format!("\"{}\"", query.replace('"', "\"\""));

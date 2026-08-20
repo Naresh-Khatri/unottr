@@ -1,4 +1,5 @@
 pub mod ipc;
+#[cfg(target_os = "linux")]
 mod scope;
 mod tray;
 
@@ -149,6 +150,7 @@ pub fn run() {
             ipc::commands::clear_cache,
             ipc::commands::get_log_dir,
             ipc::commands::export_transcript,
+            ipc::commands::open_in_default_player,
         ])
         .setup(move |app| {
             let db = Database::open(paths.db_file())?;

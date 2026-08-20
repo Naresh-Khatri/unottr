@@ -249,6 +249,21 @@ pub fn get_log_dir(state: State<AppState>) -> CmdResult<String> {
     Ok(state.paths.logs_dir().to_string_lossy().into_owned())
 }
 
+/// Escape hatch for containers webkit's gstreamer can't decode (see `lib::gst`). Takes an
+/// id, not a path — the path is read back from the row here so the frontend can never hand
+/// an arbitrary path to the system opener. Deliberately not the `opener` plugin's own
+/// `open_path` command: its scope is static in capabilities and recording paths aren't
+/// known at build time, the same reason the asset protocol needs `scope.rs`.
+#[tauri::command(rename_all = "snake_case")]
+pub fn open_in_default_player(state: State<AppState>, recording_id: i64) -> CmdResult<()> {
+    let conn = connect(&state)?;
+    let path = queries::recording_path(&conn, recording_id).map_err(|e| e.to_string())?;
+    if !std::path::Path::new(&path).is_file() {
+        return Err(format!("{path} is not there any more"));
+    }
+    tauri_plugin_opener::open_path(&path, None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Renders and writes in one call — `dest_path` comes from a native save dialog on the
 /// frontend, never picked automatically, so there's no surprise sidecar file (06-settings-
 /// and-shell.md). Serialization itself lives in `unottr_core::export` and is unit-tested
