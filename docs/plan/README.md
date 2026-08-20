@@ -1,26 +1,32 @@
 # unottr — build plan
 
-Eight phases. Each is a separate file and is meant to be completed and verified before
-the next one starts. Phases 01–03 are deliverable and testable **without any UI** — they
-are driven by the `unottr` CLI built in phase 00, against the real recordings already on
-this machine.
+**Current plan: [08-typescript-migration.md](08-typescript-migration.md).** Everything
+before it is superseded history — phases 00–07 describe a Rust/Tauri app that no longer
+exists. They are kept because they are where each behaviour the TypeScript app must
+reproduce was decided and measured, and because the fixtures they produced are still what
+the port is checked against.
 
-| Phase | File | Outcome |
-|---|---|---|
-| 00 | [00-foundations.md](00-foundations.md) | Workspace, DB + migrations, config, logging, CLI harness |
-| 01 | [01-media-pipeline.md](01-media-pipeline.md) | Probe any file, pick audio track, extract 16k mono PCM |
-| 02 | [02-transcription.md](02-transcription.md) | whisper.cpp + Vulkan, chunked with checkpoints, model manager |
-| 03 | [03-diarization.md](03-diarization.md) | sherpa-onnx speakers, merged onto the transcript |
-| 04 | [04-ingest.md](04-ingest.md) | Watcher, job queue, crash recovery, backfill, file identity |
-| 05 | [05-ui.md](05-ui.md) | Recordings list, transcript view, video player, search |
-| 06 | [06-settings-and-shell.md](06-settings-and-shell.md) | Settings, tray, autostart, first-run, export |
-| 07 | [07-hardening-and-packaging.md](07-hardening-and-packaging.md) | Failure handling, perf pass, AppImage |
+| Phase | File | Outcome | State |
+|---|---|---|---|
+| 00 | [00-foundations.md](00-foundations.md) | Workspace, DB + migrations, config, logging, CLI harness | superseded |
+| 01 | [01-media-pipeline.md](01-media-pipeline.md) | Probe any file, pick audio track, extract 16k mono PCM | superseded |
+| 02 | [02-transcription.md](02-transcription.md) | whisper.cpp + Vulkan, chunked with checkpoints, model manager | superseded |
+| 03 | [03-diarization.md](03-diarization.md) | sherpa-onnx speakers, merged onto the transcript | superseded |
+| 04 | [04-ingest.md](04-ingest.md) | Watcher, job queue, crash recovery, backfill, file identity | superseded |
+| 05 | [05-ui.md](05-ui.md) | Recordings list, transcript view, video player, search | superseded |
+| 06 | [06-settings-and-shell.md](06-settings-and-shell.md) | Settings, tray, autostart, first-run, export | superseded |
+| 07 | [07-hardening-and-packaging.md](07-hardening-and-packaging.md) | Failure handling, perf pass, AppImage | superseded |
+| 08 | [08-typescript-migration.md](08-typescript-migration.md) | Tauri/Rust -> Electron/TypeScript, `crates/` deleted | **current** |
+
+The decisions in 00–07 still hold; only their implementation moved. Where a superseded
+phase and phase 08 disagree about *how* something is done, phase 08 wins — where they
+disagree about *what* the app does, that is a porting bug.
 
 ## Working agreements
 
-- **Verification is non-build**: `cargo check`, `cargo clippy`, `cargo test`, `tsc --noEmit`,
-  lint. Nobody runs `cargo build --release` or `pnpm build` to "check" something.
-- **Dev runs are yours.** No agent starts `pnpm tauri dev` or any dev server.
+- **Verification is non-build**: `pnpm typecheck`, `pnpm test`. Nobody runs `pnpm build` or
+  `pnpm dist` to "check" something.
+- **Dev runs are yours.** No agent starts `pnpm dev` or any dev server.
 - **The corpus is real.** ~10 OBS recordings in `/home/naresh` (0.6–1.8 GB, single AAC
   stereo track, 48 kHz). Every phase from 01 on is validated against these, not synthetic
   fixtures alone.

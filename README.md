@@ -27,8 +27,8 @@ cache.
 
 - **Linux** (v1 target; the stack is written to keep macOS/Windows open later, see
   DESIGN.md).
-- **ffmpeg / ffprobe** — bundled in the AppImage (LGPL build, see below); the tarball/AUR
-  build expects them on `PATH`.
+- **ffmpeg / ffprobe** — bundled in the AppImage (LGPL build, see below); a dev run picks
+  them up from `resources/bin/` or `PATH`.
 - A GPU with a Vulkan driver is used automatically if present (whisper.cpp's Vulkan
   backend); otherwise it falls back to CPU — see DESIGN.md's *Vulkan packaging* and
   *Measured performance* sections for what that costs in practice (CPU is viable, just
@@ -36,28 +36,30 @@ cache.
 - First run downloads a whisper model (~150 MB–575 MB depending on tier) and two small
   diarization models (~35 MB total); everything after that is offline.
 
-## Building / packaging
+## Developing
 
 ```sh
 pnpm install
-pnpm tauri build              # AppImage, system ffmpeg only
-
-scripts/fetch-ffmpeg.sh       # fetch the LGPL ffmpeg/ffprobe used by packaging (not
-                               # checked into git — ~220 MB, see THIRD-PARTY.md)
-pnpm tauri build              # AppImage with ffmpeg bundled inside
+pnpm dev                      # electron-vite: main, preload and renderer, all hot-reloaded
+pnpm typecheck                # five tsconfig projects
+pnpm test                     # vitest; the *.integration.test.ts files need real models
 ```
 
-In some sandboxed build environments, `pnpm tauri build`'s own final AppImage step fails
-with an opaque `failed to run linuxdeploy` even though the AppDir was assembled correctly
-(cargo build, resource copy, and linuxdeploy's own library deployment all succeed) and the
-exact same cached `linuxdeploy-plugin-appimage` tool runs fine invoked directly. If that
-happens, `scripts/build-appimage.sh` retries `pnpm tauri build` and, on that specific
-failure, packages the already-assembled AppDir by hand with the same cached tool — no code
-changes needed, just a different final step.
+Native code is all prebuilt npm packages (whisper, sherpa-onnx, better-sqlite3), so there
+is no compiler step and no rebuild-for-electron — every one of them is N-API.
 
-If AppImage tooling (`linuxdeploy` et al., fetched by the Tauri bundler on first build)
-can't be downloaded at all, `cargo build --release` still produces a working binary; pair
-it with `scripts/package-tarball.sh` for a plain tarball you can run without the AppImage.
+## Packaging
+
+```sh
+scripts/fetch-ffmpeg.sh         # LGPL ffmpeg/ffprobe -> resources/bin (~220 MB, not in git)
+scripts/fetch-vulkan-loader.sh  # libvulkan.so.1 -> resources/lib (the loader only, never an ICD)
+pnpm dist                       # electron-vite build + electron-builder -> release/*.AppImage
+```
+
+Both fetch scripts are required: without ffmpeg every job parks on a typed error, and
+without the Vulkan loader the whisper addon will not load at all on a machine that has no
+driver installed (it does not degrade to CPU on its own — see DESIGN.md's *Vulkan
+packaging*).
 
 See `THIRD-PARTY.md` for what's bundled and its licensing, `DESIGN.md` for the
 architecture and measured performance, and `MANUAL-CHECKS.md` for the checks that need a

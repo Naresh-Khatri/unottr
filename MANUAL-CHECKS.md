@@ -1,8 +1,8 @@
 # Manual checks — phase 05, 06 & 07
 
-`cargo check`/`clippy`/`test` and `tsc --noEmit` are clean, but none of that runs the app.
-These need a live `pnpm tauri dev` (or a built app) against a real recording. Checklist
-mirrors the acceptance criteria in `docs/plan/05-ui.md`.
+`pnpm typecheck` and `pnpm test` are clean, but none of that runs the app. These need a
+live `pnpm dev` (or a packaged AppImage) against a real recording. Checklist mirrors the
+acceptance criteria in `docs/plan/05-ui.md`, re-pointed at the Electron app by phase 08.
 
 ## Ingest / watch folders
 
@@ -31,9 +31,13 @@ mirrors the acceptance criteria in `docs/plan/05-ui.md`.
 
 ## Video playback
 
-- [ ] Open a `done` recording added **after app launch** (i.e. its folder was added at
-      runtime, not present in `tauri.conf.json`'s static scope) — video actually loads and
-      plays. This is the classic Tauri v2 asset-scope trap; confirm it doesn't 403/blank.
+- [ ] Open a `done` recording added **after app launch** — video actually loads and plays
+      over `unottr://media/<id>`. Also seek backwards in a long file: the protocol handler
+      must answer the range request with a 206, so a blank frame or a player that refuses
+      to scrub means the range path is wrong, not the codec.
+- [ ] Open a recording whose container the old WebKitGTK build could not play (H.264/AAC
+      `.mp4` on a machine with no GStreamer plugins installed). Chromium ships its own
+      decoders, so this is the check that the reason for the migration actually holds.
 - [ ] Click a segment in the transcript -> video seeks to that segment's start accurately
       (within ~1 frame/scrub granularity).
 - [ ] Play the video -> the active segment highlight tracks playback and the list auto-scrolls
@@ -84,10 +88,6 @@ mirrors the acceptance criteria in `docs/plan/05-ui.md`.
       down ingest service" followed by the worker's checkpoint log, in that order).
 - [ ] Relaunch -> the in-progress recording resumes from that checkpoint instead of restarting.
 
-## Settings persistence (phase 06)
-
-- [ ] Change model tier / language / device / diarize threshold in Settings, then drop a new
-      file in a watch folder. The next job picks up the new value with **no app restart**
 ## Resource meters (sidebar footer)
 
 - [ ] With the app idle, CPU and GPU sit low and both bars move on their own every ~1.5s.
@@ -105,6 +105,10 @@ mirrors the acceptance criteria in `docs/plan/05-ui.md`.
 - [ ] Minimize to tray, wait a minute, restore: numbers resume immediately and no polling
       happened while hidden (check the main-process log / CPU of the app while minimized).
 
+## Settings persistence (phase 06)
+
+- [ ] Change model tier / language / device / diarize threshold in Settings, then drop a new
+      file in a watch folder. The next job picks up the new value with **no app restart**
       (confirm in logs — no restart happened, and the pipeline config reflects the change).
 - [ ] Set an ffmpeg/ffprobe path override or a cache location override in Settings, then
       restart the app. Only *after* restart does the new path/location actually take effect
@@ -190,16 +194,15 @@ mirrors the acceptance criteria in `docs/plan/05-ui.md`.
       shows the recording as unavailable).
 - [ ] **Two instances started at once.** Launch the AppImage/binary twice in a row. The
       second launch does not open a second window or a second DB connection — it focuses
-      the existing window (`tauri-plugin-single-instance`) and exits. Confirm only one
+      the existing window (`app.requestSingleInstanceLock`) and exits. Confirm only one
       `unottr` process remains and there's no `database is locked` / WAL contention in logs.
 - [ ] **A multi-hour recording.** Feed a 4+ hour file through the pipeline. Confirm: memory
       stays bounded (checkpointed per-chunk, not held in memory), the segment count doesn't
       blow up the recordings list UI (virtualized/paginated), and diarization (global
       clustering over the whole recording) still finishes in a reasonable multiple of
       realtime.
-- [ ] **AppImage on a clean machine.** Copy just the `.AppImage` (or the tarball fallback,
-      whichever packaging succeeded — see below) to a machine with no Rust/Node toolchain
-      and no system ffmpeg, and confirm it runs and transcribes end to end.
+- [ ] **AppImage on a clean machine.** Copy just the `.AppImage` to a machine with no Node
+      toolchain and no system ffmpeg, and confirm it runs and transcribes end to end.
 - [ ] **No-Vulkan fallback on a clean machine.** Run the packaged app on a machine with no
       Vulkan driver installed (or hide the loader per DESIGN.md's *Vulkan packaging*
       section) and confirm it falls back to CPU rather than crashing or hanging.

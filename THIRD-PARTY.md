@@ -15,24 +15,42 @@ cosmetic. Full license text ships alongside the binaries as `ffmpeg-LICENSE.txt`
 
 Source: <https://github.com/BtbN/FFmpeg-Builds>. Upstream project: <https://ffmpeg.org>.
 
-If a system `ffmpeg`/`ffprobe` is used instead (the tarball/AUR path, decision #21's
-non-primary artifact), its license is whatever that system package carries — not unottr's
-concern, since nothing is bundled in that case.
+If a system `ffmpeg`/`ffprobe` is used instead (a dev run, or an override set in Settings),
+its license is whatever that system package carries — not unottr's concern, since nothing
+is bundled in that case.
 
-## whisper.cpp / whisper-rs — MIT
+## Vulkan loader (`libvulkan.so.1`) — Apache License 2.0
 
-Speech-to-text (decision #8). [whisper.cpp](https://github.com/ggml-org/whisper.cpp) and
-its Rust bindings [whisper-rs](https://github.com/tazz4843/whisper-rs) are both MIT.
-Statically linked into the `unottr`/`unottr-cli` binaries; no separate notice file ships,
-per MIT's terms (this file *is* the notice).
+The AppImage bundles the vendor-neutral
+[Vulkan-Loader](https://github.com/KhronosGroup/Vulkan-Loader), staged by
+`scripts/fetch-vulkan-loader.sh` from the build machine's own copy. **Only the loader** —
+never an ICD (a vendor driver), which is what would drag in vendor licensing and pin users
+to one GPU. See DESIGN.md's *Vulkan packaging* for why it has to ship at all.
 
-## sherpa-onnx / sherpa-rs — Apache License 2.0
+## whisper.cpp — MIT
+
+Speech-to-text (decision #8). [whisper.cpp](https://github.com/ggml-org/whisper.cpp) is
+MIT, and so are the Node bindings
+[`@fugood/whisper.node`](https://github.com/whisper-node/whisper.node) and its
+`@fugood/node-whisper-linux-x64-vulkan` prebuild, which ships as a `.node` addon inside the
+AppImage. No separate notice file ships, per MIT's terms (this file *is* the
+notice).
+
+## sherpa-onnx — Apache License 2.0
 
 Speaker diarization (segmentation + embedding + clustering primitives, decision #9).
-[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) and its Rust bindings
-[sherpa-rs](https://github.com/thewh1teagle/sherpa-rs) are both Apache-2.0. The rejoin/
-prune clustering on top (see DESIGN.md's *Diarization*) is unottr's own code, MIT like the
-rest of this repo.
+[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) is Apache-2.0, as are its
+`sherpa-onnx-node` bindings and the `sherpa-onnx-linux-x64` prebuild bundled in the
+AppImage (which carries ONNX Runtime, also MIT). The rejoin/prune clustering on top (see
+DESIGN.md's *Diarization*) is unottr's own code, MIT like the rest of this repo.
+
+## Electron, Chromium and the npm dependency tree — MIT / BSD
+
+The app ships on [Electron](https://github.com/electron/electron) (MIT), which embeds
+Chromium (BSD-3-Clause and the licenses listed in its own `LICENSES.chromium.html`, shipped
+inside the AppImage) and Node.js (MIT). Runtime npm dependencies — React, drizzle-orm,
+better-sqlite3, chokidar, electron-log and the UI libraries — are MIT or ISC; `pnpm licenses
+list --prod` prints the current set.
 
 ## Models (downloaded on first use, not bundled)
 

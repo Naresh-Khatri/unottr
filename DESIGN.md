@@ -1,6 +1,6 @@
 # unottr — v1 design
 
-A Tauri desktop app that watches folders for meeting recordings and transcribes them
+An Electron desktop app that watches folders for meeting recordings and transcribes them
 locally with speaker diarization. No cloud, no accounts, no LLM.
 
 ## Settled decisions
@@ -12,9 +12,9 @@ locally with speaker diarization. No cloud, no accounts, no LLM.
 | 3 | Input | Any container ffmpeg reads; no conventions forced on users |
 | 4 | Diarization bar | Anonymous speakers + per-recording rename |
 | 5 | Speed | Batch background job |
-| 6 | Shell | Tauri v2 |
-| 8 | ASR | whisper.cpp (whisper-rs), Vulkan backend |
-| 9 | Diarization | sherpa-onnx (no Python) |
+| 6 | Shell | Electron 43 (was Tauri v2 — see *Why Electron* below) |
+| 8 | ASR | whisper.cpp via `@fugood/whisper.node` + the `-linux-x64-vulkan` prebuild |
+| 9 | Diarization | sherpa-onnx via `sherpa-onnx-node` + `sherpa-onnx-linux-x64` (no Python) |
 | 10 | Ingest | Dedicated watch folders, 3-stage completion check, prompted backfill |
 | 12 | Playback | Video, click-to-seek |
 | 13 | Real-time | Out of v1; pipeline chunked so it drops in later |
@@ -25,41 +25,59 @@ locally with speaker diarization. No cloud, no accounts, no LLM.
 | 18 | Queue | Serial worker, per-chunk checkpointing |
 | 19 | Failures | Inline row status + retry; GPU OOM auto-retries on CPU |
 | 20 | Background | Tray icon, close keeps watching, opt-in autostart |
-| 21 | Deps | System ffmpeg behind a trait; AppImage + bundled LGPL ffmpeg to distribute |
-| 22 | Identity | Path + cheap fingerprint; transcripts outlive deleted videos |
+| 21 | Deps | ffmpeg behind one module (bundled copy first, then PATH); AppImage + bundled LGPL ffmpeg to distribute. Playback is Chromium's own decoders, so no GStreamer |
+| 22 | Identity | Path + cheap fingerprint — size + sha256 of the first and last 1 MiB (was blake3; `node:crypto` costs no dependency and both are 32 bytes, so the schema is unchanged); transcripts outlive deleted videos |
 | 23 | Embeddings | pyannote seg-3.0 + 3D-Speaker CAM++ (`campplus-zh-en`, 192-dim) |
 | 24 | Clustering | Unknown speaker count; two-stage fragment + average-linkage, see *Diarization* |
 
 ## Architecture
 
 ```
-+------------- Tauri app (single process) --------------+
-|  React + Vite UI  <-- IPC/events -->  Rust core       |
-|                                       |- watcher      |
-|                                       |- job queue    |
-|                                       |- pipeline     |
-|                                       +- SQLite       |
-+-------------------------------------------------------+
-        |                  |                    |
-     ffmpeg          whisper.cpp           sherpa-onnx
-  (subprocess)    (whisper-rs, Vulkan)  (segment + embed)
++--- renderer (Chromium) ---+       +--- main process (node) ----+
+|  React + Vite UI          | <---> |  ipc handlers, events      |
+|  <video> on unottr://     |  ipc  |  watcher, job queue        |
++---------------------------+       |  SQLite (better-sqlite3)   |
+                                    +----------------------------+
+                                       |                  | fork
+                                    ffmpeg        +--- utilityProcess ---+
+                                  (subprocess)    | transcribe, diarize, |
+                                                  | merge — per job      |
+                                                  +----------------------+
+                                                     |              |
+                                               whisper.cpp     sherpa-onnx
+                                             (napi, Vulkan)  (segment + embed)
 ```
 
-Two Rust crates:
+Three source trees, one package:
 
-- **`unottr-core`** — all logic: probe, extract, transcribe, diarize, merge, db, queue.
-  No Tauri dependency, so it is testable headless and drivable from a CLI.
-- **`src-tauri`** — thin shell: IPC commands, events, tray, window, settings plumbing.
+- **`src/main`** — everything stateful: db, watcher, queue, ipc, tray, window. Nothing here
+  imports React; the pipeline modules avoid `electron` imports so tests can drive them
+  headless.
+- **`src/worker`** — the compute half: transcribe, diarize, merge. Forked as a
+  `utilityProcess` per job, so a native crash kills one job and not the app.
+- **`src/renderer`** — the UI, which sees only the typed ipc client and `unottr://` media
+  urls. It never handles a filesystem path.
+
+### Why Electron
+
+Tauri v2 shipped v1 up to phase 07 and worked. It was replaced for one reason: playback.
+WebKitGTK decodes through the host's GStreamer plugins, so `<video>` on a real recording
+depended on which codecs the user's distro happened to install — and bundling GStreamer to
+fix that costs more than Chromium does. Electron carries its own decoders, which removes
+the whole class of problem. The second-order win is a single language: the pipeline, the
+shell and the UI are all TypeScript, so there is one toolchain and one test runner.
 
 ## Pipeline
 
 Each stage is a persisted queue state, so a crash resumes at a boundary.
 
-1. **Discover** — inotify `CLOSE_WRITE`, then size-stable 10s, then `ffprobe` parses.
-   All three must pass before queueing.
+1. **Discover** — chokidar's `awaitWriteFinish` (writer stopped and the size held still),
+   then a second size-stable poll, then `ffprobe` parses **and reports a duration**. All
+   must pass before queueing; the duration check is the one that catches a file the OS
+   already called finished.
 2. **Probe** — duration, container, audio stream list. Apply the track rule.
 3. **Extract** — ffmpeg -> 16 kHz mono s16le PCM in cache (~115 MB/hour, deleted after).
-4. **Transcribe** — whisper-rs over ~30s VAD-aligned chunks. Each completed chunk is
+4. **Transcribe** — whisper.cpp over ~30s VAD-aligned chunks. Each completed chunk is
    written to the DB immediately. This is the checkpoint.
 5. **Diarize** — sherpa-onnx segmentation + embeddings, clustered over the **entire**
    recording. Deliberately not chunked: clustering is global.
@@ -97,11 +115,30 @@ settings(key, value)
 - **Whisper hallucination on silence** — VAD gating in stage 4 is required, not optional.
 - **Truncated `.mp4`** from OBS crashes fails at stage 1's ffprobe check. Correct
   behaviour; those files are genuinely unrecoverable.
+- **Silero VAD must run on CPU** (`useGpu: false`). On the Vulkan backend it aborts from
+  inside ggml — a SIGABRT, not a catchable exception, so it takes the process with it. Only
+  the VAD is pinned; transcription still runs on the GPU. This is on its own the reason
+  compute runs in a forked `utilityProcess` rather than in main.
+- **Three time units cross the native boundary.** whisper's `transcribe()` returns
+  **milliseconds**, its VAD returns **centiseconds**, and sherpa's `process()` returns
+  **seconds as floats**. Mixing any two is silently wrong by 10× or 100×, and the output
+  still looks plausible. Rule: conversion happens at the native call site and nowhere else;
+  everything crossing a module boundary is milliseconds.
+- **`onProgress` from whisper fires only 0 and 100**, and sherpa has no progress callback
+  at all. Job progress is derived from completed chunks over total chunks; the diarize
+  stage reports a stage change and then nothing until it returns.
 
 ## Vulkan packaging
 
-Resolved by the phase 02 spike. `GGML_BACKEND_DL` is **unreachable** through `whisper-rs`
-and turns out to be unnecessary.
+Resolved by the phase 02 spike, and unchanged by the move to Node: the prebuilt
+`@fugood/node-whisper-linux-x64-vulkan` addon has the same hard `DT_NEEDED libvulkan.so.1`,
+plus a `RUNPATH` pointing at its build machine's SDK. `scripts/fetch-vulkan-loader.sh`
+stages the loader and `electron-builder.yml` puts it next to the electron binary, which is
+on the AppImage's `LD_LIBRARY_PATH` — `LD_LIBRARY_PATH` is read at process start, so no
+amount of `process.env` from js would do it.
+
+The phase 02 findings, kept because they are why the conclusion is what it is.
+`GGML_BACKEND_DL` was **unreachable** through `whisper-rs` and turns out to be unnecessary.
 
 Why unreachable:
 
