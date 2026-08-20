@@ -18,6 +18,14 @@ export function dateLabel(unixSeconds: number | null): string {
   });
 }
 
+/** Companion to dateLabel — the two together disambiguate same-day recordings. */
+export function timeLabel(unixSeconds: number | null): string {
+  if (!unixSeconds) return "";
+  return new Date(unixSeconds * 1000).toLocaleTimeString(undefined, {
+    hour: "numeric", minute: "2-digit",
+  });
+}
+
 export function bytesLabel(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB", "TB"];

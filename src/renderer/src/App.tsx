@@ -61,7 +61,7 @@ export default function App() {
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {view.screen === "library" && (
             <RecordingsList
-              onOpen={(id) => setView({ screen: "transcript", id, ms: 0 })}
+              onOpen={(id, ms) => setView({ screen: "transcript", id, ms: ms ?? 0 })}
               onOpenSettings={() => setView({ screen: "settings" })}
             />
           )}

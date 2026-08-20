@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
-import { ArrowClockwise, FolderOpen, Gear, Users } from "@phosphor-icons/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ArrowClockwise, FileX, FilmSlate, FolderOpen, Gear, Play, Users, Waveform,
+} from "@phosphor-icons/react";
 import {
   api, onJobDone, onJobFailed, onJobProgress, onRecordingDiscovered,
   PREVIEW_COUNT, previewUrl, thumbUrl,
 } from "@/ipc/client";
-import type { RecordingSummary, Status, WatchFolder } from "@/ipc/types";
+import type { RecordingSummary, WatchFolder } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
-import { dateLabel, durationLabel } from "@/lib/format";
+import { dateLabel, durationLabel, hms, timeLabel } from "@/lib/format";
 import { errorInfo } from "@/lib/errors";
+import { cn } from "@/lib/utils";
 import { useVirtual } from "@/lib/virtual";
 import { StatusChip } from "@/ui/StatusChip";
 import { Button } from "@/components/ui/button";
@@ -17,46 +20,94 @@ import {
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-const ROW_ESTIMATE = 56; // measured hook corrects this once rows with progress/error mount
+const ROW_ESTIMATE = 72; // measured hook corrects this once rows with progress/error mount
 const COLS = 7;
 
+const TILE = "relative aspect-video w-24 shrink-0 overflow-hidden rounded-md border bg-muted";
+
+/** Preview i sits at (i+1)/(PREVIEW_COUNT+1) of the file — mirrors extractThumbnails' spacing. */
+const frameMs = (durationMs: number, i: number): number =>
+  (durationMs * (i + 1)) / (PREVIEW_COUNT + 1);
+
 /**
- * Cover frame at rest; hovering cycles the PREVIEW_COUNT frames as a slideshow. `status` is
- * only read to reset `available` on each stage change — thumbnails land during probing, so a
- * freshly discovered row's first paint 404s and should retry once the job moves past it.
+ * Cover frame at rest; sliding the pointer across the tile scrubs the PREVIEW_COUNT frames and
+ * a click opens the transcript at the frame under the cursor. `row.status` is only read to reset
+ * `available` on each stage change — thumbnails land during probing, so a freshly discovered
+ * row's first paint 404s and should retry once the job moves past it.
  */
-function Thumbnail({ id, hasVideo, status }: { id: number; hasVideo: boolean; status: Status }) {
-  const [hovering, setHovering] = useState(false);
-  const [frame, setFrame] = useState(0);
+function Preview({ row, onOpenAt }: { row: RecordingSummary; onOpenAt: (ms: number) => void }) {
+  const [frame, setFrame] = useState<number | null>(null); // null = not scrubbing
   const [available, setAvailable] = useState(true);
+  const warmed = useRef(false);
 
-  useEffect(() => setAvailable(true), [status]);
+  useEffect(() => setAvailable(true), [row.status]);
 
-  useEffect(() => {
-    if (!hovering) return;
-    setFrame(0);
-    const t = setInterval(() => setFrame((f) => (f + 1) % PREVIEW_COUNT), 450);
-    return () => clearInterval(t);
-  }, [hovering]);
+  if (!row.has_video || !available) return <Placeholder row={row} />;
 
-  if (!hasVideo || !available) {
-    return <div className="size-10 shrink-0 rounded-md bg-muted" />;
-  }
+  const at = frame === null ? 0 : frameMs(row.duration_ms ?? 0, frame);
 
   return (
-    <img
-      src={hovering ? previewUrl(id, frame) : thumbUrl(id)}
-      alt=""
-      className="size-10 shrink-0 rounded-md bg-muted object-cover"
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      onError={(e) => {
-        // a preview 404 mid-slideshow just holds the cover frame instead of a broken-image
-        // icon; the cover frame itself missing is what actually hides the cell
-        if (hovering) (e.target as HTMLImageElement).src = thumbUrl(id);
-        else setAvailable(false);
+    <div
+      className={cn(TILE, "cursor-ew-resize ring-ring/60 transition-shadow group-hover/row:ring-2")}
+      onPointerEnter={() => {
+        // scrubbing has to feel instant, so pull every frame into the cache on first hover
+        if (warmed.current) return;
+        warmed.current = true;
+        for (let i = 0; i < PREVIEW_COUNT; i++) new Image().src = previewUrl(row.id, i);
       }}
-    />
+      onPointerMove={(e) => {
+        const box = e.currentTarget.getBoundingClientRect();
+        const i = Math.floor(((e.clientX - box.left) / box.width) * PREVIEW_COUNT);
+        setFrame(Math.min(PREVIEW_COUNT - 1, Math.max(0, i)));
+      }}
+      onPointerLeave={() => setFrame(null)}
+      onClick={(e) => {
+        e.stopPropagation(); // the row itself opens at 0:00
+        onOpenAt(at);
+      }}
+    >
+      <img
+        src={frame === null ? thumbUrl(row.id) : previewUrl(row.id, frame)}
+        alt=""
+        draggable={false}
+        className="size-full object-cover"
+        onError={(e) => {
+          // a preview 404 mid-scrub just holds the cover frame instead of a broken-image icon;
+          // the cover frame itself missing is what falls back to the placeholder
+          if (frame !== null) (e.target as HTMLImageElement).src = thumbUrl(row.id);
+          else setAvailable(false);
+        }}
+      />
+      <div className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover/row:opacity-100">
+        <div className="flex items-center gap-1 p-1">
+          <Play weight="fill" className="size-2.5 shrink-0 text-white" />
+          {frame !== null && row.duration_ms ? (
+            <span className="text-[10px] font-medium tabular-nums text-white">{hms(at)}</span>
+          ) : null}
+        </div>
+      </div>
+      {frame !== null && (
+        <div className="pointer-events-none absolute inset-x-1 bottom-1 flex gap-px">
+          {Array.from({ length: PREVIEW_COUNT }, (_, i) => (
+            <span
+              key={i}
+              className={cn("h-0.5 flex-1 rounded-full", i <= frame ? "bg-white" : "bg-white/35")}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Same footprint as the real tile, so a mixed list stays on one grid. */
+function Placeholder({ row }: { row: RecordingSummary }) {
+  const waiting = row.has_video && (row.status === "discovered" || IN_FLIGHT.includes(row.status));
+  const Icon = !row.available ? FileX : row.has_video ? FilmSlate : Waveform;
+  return (
+    <div className={cn(TILE, "grid place-items-center border-dashed", waiting && "animate-pulse")}>
+      <Icon className="size-4 text-muted-foreground" />
+    </div>
   );
 }
 
@@ -101,7 +152,7 @@ function RetryAction({ row, onRetried }: { row: RecordingSummary; onRetried: () 
 }
 
 export function RecordingsList({ onOpen, onOpenSettings }: {
-  onOpen: (id: number) => void;
+  onOpen: (id: number, ms?: number) => void;
   onOpenSettings: () => void;
 }) {
   const [rows, setRows] = useState<RecordingSummary[]>([]);
@@ -152,7 +203,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-14" />
+                  <TableHead className="w-28" />
                   <TableHead>Name</TableHead>
                   <TableHead className="w-28">Recorded</TableHead>
                   <TableHead className="w-20 text-right">Length</TableHead>
@@ -167,9 +218,14 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                   const idx = virtual.start + i;
                   const live = IN_FLIGHT.includes(r.status);
                   return (
-                    <TableRow key={r.id} ref={virtual.measureRef(idx)} onClick={() => onOpen(r.id)} className="cursor-pointer">
+                    <TableRow
+                      key={r.id}
+                      ref={virtual.measureRef(idx)}
+                      onClick={() => onOpen(r.id)}
+                      className="group/row cursor-pointer"
+                    >
                       <TableCell>
-                        <Thumbnail id={r.id} hasVideo={r.has_video} status={r.status} />
+                        <Preview row={r} onOpenAt={(ms) => onOpen(r.id, ms)} />
                       </TableCell>
                       <TableCell className="max-w-0">
                         <div className="truncate font-medium">{r.filename}</div>
@@ -197,7 +253,9 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                         })()}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {dateLabel(r.recorded_at)}
+                        <div>{dateLabel(r.recorded_at)}</div>
+                        {/* several recordings a day is the norm; the date alone can't tell them apart */}
+                        <div className="text-xs tabular-nums">{timeLabel(r.recorded_at)}</div>
                       </TableCell>
                       <TableCell className="text-right text-sm text-muted-foreground tabular-nums">
                         {durationLabel(r.duration_ms)}
