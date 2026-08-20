@@ -1,0 +1,111 @@
+// Greenfield port of crates/unottr-core/src/db/migrations.rs. V1+V2+V4 are folded in —
+// V3 was a one-time status rewrite for pre-contract rows and has nothing to rewrite here.
+// segments_fts and its three triggers live in drizzle/0001_fts.sql: drizzle-kit cannot
+// introspect or generate an fts5 virtual table, and `push` would propose dropping them.
+
+import { sql } from "drizzle-orm";
+import { blob, index, integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+
+/** The frozen state machine (05-ipc-contract.md). */
+export const STATUSES = [
+  "discovered",
+  "probing",
+  "extracting",
+  "transcribing",
+  "diarizing",
+  "merging",
+  "done",
+  "failed",
+] as const;
+
+export type Status = (typeof STATUSES)[number];
+
+export const TERMINAL: Status[] = ["done", "failed"];
+
+export const recordings = sqliteTable(
+  "recordings",
+  {
+    id: integer("id").primaryKey(),
+    path: text("path").notNull().unique(),
+    fpSize: integer("fp_size").notNull(),
+    fpHead: blob("fp_head", { mode: "buffer" }).notNull(),
+    fpTail: blob("fp_tail", { mode: "buffer" }).notNull(),
+    container: text("container"),
+    durationMs: integer("duration_ms"),
+    recordedAt: integer("recorded_at"),
+    status: text("status").$type<Status>().notNull(),
+    stageDetail: text("stage_detail"),
+    /** typed-error slug, set when status = 'failed' */
+    error: text("error"),
+    attempts: integer("attempts").notNull().default(0),
+    lastChunkIdx: integer("last_chunk_idx"),
+    available: integer("available").notNull().default(1),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    /** sticky "whisper OOM'd on the gpu for this file, use cpu" flag (decision #19) */
+    forceCpu: integer("force_cpu").notNull().default(0),
+  },
+  (t) => [
+    index("idx_recordings_status").on(t.status),
+    index("idx_recordings_fp").on(t.fpSize, t.fpHead),
+  ],
+);
+
+export const speakers = sqliteTable(
+  "speakers",
+  {
+    id: integer("id").primaryKey(),
+    recordingId: integer("recording_id")
+      .notNull()
+      .references(() => recordings.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    displayName: text("display_name"),
+    /** never crosses ipc */
+    embedding: blob("embedding", { mode: "buffer" }),
+  },
+  (t) => [unique().on(t.recordingId, t.label)],
+);
+
+export const segments = sqliteTable(
+  "segments",
+  {
+    id: integer("id").primaryKey(),
+    recordingId: integer("recording_id")
+      .notNull()
+      .references(() => recordings.id, { onDelete: "cascade" }),
+    chunkIdx: integer("chunk_idx").notNull(),
+    startMs: integer("start_ms").notNull(),
+    endMs: integer("end_ms").notNull(),
+    text: text("text").notNull(),
+    /** json Word[] */
+    words: text("words"),
+    speakerId: integer("speaker_id").references(() => speakers.id, { onDelete: "set null" }),
+    /** back-pointer to the whisper row diarization split, so re-running can't split twice */
+    splitOf: integer("split_of"),
+  },
+  (t) => [
+    index("idx_segments_recording").on(t.recordingId, t.startMs),
+    index("idx_segments_chunk").on(t.recordingId, t.chunkIdx),
+    index("idx_segments_split").on(t.recordingId, t.splitOf),
+  ],
+);
+
+export const watchFolders = sqliteTable("watch_folders", {
+  id: integer("id").primaryKey(),
+  path: text("path").notNull().unique(),
+  /** "auto" or a JSON-serialized TrackRule — stored verbatim, parsed at the call site */
+  trackRule: text("track_rule").notNull().default("auto"),
+  enabled: integer("enabled").notNull().default(1),
+});
+
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
+/**
+ * Correlated subquery, not a groupBy join — a recording with no speakers still has to appear.
+ * Names written out: drizzle emits interpolated columns unqualified, so `${speakers.recordingId}
+ * = ${recordings.id}` would compare two columns of `speakers` and always count 0.
+ */
+export const speakerCount = sql<number>`(select count(*) from speakers where speakers.recording_id = recordings.id)`;
