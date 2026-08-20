@@ -141,8 +141,8 @@ const handlers: Record<string, Handler> = {
 
   retry_job(a) {
     const id = requireId(a, "recording_id");
-    // false = it wasn't failed (a stale or duplicate click); enqueueing then would run a
-    // second copy of a job that is already in flight
+    // false = the row wasn't terminal (a stale or duplicate click); enqueueing then would run
+    // a second copy of a job that is already in flight
     if (resetForRetry(db(), id)) ingest()?.enqueue(id);
   },
 

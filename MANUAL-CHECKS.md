@@ -21,11 +21,13 @@ mirrors the acceptance criteria in `docs/plan/05-ui.md`.
 ## Failure / retry
 
 - [ ] Force a job to fail (e.g. point a watch folder at a corrupt/truncated file). The row
-      shows the error inline with a **Retry** button, no modal/notification interrupts anything
-      else in the app.
-- [ ] Click Retry. The row goes back to `discovered`/`probing` and completes normally.
+      shows the error inline, no modal/notification interrupts anything else in the app.
+- [ ] Click the row's trailing **retry** button. The row goes back to `discovered`/`probing`
+      and completes normally; clicking it must not open the transcript.
 - [ ] Retry resumes from the last checkpoint rather than reprocessing finished chunks (check
       logs for chunk index on resume vs. a fresh run).
+- [ ] Same button on a `done` row re-transcribes from chunk 0 and replaces the old transcript;
+      speaker renames survive. It is hidden mid-job and disabled when the source is missing.
 
 ## Video playback
 

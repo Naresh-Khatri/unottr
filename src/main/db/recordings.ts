@@ -162,15 +162,26 @@ export function failOrRetry(db: Db, id: number, slug: string, park: (attempts: n
 }
 
 /**
- * Retry from the ui. Only acts on a currently-failed row; `last_chunk_idx` is left alone so
- * transcribe resumes instead of redoing finished chunks. False means it wasn't failed — a
- * stale or duplicate click — and the caller must not enqueue.
+ * Retry from the ui, on either terminal state. A failed row keeps `last_chunk_idx` so
+ * transcribe resumes instead of redoing finished chunks; a done row is an explicit
+ * "transcribe this again", so the checkpoint goes and rewind() drops the old segments.
+ * False = the row is in flight (or gone) — a stale or duplicate click; don't enqueue.
  */
 export function resetForRetry(db: Db, id: number): boolean {
+  const status = statusOf(db, id);
+  if (status === null || !TERMINAL.includes(status)) return false;
+
   const changed = db
     .update(recordings)
-    .set({ status: "discovered", error: null, attempts: 0, stageDetail: null, updatedAt: now() })
-    .where(and(eq(recordings.id, id), eq(recordings.status, "failed")))
+    .set({
+      status: "discovered",
+      error: null,
+      attempts: 0,
+      stageDetail: null,
+      ...(status === "done" ? { lastChunkIdx: null } : {}),
+      updatedAt: now(),
+    })
+    .where(and(eq(recordings.id, id), eq(recordings.status, status)))
     .run();
   return changed.changes > 0;
 }

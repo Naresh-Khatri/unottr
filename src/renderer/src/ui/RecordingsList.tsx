@@ -15,9 +15,10 @@ import { Progress } from "@/components/ui/progress";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const ROW_ESTIMATE = 56; // measured hook corrects this once rows with progress/error mount
-const COLS = 6;
+const COLS = 7;
 
 /**
  * Cover frame at rest; hovering cycles the PREVIEW_COUNT frames as a slideshow. `status` is
@@ -56,6 +57,46 @@ function Thumbnail({ id, hasVideo, status }: { id: number; hasVideo: boolean; st
         else setAvailable(false);
       }}
     />
+  );
+}
+
+/**
+ * Row-level re-run, one per recording. Backend decides what that means per state: a failed row
+ * resumes from its checkpoint, a done one transcribes from scratch. Hidden while in flight —
+ * the status chip is already spinning there and retry_job would no-op anyway.
+ */
+function RetryAction({ row, onRetried }: { row: RecordingSummary; onRetried: () => void }) {
+  const [pending, setPending] = useState(false);
+  if (IN_FLIGHT.includes(row.status)) return null;
+
+  const button = (
+    <Button
+      size="icon-sm"
+      variant="ghost"
+      className="text-muted-foreground hover:text-foreground"
+      disabled={pending || !row.available}
+      aria-label={row.status === "failed" ? "Retry transcription" : "Transcribe again"}
+      onClick={(e) => {
+        e.stopPropagation(); // the row itself opens the transcript
+        setPending(true);
+        api.retryJob(row.id).finally(() => {
+          setPending(false);
+          onRetried();
+        });
+      }}
+    >
+      <ArrowClockwise />
+    </Button>
+  );
+
+  // a disabled button swallows hover, so the tooltip would never open on the unavailable path
+  if (!row.available) return button;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent>{row.status === "failed" ? "Retry" : "Transcribe again"}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -117,6 +158,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                   <TableHead className="w-20 text-right">Length</TableHead>
                   <TableHead className="w-16 text-right">Speakers</TableHead>
                   <TableHead className="w-36 text-right">Status</TableHead>
+                  <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -140,15 +182,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                           return (
                             <div className="mt-1 flex items-center gap-2">
                               <span className="text-xs text-destructive">{info.message}</span>
-                              {info.action === "retry" && (
-                                <Button
-                                  size="xs"
-                                  variant="outline"
-                                  onClick={(e) => { e.stopPropagation(); api.retryJob(r.id).then(load); }}
-                                >
-                                  <ArrowClockwise />Retry
-                                </Button>
-                              )}
+                              {/* info.action === "retry" needs no button here — every row has one */}
                               {info.action === "settings" && (
                                 <Button
                                   size="xs"
@@ -177,6 +211,9 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end"><StatusChip status={r.status} /></div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end"><RetryAction row={r} onRetried={load} /></div>
                       </TableCell>
                     </TableRow>
                   );

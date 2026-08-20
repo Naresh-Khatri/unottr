@@ -11,12 +11,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { type Db, openDatabase } from "../src/main/db/client";
 import { runMigrations } from "../src/main/db/migrate";
 import * as queries from "../src/main/db/queries";
 import * as rec from "../src/main/db/recordings";
-import { segments } from "../src/main/db/schema";
+import { recordings, segments } from "../src/main/db/schema";
 import * as wf from "../src/main/db/watch-folders";
 import { err } from "../src/main/errors";
 import * as backfill from "../src/main/ingest/backfill";
@@ -286,6 +287,37 @@ describe("identity", () => {
     rec.markUnavailable(db, id);
     relist(db, dir, defaultIngestConfig(), new Map());
     expect(rec.availablePaths(db).map((r) => r.id)).toEqual([id]);
+  });
+});
+
+// ------------------------------------------------------------------------------- retry
+
+describe("reset for retry", () => {
+  const park = (id: number, status: "failed" | "done", lastChunkIdx: number | null) => {
+    db.update(recordings).set({ status, lastChunkIdx }).where(eq(recordings.id, id)).run();
+  };
+
+  it("resumes a failed row from its checkpoint", () => {
+    const id = rec.stub(db, join(dir, "failed.mkv"));
+    park(id, "failed", 3);
+    expect(rec.resetForRetry(db, id)).toBe(true);
+    expect(rec.statusOf(db, id)).toBe("discovered");
+    expect(rec.lastChunkIdx(db, id)).toBe(3);
+  });
+
+  it("restarts a done row from scratch", () => {
+    const id = rec.stub(db, join(dir, "done.mkv"));
+    park(id, "done", 3);
+    expect(rec.resetForRetry(db, id)).toBe(true);
+    expect(rec.statusOf(db, id)).toBe("discovered");
+    expect(rec.lastChunkIdx(db, id)).toBeNull(); // rewind() then drops the old segments
+  });
+
+  it("refuses a row that is already in flight", () => {
+    const id = rec.stub(db, join(dir, "running.mkv"));
+    rec.setStatus(db, id, "transcribing");
+    expect(rec.resetForRetry(db, id)).toBe(false);
+    expect(rec.statusOf(db, id)).toBe("transcribing");
   });
 });
 
