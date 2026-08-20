@@ -59,6 +59,8 @@ pub struct Job {
     /// Only read on the mic path.
     pub vad_model: PathBuf,
     pub config: Config,
+    /// Phase 08.0 oracle; `None` everywhere but the cli's `--dump-json`.
+    pub dump_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,8 +114,34 @@ pub fn run(
     drop(diarizer);
     cancel.check()?;
 
+    if let Some(dir) = &job.dump_dir {
+        crate::dump::write(
+            dir,
+            "turns.json",
+            &serde_json::json!({
+                "config": job.config,
+                "mic_track": job.mic_pcm.is_some(),
+                "labels": labels,
+                "turns": diarization.turns,
+                "embeddings": diarization.embeddings,
+            }),
+        );
+    }
+
     let whole: Vec<Segment> = segments.iter().map(|l| l.seg.clone()).collect();
     let assigned = assign(&whole, &diarization.turns);
+
+    if let Some(dir) = &job.dump_dir {
+        crate::dump::write(
+            dir,
+            "merged.json",
+            &serde_json::json!({
+                "labels": labels,
+                "segments": whole,
+                "assigned": assigned,
+            }),
+        );
+    }
     let counts = persist(
         &mut conn,
         job.recording_id,

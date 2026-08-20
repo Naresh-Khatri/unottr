@@ -148,6 +148,7 @@ pub fn process_recording(
             threads: cfg.threads.unwrap_or_else(transcribe::engine::default_threads),
             translate: false,
         },
+        dump_dir: None,
     };
     transcribe::run(db, &job, &|f| on_progress(Status::Transcribing, f), cancel)?;
 
@@ -178,6 +179,7 @@ pub fn process_recording(
             threshold: cfg.diarize_threshold.unwrap_or(diarize::DEFAULT_THRESHOLD),
             speakers: cfg.diarize_speakers,
         },
+        dump_dir: None,
     };
     diarize::run(db, &job, &|f| on_progress(Status::Diarizing, f), cancel)?;
     // diarize::run's persist() already wrote status = 'done' in the same transaction as the

@@ -1,0 +1,26 @@
+{
+  "name": "corpus-02",
+  "source": {
+    "path": "/home/naresh/2025-10-06 12-40-11.mp4",
+    "bytes": 106867896,
+    "sha256": "a0f390dd56f95b3b14769a1817e94ca4e169ec0c1a7d2c5e105b3782637fd9c7"
+  },
+  "whisper_model": "large-v3-turbo",
+  "device": "gpu",
+  "audio_s": 2010.267,
+  "speech_s": 1759.97,
+  "chunks": 100,
+  "vad_spans": 739,
+  "utterances": 562,
+  "speakers": 4,
+  "turns": 611,
+  "segments": 562,
+  "split": 4,
+  "unattributed": 7,
+  "timing": {
+    "transcribe_s": 84.21,
+    "diarize_s": 296.68,
+    "transcribe_rtf_over_speech": 20.9,
+    "diarize_rtf_over_audio": 6.78
+  }
+}

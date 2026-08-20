@@ -1,0 +1,26 @@
+{
+  "name": "corpus-01",
+  "source": {
+    "path": "/home/naresh/2025-10-12 15-48-03.mp4",
+    "bytes": 29305404,
+    "sha256": "2265d5c288bff599b9a0307e60d3b116e707e0eda86f4dd3aca086f3f4ecede2"
+  },
+  "whisper_model": "large-v3-turbo",
+  "device": "gpu",
+  "audio_s": 580.9,
+  "speech_s": 542.95,
+  "chunks": 27,
+  "vad_spans": 132,
+  "utterances": 154,
+  "speakers": 2,
+  "turns": 90,
+  "segments": 154,
+  "split": 1,
+  "unattributed": 1,
+  "timing": {
+    "transcribe_s": 25.4,
+    "diarize_s": 99.25,
+    "transcribe_rtf_over_speech": 21.37,
+    "diarize_rtf_over_audio": 5.85
+  }
+}

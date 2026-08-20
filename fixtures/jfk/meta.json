@@ -1,0 +1,26 @@
+{
+  "name": "jfk",
+  "source": {
+    "path": "/home/naresh/.local/share/hyprwhspr/pywhispercpp-src/whisper.cpp/samples/jfk.wav",
+    "bytes": 352078,
+    "sha256": "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e"
+  },
+  "whisper_model": "base.en",
+  "device": "gpu",
+  "audio_s": 11,
+  "speech_s": 10.3,
+  "chunks": 1,
+  "vad_spans": 5,
+  "utterances": 1,
+  "speakers": 1,
+  "turns": 4,
+  "segments": 1,
+  "split": 0,
+  "unattributed": 0,
+  "timing": {
+    "transcribe_s": 0.4,
+    "diarize_s": 2.09,
+    "transcribe_rtf_over_speech": 25.94,
+    "diarize_rtf_over_audio": 5.27
+  }
+}

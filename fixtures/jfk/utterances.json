@@ -1,0 +1,146 @@
+[
+  {
+    "chunk_idx": 0,
+    "utterances": [
+      {
+        "end_ms": 10490,
+        "start_ms": 290,
+        "text": "And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.",
+        "words": [
+          {
+            "end_ms": 690,
+            "p": 0.5358160734176636,
+            "start_ms": 340,
+            "text": "And"
+          },
+          {
+            "end_ms": 960,
+            "p": 0.9873793125152588,
+            "start_ms": 690,
+            "text": "so"
+          },
+          {
+            "end_ms": 1230,
+            "p": 0.7387375235557556,
+            "start_ms": 960,
+            "text": "my"
+          },
+          {
+            "end_ms": 1980,
+            "p": 0.9953758716583252,
+            "start_ms": 1230,
+            "text": "fellow"
+          },
+          {
+            "end_ms": 3650,
+            "p": 0.6620729565620422,
+            "start_ms": 2030,
+            "text": "Americans,"
+          },
+          {
+            "end_ms": 4280,
+            "p": 0.8519326448440552,
+            "start_ms": 4010,
+            "text": "ask"
+          },
+          {
+            "end_ms": 5360,
+            "p": 0.9112261533737183,
+            "start_ms": 4580,
+            "text": "not"
+          },
+          {
+            "end_ms": 5540,
+            "p": 0.9407004714012146,
+            "start_ms": 5410,
+            "text": "what"
+          },
+          {
+            "end_ms": 5830,
+            "p": 0.9834454655647278,
+            "start_ms": 5650,
+            "text": "your"
+          },
+          {
+            "end_ms": 6420,
+            "p": 0.9969300627708435,
+            "start_ms": 5970,
+            "text": "country"
+          },
+          {
+            "end_ms": 6650,
+            "p": 0.9622612595558167,
+            "start_ms": 6490,
+            "text": "can"
+          },
+          {
+            "end_ms": 6900,
+            "p": 0.9791611433029175,
+            "start_ms": 6650,
+            "text": "do"
+          },
+          {
+            "end_ms": 7090,
+            "p": 0.9206863045692444,
+            "start_ms": 7010,
+            "text": "for"
+          },
+          {
+            "end_ms": 8300,
+            "p": 0.7264076471328735,
+            "start_ms": 7090,
+            "text": "you,"
+          },
+          {
+            "end_ms": 8460,
+            "p": 0.7289232015609741,
+            "start_ms": 8300,
+            "text": "ask"
+          },
+          {
+            "end_ms": 8930,
+            "p": 0.9912324547767639,
+            "start_ms": 8640,
+            "text": "what"
+          },
+          {
+            "end_ms": 9170,
+            "p": 0.9921025037765503,
+            "start_ms": 8930,
+            "text": "you"
+          },
+          {
+            "end_ms": 9330,
+            "p": 0.970145046710968,
+            "start_ms": 9220,
+            "text": "can"
+          },
+          {
+            "end_ms": 9380,
+            "p": 0.8519017696380615,
+            "start_ms": 9330,
+            "text": "do"
+          },
+          {
+            "end_ms": 9770,
+            "p": 0.6363009810447693,
+            "start_ms": 9440,
+            "text": "for"
+          },
+          {
+            "end_ms": 9990,
+            "p": 0.9538718461990356,
+            "start_ms": 9770,
+            "text": "your"
+          },
+          {
+            "end_ms": 10490,
+            "p": 0.9429931640625,
+            "start_ms": 10030,
+            "text": "country."
+          }
+        ]
+      }
+    ]
+  }
+]

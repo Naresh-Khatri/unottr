@@ -1,0 +1,39 @@
+[2m2026-08-19T15:22:56.695991Z[0m [32m INFO[0m [2munottr_core::diarize::engine[0m[2m:[0m diarizer loaded [3mconfig[0m[2m=[0mConfig { threshold: 0.6, speakers: None } [3mdim[0m[2m=[0m192
+diarizing   0%diarizing   1%diarizing   2%diarizing   3%diarizing   4%diarizing   5%diarizing   6%diarizing   7%diarizing   8%diarizing   9%diarizing  10%diarizing  11%diarizing  12%diarizing  13%diarizing  14%diarizing  15%diarizing  16%diarizing  17%diarizing  18%diarizing  19%diarizing  20%diarizing  21%diarizing  22%diarizing  23%diarizing  24%diarizing  25%diarizing  26%diarizing  27%diarizing  28%diarizing  29%diarizing  30%diarizing  31%diarizing  32%diarizing  33%diarizing  34%diarizing  35%diarizing  36%diarizing  37%diarizing  38%diarizing  39%diarizing  40%diarizing  41%diarizing  42%diarizing  43%diarizing  44%diarizing  45%diarizing  46%diarizing  47%diarizing  48%diarizing  49%diarizing  50%diarizing  51%diarizing  52%diarizing  53%diarizing  54%diarizing  55%diarizing  56%diarizing  57%diarizing  58%diarizing  59%diarizing  60%diarizing  61%diarizing  62%diarizing  63%diarizing  64%diarizing  65%diarizing  66%diarizing  67%diarizing  68%diarizing  69%diarizing  70%diarizing  71%diarizing  72%diarizing  73%diarizing  74%diarizing  75%diarizing  76%diarizing  77%diarizing  78%diarizing  79%diarizing  80%diarizing  81%diarizing  82%diarizing  83%diarizing  84%diarizing  85%diarizing  86%diarizing  87%[2m2026-08-19T15:27:34.292989Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m1 [3msamples[0m[2m=[0m10528
+[2m2026-08-19T15:27:34.307504Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m2 [3msamples[0m[2m=[0m7840
+[2m2026-08-19T15:27:38.637790Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m17 [3msamples[0m[2m=[0m10528
+[2m2026-08-19T15:27:40.024020Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m25 [3msamples[0m[2m=[0m17008
+[2m2026-08-19T15:27:40.040093Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m26 [3msamples[0m[2m=[0m7552
+[2m2026-08-19T15:27:41.682738Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m33 [3msamples[0m[2m=[0m18080
+[2m2026-08-19T15:27:41.725994Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m34 [3msamples[0m[2m=[0m54544
+[2m2026-08-19T15:27:44.033122Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m47 [3msamples[0m[2m=[0m10528
+[2m2026-08-19T15:27:44.045097Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m48 [3msamples[0m[2m=[0m8640
+[2m2026-08-19T15:27:45.317572Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m56 [3msamples[0m[2m=[0m12432
+[2m2026-08-19T15:27:45.357892Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m57 [3msamples[0m[2m=[0m5120
+[2m2026-08-19T15:27:45.380721Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m58 [3msamples[0m[2m=[0m7568
+[2m2026-08-19T15:27:45.574105Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m62 [3msamples[0m[2m=[0m8640
+[2m2026-08-19T15:27:45.923792Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m66 [3msamples[0m[2m=[0m8368
+[2m2026-08-19T15:27:45.963811Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m68 [3msamples[0m[2m=[0m21600
+[2m2026-08-19T15:27:45.989561Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m69 [3msamples[0m[2m=[0m6480
+[2m2026-08-19T15:27:46.847950Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m77 [3msamples[0m[2m=[0m8896
+[2m2026-08-19T15:27:47.051555Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m82 [3msamples[0m[2m=[0m11616
+[2m2026-08-19T15:27:47.072580Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m83 [3msamples[0m[2m=[0m7024
+[2m2026-08-19T15:27:47.299877Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m88 [3msamples[0m[2m=[0m8368
+[2m2026-08-19T15:27:47.315951Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m89 [3msamples[0m[2m=[0m6752
+[2m2026-08-19T15:27:47.578699Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m97 [3msamples[0m[2m=[0m14592
+[2m2026-08-19T15:27:47.617456Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m99 [3msamples[0m[2m=[0m4864
+[2m2026-08-19T15:27:47.959484Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m105 [3msamples[0m[2m=[0m16464
+[2m2026-08-19T15:27:48.263240Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m107 [3msamples[0m[2m=[0m6480
+[2m2026-08-19T15:27:48.385769Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m110 [3msamples[0m[2m=[0m7568
+[2m2026-08-19T15:27:48.560736Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m113 [3msamples[0m[2m=[0m10528
+[2m2026-08-19T15:27:48.575559Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m114 [3msamples[0m[2m=[0m8640
+[2m2026-08-19T15:27:48.745928Z[0m [34mDEBUG[0m [2munottr_core::diarize::engine[0m[2m:[0m centroid from joined turns [3mspeaker[0m[2m=[0m117 [3msamples[0m[2m=[0m8640
+[2m2026-08-19T15:27:49.078564Z[0m [32m INFO[0m [2munottr_core::diarize::engine[0m[2m:[0m reclustered fragments [3mfragments[0m[2m=[0m124 [3mspeakers[0m[2m=[0m18
+[2m2026-08-19T15:27:49.078693Z[0m [32m INFO[0m [2munottr_core::diarize::engine[0m[2m:[0m diarization done [3mturns[0m[2m=[0m611 [3mspeakers[0m[2m=[0m4
+diarizing  89%diarizing  92%diarizing  94%diarizing  97%[2m2026-08-19T15:27:51.614405Z[0m [32m INFO[0m [2munottr_core::dump[0m[2m:[0m dumped [3mpath[0m[2m=[0m/home/naresh/Desktop/projects-next/unottr/fixtures/corpus-02/turns.json
+[2m2026-08-19T15:27:51.620520Z[0m [32m INFO[0m [2munottr_core::dump[0m[2m:[0m dumped [3mpath[0m[2m=[0m/home/naresh/Desktop/projects-next/unottr/fixtures/corpus-02/merged.json
+diarizing 100%[2m2026-08-19T15:27:51.635324Z[0m [32m INFO[0m [2munottr_core::diarize[0m[2m:[0m diarize done [3mreport[0m[2m=[0mReport { speakers: 4, turns: 611, segments: 562, split: 4, unattributed: 7, mic_track: false }
+
+4 speakers, 611 turns over 562 segments
+4 split, 7 unattributed
+296.6s wall, 6.8x realtime

@@ -1,0 +1,23 @@
+{
+  "audio": [
+    {
+      "audio_index": 0,
+      "channels": 2,
+      "codec": "aac",
+      "index": 1,
+      "language": "und",
+      "sample_rate": 48000,
+      "title": null
+    }
+  ],
+  "container": "mov,mp4,m4a,3gp,3g2,mj2",
+  "duration_ms": 2010267,
+  "has_video": true,
+  "selection": {
+    "reason": "single audio track",
+    "selection": {
+      "kind": "blind",
+      "stream": 0
+    }
+  }
+}

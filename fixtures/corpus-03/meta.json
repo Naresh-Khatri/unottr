@@ -1,0 +1,26 @@
+{
+  "name": "corpus-03",
+  "source": {
+    "path": "/home/naresh/Recordings/2026-08-18 11-32-12.mp4",
+    "bytes": 120805596,
+    "sha256": "86b069ebda37d7166e446fc09035e5e8f4428d35cd56522254573ab6011f26e2"
+  },
+  "whisper_model": "large-v3-turbo",
+  "device": "gpu",
+  "audio_s": 2267.891,
+  "speech_s": 2049.34,
+  "chunks": 103,
+  "vad_spans": 793,
+  "utterances": 585,
+  "speakers": 6,
+  "turns": 367,
+  "segments": 585,
+  "split": 3,
+  "unattributed": 3,
+  "timing": {
+    "transcribe_s": 90.72,
+    "diarize_s": 371.67,
+    "transcribe_rtf_over_speech": 22.59,
+    "diarize_rtf_over_audio": 6.1
+  }
+}

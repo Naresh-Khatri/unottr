@@ -1,0 +1,86 @@
+extracting 100%[2m2026-08-19T15:19:23.220605Z[0m [34mDEBUG[0m [2munottr_core::media::ffmpeg[0m[2m:[0m extracted pcm [3mfile[0m[2m=[0m/home/naresh/.local/share/hyprwhspr/pywhispercpp-src/whisper.cpp/samples/jfk.wav [3mtrack[0m[2m=[0m0
+
+[2m2026-08-19T15:19:23.221920Z[0m [32m INFO[0m [2munottr_core::db::migrations[0m[2m:[0m applied migration [3mversion[0m[2m=[0m1
+[2m2026-08-19T15:19:23.222116Z[0m [32m INFO[0m [2munottr_core::db::migrations[0m[2m:[0m applied migration [3mversion[0m[2m=[0m2
+[2m2026-08-19T15:19:23.222163Z[0m [32m INFO[0m [2munottr_core::db::migrations[0m[2m:[0m applied migration [3mversion[0m[2m=[0m3
+[2m2026-08-19T15:19:23.222310Z[0m [32m INFO[0m [2munottr_core::db::migrations[0m[2m:[0m applied migration [3mversion[0m[2m=[0m4
+whisper_vad_init_from_file_with_params: loading VAD model from '/tmp/unottr-fixtures/jfk/models/ggml-silero-v5.1.2.bin'
+whisper_vad_init_with_params: model type: silero-16k
+whisper_vad_init_with_params: model version: 5.1.2
+whisper_vad_init_with_params: n_encoder_layers = 4
+whisper_vad_init_with_params: encoder_in_channels[0] = 129
+whisper_vad_init_with_params: encoder_in_channels[1] = 128
+whisper_vad_init_with_params: encoder_in_channels[2] = 64
+whisper_vad_init_with_params: encoder_in_channels[3] = 64
+whisper_vad_init_with_params: encoder_out_channels[0] = 128
+whisper_vad_init_with_params: encoder_out_channels[1] = 64
+whisper_vad_init_with_params: encoder_out_channels[2] = 64
+whisper_vad_init_with_params: encoder_out_channels[3] = 128
+whisper_vad_init_with_params: lstm_input_size = 128
+whisper_vad_init_with_params: lstm_hidden_size = 128
+whisper_vad_init_with_params: final_conv_in = 128
+whisper_vad_init_with_params: final_conv_out = 1
+ggml_vulkan: Found 1 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 6700 XT (RADV NAVI22) (radv) | uma: 0 | fp16: 1 | bf16: 0 | warp size: 32 | shared memory: 65536 | int dot: 1 | matrix cores: none
+whisper_vad_init_with_params:          CPU total size =     0.88 MB
+whisper_vad_init_with_params: model size    =    0.88 MB
+whisper_backend_init_gpu: no GPU found
+whisper_vad_init_context: compute buffer (VAD)   =    1.60 MB
+whisper_vad_segments_from_samples: detecting speech timestamps in 176000 samples
+whisper_vad_detect_speech: detecting speech in 176000 samples
+whisper_vad_detect_speech: n_chunks: 344
+whisper_vad_detect_speech: props size: 344
+whisper_vad_detect_speech: chunk_len: 384 < n_window: 512
+whisper_vad_detect_speech: vad time = 48.25 ms processing 176000 samples
+whisper_vad_segments_from_probs: detecting speech timestamps using 344 probabilities
+whisper_vad_segments_from_probs: Merged 0 adjacent segments, now have 5 segments
+whisper_vad_segments_from_probs: Final speech segments after filtering: 5
+whisper_vad_segments_from_probs: VAD segment 0: start = 0.29, end = 2.21 (duration: 1.92)
+whisper_vad_segments_from_probs: VAD segment 1: start = 3.30, end = 3.77 (duration: 0.47)
+whisper_vad_segments_from_probs: VAD segment 2: start = 4.00, end = 4.35 (duration: 0.35)
+whisper_vad_segments_from_probs: VAD segment 3: start = 5.38, end = 7.65 (duration: 2.27)
+whisper_vad_segments_from_probs: VAD segment 4: start = 8.16, end = 10.59 (duration: 2.43)
+[2m2026-08-19T15:19:23.290334Z[0m [34mDEBUG[0m [2munottr_core::transcribe::chunk[0m[2m:[0m vad done [3mspans[0m[2m=[0m5
+[2m2026-08-19T15:19:23.290565Z[0m [32m INFO[0m [2munottr_core::transcribe[0m[2m:[0m chunk plan [3mchunks[0m[2m=[0m1 [3mspeech_ms[0m[2m=[0m10300 [3mdevice[0m[2m=[0mGpu
+[2m2026-08-19T15:19:23.290699Z[0m [32m INFO[0m [2munottr_core::dump[0m[2m:[0m dumped [3mpath[0m[2m=[0m/home/naresh/Desktop/projects-next/unottr/fixtures/jfk/chunks.json
+whisper_init_from_file_with_params_no_state: loading model from '/tmp/unottr-fixtures/jfk/models/ggml-base.en.bin'
+whisper_init_with_params_no_state: use gpu    = 1
+whisper_init_with_params_no_state: flash attn = 0
+whisper_init_with_params_no_state: gpu_device = 0
+whisper_init_with_params_no_state: dtw        = 0
+whisper_init_with_params_no_state: devices    = 2
+whisper_init_with_params_no_state: backends   = 2
+whisper_model_load: loading model
+whisper_model_load: n_vocab       = 51864
+whisper_model_load: n_audio_ctx   = 1500
+whisper_model_load: n_audio_state = 512
+whisper_model_load: n_audio_head  = 8
+whisper_model_load: n_audio_layer = 6
+whisper_model_load: n_text_ctx    = 448
+whisper_model_load: n_text_state  = 512
+whisper_model_load: n_text_head   = 8
+whisper_model_load: n_text_layer  = 6
+whisper_model_load: n_mels        = 80
+whisper_model_load: ftype         = 1
+whisper_model_load: qntvr         = 0
+whisper_model_load: type          = 2 (base)
+whisper_model_load: adding 1607 extra tokens
+whisper_model_load: n_langs       = 99
+whisper_model_load:      Vulkan0 total size =   147.37 MB
+whisper_model_load: model size    =  147.37 MB
+[2m2026-08-19T15:19:23.394030Z[0m [32m INFO[0m [2munottr_core::transcribe::engine[0m[2m:[0m model loaded [3mdevice[0m[2m=[0mGpu [3mmodel[0m[2m=[0m/tmp/unottr-fixtures/jfk/models/ggml-base.en.bin
+whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =    6.29 MB
+whisper_init_state: kv cross size =   18.87 MB
+whisper_init_state: kv pad  size  =    3.15 MB
+whisper_init_state: compute buffer (conv)   =   17.24 MB
+whisper_init_state: compute buffer (encode) =   88.95 MB
+whisper_init_state: compute buffer (cross)  =   16.95 MB
+whisper_init_state: compute buffer (decode) =   97.29 MB
+whisper_full_with_state: auto-detected language: hr (p = 0.010005)
+transcribing 100%[2m2026-08-19T15:19:23.543478Z[0m [32m INFO[0m [2munottr_core::dump[0m[2m:[0m dumped [3mpath[0m[2m=[0m/home/naresh/Desktop/projects-next/unottr/fixtures/jfk/utterances.json
+
+1 chunks (0 resumed), 1 segments, 10.3s speech on Gpu
+0.3s wall, 31.1x realtime over speech

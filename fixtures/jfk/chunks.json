@@ -1,0 +1,34 @@
+{
+  "chunks": [
+    {
+      "end_ms": 10590,
+      "idx": 0,
+      "start_ms": 290
+    }
+  ],
+  "max_chunk_ms": 30000,
+  "max_gap_ms": 2000,
+  "spans": [
+    {
+      "end_ms": 2210,
+      "start_ms": 290
+    },
+    {
+      "end_ms": 3770,
+      "start_ms": 3300
+    },
+    {
+      "end_ms": 4350,
+      "start_ms": 4000
+    },
+    {
+      "end_ms": 7650,
+      "start_ms": 5380
+    },
+    {
+      "end_ms": 10590,
+      "start_ms": 8160
+    }
+  ],
+  "speech_ms": 10300
+}

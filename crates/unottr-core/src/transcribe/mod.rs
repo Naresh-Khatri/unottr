@@ -26,6 +26,8 @@ pub struct Job {
     pub vad_model: PathBuf,
     pub device: Device,
     pub options: Options,
+    /// Phase 08.0 oracle; `None` everywhere but the cli's `--dump-json`.
+    pub dump_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +59,20 @@ pub fn run(
     let speech_ms = chunks.iter().map(Chunk::duration_ms).sum();
     info!(chunks = chunks.len(), speech_ms, ?device, "chunk plan");
 
+    if let Some(dir) = &job.dump_dir {
+        crate::dump::write(
+            dir,
+            "chunks.json",
+            &serde_json::json!({
+                "max_chunk_ms": MAX_CHUNK_MS,
+                "max_gap_ms": MAX_GAP_MS,
+                "speech_ms": speech_ms,
+                "spans": spans,
+                "chunks": chunks,
+            }),
+        );
+    }
+
     let mut conn = db.connect()?;
     let resumed_from = rewind(&mut conn, job.recording_id)?;
     if resumed_from > 0 {
@@ -75,14 +91,25 @@ pub fn run(
 
     let transcriber = Transcriber::load(&job.model, job.device, job.options.clone())?;
 
+    let mut dumped: Vec<serde_json::Value> = Vec::new();
     for chunk in &chunks[resumed_from..] {
         cancel.check()?;
         let mut utterances = transcriber.run(&samples[chunk.range(samples.len())], cancel)?;
         for u in &mut utterances {
             u.shift(chunk.start_ms);
         }
+        if job.dump_dir.is_some() {
+            dumped.push(serde_json::json!({ "chunk_idx": chunk.idx, "utterances": utterances }));
+        }
         checkpoint(&mut conn, job.recording_id, chunk, &utterances)?;
         progress(((chunk.idx + 1) as f32 / chunks.len() as f32).clamp(0.0, 1.0));
+    }
+
+    if let Some(dir) = &job.dump_dir {
+        if resumed_from > 0 {
+            warn!(resumed_from, "dump only covers the chunks this run transcribed");
+        }
+        crate::dump::write(dir, "utterances.json", &dumped);
     }
 
     let segments = count_segments(&conn, job.recording_id)?;

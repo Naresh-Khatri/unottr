@@ -1,0 +1,23 @@
+{
+  "audio": [
+    {
+      "audio_index": 0,
+      "channels": 1,
+      "codec": "pcm_s16le",
+      "index": 0,
+      "language": null,
+      "sample_rate": 16000,
+      "title": null
+    }
+  ],
+  "container": "wav",
+  "duration_ms": 11000,
+  "has_video": false,
+  "selection": {
+    "reason": "single audio track",
+    "selection": {
+      "kind": "blind",
+      "stream": 0
+    }
+  }
+}

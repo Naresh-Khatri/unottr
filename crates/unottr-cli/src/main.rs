@@ -59,6 +59,9 @@ enum Command {
         /// Print the transcript when it finishes
         #[arg(long)]
         print: bool,
+        /// Phase 08.0: write chunks.json and utterances.json into this directory
+        #[arg(long, value_name = "DIR")]
+        dump_json: Option<PathBuf>,
     },
     /// Manage the local whisper models
     #[command(subcommand)]
@@ -82,6 +85,9 @@ enum Command {
         /// Print the labelled transcript when it finishes
         #[arg(long)]
         print: bool,
+        /// Phase 08.0: write turns.json and merged.json into this directory
+        #[arg(long, value_name = "DIR")]
+        dump_json: Option<PathBuf>,
     },
     /// Manage watched folders (phase 04)
     #[command(subcommand)]
@@ -209,6 +215,7 @@ fn main() -> Result<()> {
             threads,
             download,
             print,
+            dump_json,
         } => transcribe_file(
             &file,
             TranscribeArgs {
@@ -218,6 +225,7 @@ fn main() -> Result<()> {
                 threads,
                 download,
                 print,
+                dump_json,
             },
             &paths,
         ),
@@ -228,6 +236,7 @@ fn main() -> Result<()> {
             embedding_model,
             download,
             print,
+            dump_json,
         } => diarize_file(
             &file,
             DiarizeArgs {
@@ -236,6 +245,7 @@ fn main() -> Result<()> {
                 embedding_model,
                 download,
                 print,
+                dump_json,
             },
             &paths,
         ),
@@ -306,6 +316,7 @@ struct TranscribeArgs {
     threads: Option<i32>,
     download: bool,
     print: bool,
+    dump_json: Option<PathBuf>,
 }
 
 fn transcribe_file(file: &Path, args: TranscribeArgs, paths: &Paths) -> Result<()> {
@@ -352,6 +363,7 @@ fn transcribe_file(file: &Path, args: TranscribeArgs, paths: &Paths) -> Result<(
                 .unwrap_or_else(transcribe::engine::default_threads),
             translate: false,
         },
+        dump_dir: args.dump_json,
     };
 
     let started = std::time::Instant::now();
@@ -449,6 +461,7 @@ struct DiarizeArgs {
     embedding_model: Option<String>,
     download: bool,
     print: bool,
+    dump_json: Option<PathBuf>,
 }
 
 fn diarize_file(file: &Path, args: DiarizeArgs, paths: &Paths) -> Result<()> {
@@ -512,6 +525,7 @@ fn diarize_file(file: &Path, args: DiarizeArgs, paths: &Paths) -> Result<()> {
             threshold: args.threshold.unwrap_or(diarize::DEFAULT_THRESHOLD),
             speakers: args.speakers,
         },
+        dump_dir: args.dump_json,
     };
 
     let started = std::time::Instant::now();

@@ -1,0 +1,499 @@
+extracting  69%extracting  99%extracting 100%[2m2026-08-19T15:19:26.788274Z[0m [34mDEBUG[0m [2munottr_core::media::ffmpeg[0m[2m:[0m extracted pcm [3mfile[0m[2m=[0m/home/naresh/2025-10-12 15-48-03.mp4 [3mtrack[0m[2m=[0m0
+
+[2m2026-08-19T15:19:26.789530Z[0m [32m INFO[0m [2munottr_core::db::migrations[0m[2m:[0m applied migration [3mversion[0m[2m=[0m1
+[2m2026-08-19T15:19:26.789739Z[0m [32m INFO[0m [2munottr_core::db::migrations[0m[2m:[0m applied migration [3mversion[0m[2m=[0m2
+[2m2026-08-19T15:19:26.789787Z[0m [32m INFO[0m [2munottr_core::db::migrations[0m[2m:[0m applied migration [3mversion[0m[2m=[0m3
+[2m2026-08-19T15:19:26.789939Z[0m [32m INFO[0m [2munottr_core::db::migrations[0m[2m:[0m applied migration [3mversion[0m[2m=[0m4
+whisper_vad_init_from_file_with_params: loading VAD model from '/tmp/unottr-fixtures/corpus-01/models/ggml-silero-v5.1.2.bin'
+whisper_vad_init_with_params: model type: silero-16k
+whisper_vad_init_with_params: model version: 5.1.2
+whisper_vad_init_with_params: n_encoder_layers = 4
+whisper_vad_init_with_params: encoder_in_channels[0] = 129
+whisper_vad_init_with_params: encoder_in_channels[1] = 128
+whisper_vad_init_with_params: encoder_in_channels[2] = 64
+whisper_vad_init_with_params: encoder_in_channels[3] = 64
+whisper_vad_init_with_params: encoder_out_channels[0] = 128
+whisper_vad_init_with_params: encoder_out_channels[1] = 64
+whisper_vad_init_with_params: encoder_out_channels[2] = 64
+whisper_vad_init_with_params: encoder_out_channels[3] = 128
+whisper_vad_init_with_params: lstm_input_size = 128
+whisper_vad_init_with_params: lstm_hidden_size = 128
+whisper_vad_init_with_params: final_conv_in = 128
+whisper_vad_init_with_params: final_conv_out = 1
+ggml_vulkan: Found 1 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 6700 XT (RADV NAVI22) (radv) | uma: 0 | fp16: 1 | bf16: 0 | warp size: 32 | shared memory: 65536 | int dot: 1 | matrix cores: none
+whisper_vad_init_with_params:          CPU total size =     0.88 MB
+whisper_vad_init_with_params: model size    =    0.88 MB
+whisper_backend_init_gpu: no GPU found
+whisper_vad_init_context: compute buffer (VAD)   =    1.60 MB
+whisper_vad_segments_from_samples: detecting speech timestamps in 9293483 samples
+whisper_vad_detect_speech: detecting speech in 9293483 samples
+whisper_vad_detect_speech: n_chunks: 18152
+whisper_vad_detect_speech: props size: 18152
+whisper_vad_detect_speech: chunk_len: 171 < n_window: 512
+whisper_vad_detect_speech: vad time = 2497.08 ms processing 9293483 samples
+whisper_vad_segments_from_probs: detecting speech timestamps using 18152 probabilities
+whisper_vad_segments_from_probs: Merged 27 adjacent segments, now have 132 segments
+whisper_vad_segments_from_probs: Final speech segments after filtering: 132
+whisper_vad_segments_from_probs: VAD segment 0: start = 0.00, end = 11.61 (duration: 11.61)
+whisper_vad_segments_from_probs: VAD segment 1: start = 11.87, end = 24.96 (duration: 13.09)
+whisper_vad_segments_from_probs: VAD segment 2: start = 25.28, end = 30.53 (duration: 5.25)
+whisper_vad_segments_from_probs: VAD segment 3: start = 31.01, end = 32.73 (duration: 1.72)
+whisper_vad_segments_from_probs: VAD segment 4: start = 33.19, end = 34.53 (duration: 1.34)
+whisper_vad_segments_from_probs: VAD segment 5: start = 34.98, end = 35.42 (duration: 0.44)
+whisper_vad_segments_from_probs: VAD segment 6: start = 35.68, end = 51.97 (duration: 16.29)
+whisper_vad_segments_from_probs: VAD segment 7: start = 52.16, end = 61.47 (duration: 9.31)
+whisper_vad_segments_from_probs: VAD segment 8: start = 62.47, end = 63.49 (duration: 1.02)
+whisper_vad_segments_from_probs: VAD segment 9: start = 63.87, end = 66.08 (duration: 2.21)
+whisper_vad_segments_from_probs: VAD segment 10: start = 66.50, end = 68.29 (duration: 1.79)
+whisper_vad_segments_from_probs: VAD segment 11: start = 71.01, end = 75.87 (duration: 4.86)
+whisper_vad_segments_from_probs: VAD segment 12: start = 76.32, end = 77.95 (duration: 1.63)
+whisper_vad_segments_from_probs: VAD segment 13: start = 79.14, end = 85.98 (duration: 6.84)
+whisper_vad_segments_from_probs: VAD segment 14: start = 86.27, end = 93.15 (duration: 6.88)
+whisper_vad_segments_from_probs: VAD segment 15: start = 93.44, end = 98.24 (duration: 4.80)
+whisper_vad_segments_from_probs: VAD segment 16: start = 98.40, end = 100.35 (duration: 1.95)
+whisper_vad_segments_from_probs: VAD segment 17: start = 100.55, end = 105.79 (duration: 5.24)
+whisper_vad_segments_from_probs: VAD segment 18: start = 110.27, end = 110.85 (duration: 0.58)
+whisper_vad_segments_from_probs: VAD segment 19: start = 111.04, end = 116.41 (duration: 5.37)
+whisper_vad_segments_from_probs: VAD segment 20: start = 116.64, end = 122.27 (duration: 5.63)
+whisper_vad_segments_from_probs: VAD segment 21: start = 122.43, end = 122.81 (duration: 0.38)
+whisper_vad_segments_from_probs: VAD segment 22: start = 123.07, end = 123.52 (duration: 0.45)
+whisper_vad_segments_from_probs: VAD segment 23: start = 123.78, end = 136.86 (duration: 13.08)
+whisper_vad_segments_from_probs: VAD segment 24: start = 137.25, end = 139.87 (duration: 2.62)
+whisper_vad_segments_from_probs: VAD segment 25: start = 140.10, end = 142.59 (duration: 2.49)
+whisper_vad_segments_from_probs: VAD segment 26: start = 142.75, end = 148.32 (duration: 5.57)
+whisper_vad_segments_from_probs: VAD segment 27: start = 148.55, end = 154.11 (duration: 5.56)
+whisper_vad_segments_from_probs: VAD segment 28: start = 154.34, end = 154.91 (duration: 0.57)
+whisper_vad_segments_from_probs: VAD segment 29: start = 156.16, end = 157.34 (duration: 1.18)
+whisper_vad_segments_from_probs: VAD segment 30: start = 157.70, end = 159.97 (duration: 2.27)
+whisper_vad_segments_from_probs: VAD segment 31: start = 160.71, end = 165.12 (duration: 4.41)
+whisper_vad_segments_from_probs: VAD segment 32: start = 165.92, end = 167.17 (duration: 1.25)
+whisper_vad_segments_from_probs: VAD segment 33: start = 169.31, end = 169.85 (duration: 0.54)
+whisper_vad_segments_from_probs: VAD segment 34: start = 170.37, end = 172.57 (duration: 2.20)
+whisper_vad_segments_from_probs: VAD segment 35: start = 173.09, end = 173.89 (duration: 0.80)
+whisper_vad_segments_from_probs: VAD segment 36: start = 174.05, end = 174.37 (duration: 0.32)
+whisper_vad_segments_from_probs: VAD segment 37: start = 174.59, end = 177.60 (duration: 3.01)
+whisper_vad_segments_from_probs: VAD segment 38: start = 178.31, end = 180.22 (duration: 1.91)
+whisper_vad_segments_from_probs: VAD segment 39: start = 180.42, end = 181.21 (duration: 0.79)
+whisper_vad_segments_from_probs: VAD segment 40: start = 181.89, end = 183.81 (duration: 1.92)
+whisper_vad_segments_from_probs: VAD segment 41: start = 184.07, end = 185.21 (duration: 1.14)
+whisper_vad_segments_from_probs: VAD segment 42: start = 185.63, end = 188.77 (duration: 3.14)
+whisper_vad_segments_from_probs: VAD segment 43: start = 188.96, end = 189.76 (duration: 0.80)
+whisper_vad_segments_from_probs: VAD segment 44: start = 189.95, end = 194.85 (duration: 4.90)
+whisper_vad_segments_from_probs: VAD segment 45: start = 195.49, end = 196.96 (duration: 1.47)
+whisper_vad_segments_from_probs: VAD segment 46: start = 197.63, end = 197.95 (duration: 0.32)
+whisper_vad_segments_from_probs: VAD segment 47: start = 198.18, end = 202.43 (duration: 4.25)
+whisper_vad_segments_from_probs: VAD segment 48: start = 203.07, end = 203.77 (duration: 0.70)
+whisper_vad_segments_from_probs: VAD segment 49: start = 204.61, end = 206.21 (duration: 1.60)
+whisper_vad_segments_from_probs: VAD segment 50: start = 208.23, end = 210.72 (duration: 2.49)
+whisper_vad_segments_from_probs: VAD segment 51: start = 212.03, end = 213.92 (duration: 1.89)
+whisper_vad_segments_from_probs: VAD segment 52: start = 214.43, end = 215.84 (duration: 1.41)
+whisper_vad_segments_from_probs: VAD segment 53: start = 216.58, end = 219.58 (duration: 3.00)
+whisper_vad_segments_from_probs: VAD segment 54: start = 219.94, end = 224.80 (duration: 4.86)
+whisper_vad_segments_from_probs: VAD segment 55: start = 225.57, end = 225.89 (duration: 0.32)
+whisper_vad_segments_from_probs: VAD segment 56: start = 226.18, end = 236.89 (duration: 10.71)
+whisper_vad_segments_from_probs: VAD segment 57: start = 237.38, end = 238.24 (duration: 0.86)
+whisper_vad_segments_from_probs: VAD segment 58: start = 238.56, end = 240.19 (duration: 1.63)
+whisper_vad_segments_from_probs: VAD segment 59: start = 243.62, end = 244.16 (duration: 0.54)
+whisper_vad_segments_from_probs: VAD segment 60: start = 245.60, end = 248.51 (duration: 2.91)
+whisper_vad_segments_from_probs: VAD segment 61: start = 249.28, end = 252.96 (duration: 3.68)
+whisper_vad_segments_from_probs: VAD segment 62: start = 253.89, end = 256.73 (duration: 2.84)
+whisper_vad_segments_from_probs: VAD segment 63: start = 257.67, end = 262.11 (duration: 4.44)
+whisper_vad_segments_from_probs: VAD segment 64: start = 262.27, end = 264.70 (duration: 2.43)
+whisper_vad_segments_from_probs: VAD segment 65: start = 266.40, end = 268.06 (duration: 1.66)
+whisper_vad_segments_from_probs: VAD segment 66: start = 269.12, end = 269.53 (duration: 0.41)
+whisper_vad_segments_from_probs: VAD segment 67: start = 269.92, end = 277.60 (duration: 7.68)
+whisper_vad_segments_from_probs: VAD segment 68: start = 277.86, end = 278.75 (duration: 0.89)
+whisper_vad_segments_from_probs: VAD segment 69: start = 279.01, end = 286.08 (duration: 7.07)
+whisper_vad_segments_from_probs: VAD segment 70: start = 286.31, end = 289.63 (duration: 3.32)
+whisper_vad_segments_from_probs: VAD segment 71: start = 289.79, end = 293.37 (duration: 3.58)
+whisper_vad_segments_from_probs: VAD segment 72: start = 294.98, end = 297.73 (duration: 2.75)
+whisper_vad_segments_from_probs: VAD segment 73: start = 298.24, end = 300.89 (duration: 2.65)
+whisper_vad_segments_from_probs: VAD segment 74: start = 301.28, end = 302.75 (duration: 1.47)
+whisper_vad_segments_from_probs: VAD segment 75: start = 303.84, end = 305.28 (duration: 1.44)
+whisper_vad_segments_from_probs: VAD segment 76: start = 307.36, end = 314.14 (duration: 6.78)
+whisper_vad_segments_from_probs: VAD segment 77: start = 314.95, end = 316.93 (duration: 1.98)
+whisper_vad_segments_from_probs: VAD segment 78: start = 317.44, end = 317.89 (duration: 0.45)
+whisper_vad_segments_from_probs: VAD segment 79: start = 318.11, end = 318.65 (duration: 0.54)
+whisper_vad_segments_from_probs: VAD segment 80: start = 321.60, end = 324.96 (duration: 3.36)
+whisper_vad_segments_from_probs: VAD segment 81: start = 325.31, end = 326.01 (duration: 0.70)
+whisper_vad_segments_from_probs: VAD segment 82: start = 326.31, end = 329.57 (duration: 3.26)
+whisper_vad_segments_from_probs: VAD segment 83: start = 329.76, end = 333.50 (duration: 3.74)
+whisper_vad_segments_from_probs: VAD segment 84: start = 333.92, end = 335.87 (duration: 1.95)
+whisper_vad_segments_from_probs: VAD segment 85: start = 336.23, end = 342.05 (duration: 5.82)
+whisper_vad_segments_from_probs: VAD segment 86: start = 342.34, end = 344.41 (duration: 2.07)
+whisper_vad_segments_from_probs: VAD segment 87: start = 344.74, end = 356.09 (duration: 11.35)
+whisper_vad_segments_from_probs: VAD segment 88: start = 356.32, end = 358.05 (duration: 1.73)
+whisper_vad_segments_from_probs: VAD segment 89: start = 358.47, end = 364.54 (duration: 6.07)
+whisper_vad_segments_from_probs: VAD segment 90: start = 364.77, end = 365.09 (duration: 0.32)
+whisper_vad_segments_from_probs: VAD segment 91: start = 365.31, end = 369.50 (duration: 4.19)
+whisper_vad_segments_from_probs: VAD segment 92: start = 369.67, end = 371.77 (duration: 2.10)
+whisper_vad_segments_from_probs: VAD segment 93: start = 371.97, end = 373.15 (duration: 1.18)
+whisper_vad_segments_from_probs: VAD segment 94: start = 373.70, end = 380.77 (duration: 7.07)
+whisper_vad_segments_from_probs: VAD segment 95: start = 380.99, end = 382.33 (duration: 1.34)
+whisper_vad_segments_from_probs: VAD segment 96: start = 382.69, end = 393.50 (duration: 10.81)
+whisper_vad_segments_from_probs: VAD segment 97: start = 393.76, end = 396.29 (duration: 2.53)
+whisper_vad_segments_from_probs: VAD segment 98: start = 396.61, end = 421.50 (duration: 24.89)
+whisper_vad_segments_from_probs: VAD segment 99: start = 421.73, end = 423.55 (duration: 1.82)
+whisper_vad_segments_from_probs: VAD segment 100: start = 423.75, end = 432.51 (duration: 8.76)
+whisper_vad_segments_from_probs: VAD segment 101: start = 432.67, end = 438.97 (duration: 6.30)
+whisper_vad_segments_from_probs: VAD segment 102: start = 439.27, end = 440.80 (duration: 1.53)
+whisper_vad_segments_from_probs: VAD segment 103: start = 440.96, end = 445.28 (duration: 4.32)
+whisper_vad_segments_from_probs: VAD segment 104: start = 445.57, end = 446.17 (duration: 0.60)
+whisper_vad_segments_from_probs: VAD segment 105: start = 446.40, end = 451.68 (duration: 5.28)
+whisper_vad_segments_from_probs: VAD segment 106: start = 451.87, end = 454.75 (duration: 2.88)
+whisper_vad_segments_from_probs: VAD segment 107: start = 454.91, end = 456.41 (duration: 1.50)
+whisper_vad_segments_from_probs: VAD segment 108: start = 456.64, end = 461.89 (duration: 5.25)
+whisper_vad_segments_from_probs: VAD segment 109: start = 462.08, end = 470.75 (duration: 8.67)
+whisper_vad_segments_from_probs: VAD segment 110: start = 470.91, end = 475.04 (duration: 4.13)
+whisper_vad_segments_from_probs: VAD segment 111: start = 475.20, end = 498.27 (duration: 23.07)
+whisper_vad_segments_from_probs: VAD segment 112: start = 499.30, end = 501.31 (duration: 2.01)
+whisper_vad_segments_from_probs: VAD segment 113: start = 502.05, end = 503.36 (duration: 1.31)
+whisper_vad_segments_from_probs: VAD segment 114: start = 505.51, end = 506.14 (duration: 0.63)
+whisper_vad_segments_from_probs: VAD segment 115: start = 507.23, end = 513.05 (duration: 5.82)
+whisper_vad_segments_from_probs: VAD segment 116: start = 513.22, end = 519.49 (duration: 6.27)
+whisper_vad_segments_from_probs: VAD segment 117: start = 519.78, end = 523.36 (duration: 3.58)
+whisper_vad_segments_from_probs: VAD segment 118: start = 523.84, end = 524.80 (duration: 0.96)
+whisper_vad_segments_from_probs: VAD segment 119: start = 524.96, end = 526.46 (duration: 1.50)
+whisper_vad_segments_from_probs: VAD segment 120: start = 526.72, end = 533.73 (duration: 7.01)
+whisper_vad_segments_from_probs: VAD segment 121: start = 534.50, end = 536.89 (duration: 2.39)
+whisper_vad_segments_from_probs: VAD segment 122: start = 539.11, end = 541.57 (duration: 2.46)
+whisper_vad_segments_from_probs: VAD segment 123: start = 541.73, end = 542.40 (duration: 0.67)
+whisper_vad_segments_from_probs: VAD segment 124: start = 543.23, end = 544.67 (duration: 1.44)
+whisper_vad_segments_from_probs: VAD segment 125: start = 545.09, end = 546.08 (duration: 0.99)
+whisper_vad_segments_from_probs: VAD segment 126: start = 546.72, end = 548.45 (duration: 1.73)
+whisper_vad_segments_from_probs: VAD segment 127: start = 549.09, end = 551.90 (duration: 2.81)
+whisper_vad_segments_from_probs: VAD segment 128: start = 552.35, end = 552.83 (duration: 0.48)
+whisper_vad_segments_from_probs: VAD segment 129: start = 555.07, end = 555.74 (duration: 0.67)
+whisper_vad_segments_from_probs: VAD segment 130: start = 556.99, end = 569.73 (duration: 12.74)
+whisper_vad_segments_from_probs: VAD segment 131: start = 572.48, end = 577.21 (duration: 4.73)
+[2m2026-08-19T15:19:29.318362Z[0m [34mDEBUG[0m [2munottr_core::transcribe::chunk[0m[2m:[0m vad done [3mspans[0m[2m=[0m132
+[2m2026-08-19T15:19:29.318408Z[0m [32m INFO[0m [2munottr_core::transcribe[0m[2m:[0m chunk plan [3mchunks[0m[2m=[0m27 [3mspeech_ms[0m[2m=[0m542950 [3mdevice[0m[2m=[0mGpu
+[2m2026-08-19T15:19:29.318580Z[0m [32m INFO[0m [2munottr_core::dump[0m[2m:[0m dumped [3mpath[0m[2m=[0m/home/naresh/Desktop/projects-next/unottr/fixtures/corpus-01/chunks.json
+whisper_init_from_file_with_params_no_state: loading model from '/tmp/unottr-fixtures/corpus-01/models/ggml-large-v3-turbo-q5_0.bin'
+whisper_init_with_params_no_state: use gpu    = 1
+whisper_init_with_params_no_state: flash attn = 0
+whisper_init_with_params_no_state: gpu_device = 0
+whisper_init_with_params_no_state: dtw        = 0
+whisper_init_with_params_no_state: devices    = 2
+whisper_init_with_params_no_state: backends   = 2
+whisper_model_load: loading model
+whisper_model_load: n_vocab       = 51866
+whisper_model_load: n_audio_ctx   = 1500
+whisper_model_load: n_audio_state = 1280
+whisper_model_load: n_audio_head  = 20
+whisper_model_load: n_audio_layer = 32
+whisper_model_load: n_text_ctx    = 448
+whisper_model_load: n_text_state  = 1280
+whisper_model_load: n_text_head   = 20
+whisper_model_load: n_text_layer  = 4
+whisper_model_load: n_mels        = 128
+whisper_model_load: ftype         = 8
+whisper_model_load: qntvr         = 2
+whisper_model_load: type          = 5 (large v3)
+whisper_model_load: adding 1609 extra tokens
+whisper_model_load: n_langs       = 100
+whisper_model_load:      Vulkan0 total size =   573.40 MB
+whisper_model_load: model size    =  573.40 MB
+[2m2026-08-19T15:19:30.229209Z[0m [32m INFO[0m [2munottr_core::transcribe::engine[0m[2m:[0m model loaded [3mdevice[0m[2m=[0mGpu [3mmodel[0m[2m=[0m/tmp/unottr-fixtures/corpus-01/models/ggml-large-v3-turbo-q5_0.bin
+whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999002)
+transcribing   3%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999727)
+transcribing   7%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999641)
+transcribing  11%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.998671)
+transcribing  14%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.997485)
+transcribing  18%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999741)
+transcribing  22%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999624)
+transcribing  25%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999600)
+transcribing  29%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999766)
+transcribing  33%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999433)
+transcribing  37%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.994137)
+transcribing  40%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999498)
+transcribing  44%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999559)
+transcribing  48%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.985675)
+transcribing  51%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.998369)
+transcribing  55%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.996231)
+transcribing  59%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999274)
+transcribing  62%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999712)
+transcribing  66%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.998983)
+transcribing  70%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999395)
+transcribing  74%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999851)
+transcribing  77%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999079)
+transcribing  81%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.999389)
+transcribing  85%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: cy (p = 0.531421)
+transcribing  88%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.996617)
+transcribing  92%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.998016)
+transcribing  96%whisper_backend_init_gpu: device 0: Vulkan0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using Vulkan0 backend
+whisper_init_state: kv self size  =   10.49 MB
+whisper_init_state: kv cross size =   31.46 MB
+whisper_init_state: kv pad  size  =    7.86 MB
+whisper_init_state: compute buffer (conv)   =   37.69 MB
+whisper_init_state: compute buffer (encode) =  219.99 MB
+whisper_init_state: compute buffer (cross)  =   39.99 MB
+whisper_init_state: compute buffer (decode) =  100.04 MB
+whisper_full_with_state: auto-detected language: en (p = 0.953865)
+transcribing 100%[2m2026-08-19T15:19:51.296946Z[0m [32m INFO[0m [2munottr_core::dump[0m[2m:[0m dumped [3mpath[0m[2m=[0m/home/naresh/Desktop/projects-next/unottr/fixtures/corpus-01/utterances.json
+
+27 chunks (0 resumed), 154 segments, 543.0s speech on Gpu
+24.5s wall, 22.1x realtime over speech

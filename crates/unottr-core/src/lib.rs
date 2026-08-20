@@ -6,6 +6,7 @@
 pub mod cancel;
 pub mod db;
 pub mod diarize;
+pub mod dump;
 pub mod error;
 pub mod export;
 pub mod ingest;

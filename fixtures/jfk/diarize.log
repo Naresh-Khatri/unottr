@@ -1,0 +1,9 @@
+[2m2026-08-19T15:19:25.091706Z[0m [32m INFO[0m [2munottr_core::diarize::engine[0m[2m:[0m diarizer loaded [3mconfig[0m[2m=[0mConfig { threshold: 0.6, speakers: None } [3mdim[0m[2m=[0m192
+diarizing  43%diarizing  87%[2m2026-08-19T15:19:25.418806Z[0m [32m INFO[0m [2munottr_core::diarize::engine[0m[2m:[0m diarization done [3mturns[0m[2m=[0m4 [3mspeakers[0m[2m=[0m1
+diarizing  97%[2m2026-08-19T15:19:25.637159Z[0m [32m INFO[0m [2munottr_core::dump[0m[2m:[0m dumped [3mpath[0m[2m=[0m/home/naresh/Desktop/projects-next/unottr/fixtures/jfk/turns.json
+[2m2026-08-19T15:19:25.637370Z[0m [32m INFO[0m [2munottr_core::dump[0m[2m:[0m dumped [3mpath[0m[2m=[0m/home/naresh/Desktop/projects-next/unottr/fixtures/jfk/merged.json
+diarizing 100%[2m2026-08-19T15:19:25.637823Z[0m [32m INFO[0m [2munottr_core::diarize[0m[2m:[0m diarize done [3mreport[0m[2m=[0mReport { speakers: 1, turns: 4, segments: 1, split: 0, unattributed: 0, mic_track: false }
+
+1 speakers, 4 turns over 1 segments
+0 split, 0 unattributed
+2.1s wall, 5.4x realtime
