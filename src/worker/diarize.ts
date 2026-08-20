@@ -221,7 +221,9 @@ export class Diarizer {
     const stream = this.embed.createStream();
     stream.acceptWaveform({ samples, sampleRate: TARGET_SAMPLE_RATE });
     stream.inputFinished();
-    return this.embed.compute(stream);
+    // enableExternalBuffer=false: electron's v8 sandbox rejects napi external buffers
+    // ("External buffers are not allowed"), so ask sherpa to copy instead
+    return this.embed.compute(stream, false);
   }
 }
 

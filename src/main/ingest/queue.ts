@@ -85,6 +85,8 @@ export class Queue {
         // reconciliation picks this row back up
         if (isCancelled(e) || signal.aborted) return;
         const error = e instanceof PipelineError ? e : err.db(e);
+        // only the slug reaches the db and the ui; without this the message is lost for good
+        console.warn(`recording ${id} failed: ${error.message}`);
 
         // 07's gpu_oom decision: silent to the user, one automatic cpu retry. Bypasses
         // failOrRetry entirely — this is a transparent device switch, not an attempt.
