@@ -1,3 +1,5 @@
+export { etaLabel } from "../../../shared/eta";
+
 export function hms(ms: number): string {
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;

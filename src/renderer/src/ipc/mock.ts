@@ -315,7 +315,12 @@ function startTicking(): void {
   let pct = 12 / 44;
   const t = setInterval(() => {
     pct = Math.min(1, pct + 0.02);
-    emit("job_progress", { recording_id: 9002, stage: "transcribing", pct });
+    emit("job_progress", {
+      recording_id: 9002,
+      stage: "transcribing",
+      pct,
+      eta_ms: Math.round((1 - pct) * 9 * 60_000) + 90_000,
+    });
     if (pct >= 1) {
       clearInterval(t);
       emit("job_done", { recording_id: 9002 });

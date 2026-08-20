@@ -5,16 +5,21 @@
 
 import { join } from "node:path";
 import { Menu, Tray as ElectronTray, app, nativeImage } from "electron";
+import { etaLabel } from "../shared/eta";
 import { showMainWindow } from "./window";
 
-/** "Idle" when nothing is running, else "Transcribing N of M". `active` is 0 or 1 today
- *  (queue concurrency is 1) but the format does not assume that. */
-export const statusLine = (active: number, total: number): string =>
-  active === 0 ? "Idle" : `Transcribing ${active} of ${total}`;
+/** "Idle" when nothing is running, else "Transcribing N of M" plus the estimate when there is
+ *  one. `active` is 0 or 1 today (queue concurrency is 1) but the format does not assume that. */
+export const statusLine = (active: number, total: number, etaMs: number | null = null): string => {
+  if (active === 0) return "Idle";
+  const eta = etaLabel(etaMs);
+  return `Transcribing ${active} of ${total}${eta ? ` · ${eta}` : ""}`;
+};
 
 export class Tray {
   private active = 0;
   private total = 0;
+  private eta: number | null = null;
   private explained = false;
 
   private constructor(private readonly icon: ElectronTray) {}
@@ -37,10 +42,13 @@ export class Tray {
 
   /** Cheap to call on every job event — electron rebuilds the menu, nothing repaints unless
    *  the text moved. */
-  setStatus(active: number, total: number): void {
-    if (active === this.active && total === this.total) return;
+  setStatus(active: number, total: number, etaMs: number | null = null): void {
+    // the label is minute-grained, so only redraw when it would actually read differently
+    if (active === this.active && total === this.total && etaLabel(etaMs) === etaLabel(this.eta))
+      return;
     this.active = active;
     this.total = total;
+    this.eta = etaMs;
     this.render();
   }
 
@@ -60,7 +68,7 @@ export class Tray {
     this.icon.setContextMenu(
       Menu.buildFromTemplate([
         { label: "Show unottr", click: () => showMainWindow() },
-        { label: statusLine(this.active, this.total), enabled: false },
+        { label: statusLine(this.active, this.total, this.eta), enabled: false },
         { type: "separator" },
         { label: "Quit", click: () => app.quit() },
       ]),

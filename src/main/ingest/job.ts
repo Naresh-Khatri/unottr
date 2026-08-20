@@ -11,6 +11,7 @@ import type { Status } from "../../shared/ipc";
 import { DEFAULT_THRESHOLD } from "../../worker/cluster";
 import type { Db } from "../db/client";
 import { forceCpuOf, pathOf, setProbeResult, setStatus } from "../db/recordings";
+import * as stageRates from "../db/stage-rates";
 import { findByPath as folderByPath } from "../db/watch-folders";
 import { err, isCancelled } from "../errors";
 import { type FfmpegCli, extractPcm, extractThumbnails, probe } from "../media/ffmpeg";
@@ -29,6 +30,7 @@ import {
 import { resolve as resolveDevice } from "../models/device";
 import { ensure, isPresent, locate } from "../models/download";
 import type { PipelineConfig } from "./config";
+import { Eta, type Rates, type Timed, prior, rateKey } from "./eta";
 import { diarize, transcribe } from "./pipeline";
 
 export interface JobCtx {
@@ -40,7 +42,8 @@ export interface JobCtx {
   cfg: PipelineConfig;
 }
 
-export type OnProgress = (stage: Status, pct: number) => void;
+/** `etaMs` is the whole job's remaining wall time, null while it cannot be estimated. */
+export type OnProgress = (stage: Status, pct: number, etaMs: number | null) => void;
 
 /** `{stem}.t{n}.pcm` in the cache dir — the name reconcile.ts's stale sweep parses back. */
 export const pcmPathFor = (cacheDir: string, source: string, audioIndex: number): string =>
@@ -59,10 +62,35 @@ export async function processRecording(
 
   // --- probing ---
   setStatus(db, id, "probing");
-  onProgress("probing", 0);
+  onProgress("probing", 0, null);
   const probed = await probe(cli, path);
   setProbeResult(db, id, probed.container, probed.duration_ms);
-  onProgress("probing", 1);
+
+  // a prior run may have gpu-oom'd (the queue's fallback persists this) — read it back so
+  // the override survives a restart, not just the one automatic in-process retry
+  const devicePref = forceCpuOf(db, id) ? "cpu" : cfg.device;
+  const device = resolveDevice(devicePref);
+  const whisperSpec = cfg.whisperModel
+    ? (findWhisper(cfg.whisperModel) ?? raise(cfg.whisperModel))
+    : defaultWhisper(device === "gpu");
+  const embeddingSpec = cfg.embeddingModel
+    ? (findEmbedding(cfg.embeddingModel) ?? raise(cfg.embeddingModel))
+    : defaultEmbedding();
+
+  // resolved before anything slow starts, so the very first tick can already say how long
+  const keys: Record<Timed, string> = {
+    extracting: rateKey("extracting", device, "ffmpeg"),
+    transcribing: rateKey("transcribing", device, whisperSpec.name),
+    // sherpa is cpu-only, so this rate does not vary with what asr ran on
+    diarizing: rateKey("diarizing", "cpu", embeddingSpec.name),
+  };
+  const rates = Object.fromEntries(
+    Object.entries(keys).map(([stage, key]) => [stage, stageRates.rate(db, key, prior(key))]),
+  ) as Rates;
+  const eta = new Eta({ durationMs: probed.duration_ms, rates });
+  const report = (stage: Status, pct: number): void => onProgress(stage, pct, eta.tick(stage, pct));
+
+  report("probing", 1);
 
   if (probed.has_video && probed.duration_ms) {
     try {
@@ -91,12 +119,13 @@ export async function processRecording(
     await extractPcm(cli, path, {
       audioIndex,
       out,
-      onProgress: (f) => onProgress("extracting", f),
+      onProgress: (f) => report("extracting", f),
       signal,
     });
     return out;
   };
 
+  report("extracting", 0);
   let mainPcm: string;
   let micPcm: string | null = null;
   if (choice.selection.kind === "blind") {
@@ -109,20 +138,15 @@ export async function processRecording(
     mainPcm = mix;
     micPcm = mic;
   }
-  onProgress("extracting", 1);
+  report("extracting", 1);
 
   // --- transcribing (checkpointed inside transcribe) ---
-  // a prior run may have gpu-oom'd (the queue's fallback persists this) — read it back so
-  // the override survives a restart, not just the one automatic in-process retry
-  const devicePref = forceCpuOf(db, id) ? "cpu" : cfg.device;
-  const device = resolveDevice(devicePref);
-  const whisperSpec = cfg.whisperModel
-    ? (findWhisper(cfg.whisperModel) ?? raise(cfg.whisperModel))
-    : defaultWhisper(device === "gpu");
   const whisperModel = await fetchModel(ctx, whisperSpec, cfg.downloadModels, signal);
   const vadModel = await fetchModel(ctx, VAD, true, signal);
 
-  await transcribe(
+  report("transcribing", 0);
+  const startedTranscribe = Date.now();
+  const transcribed = await transcribe(
     db,
     {
       recordingId: id,
@@ -136,20 +160,23 @@ export async function processRecording(
         translate: false,
       },
     },
-    (f) => onProgress("transcribing", f),
+    (f) => report("transcribing", f),
     signal,
   );
+  // a resumed run's wall covers only the chunks it actually ran, so it is not a measurement
+  if (transcribed.resumedFrom === 0) {
+    stageRates.record(db, keys.transcribing, Date.now() - startedTranscribe, probed.duration_ms ?? 0);
+  }
 
   // --- diarizing ---
   // explicit, defensive: transcribe's own status write is skipped on the zero-chunk
   // early-return path (an all-silence recording), so this is not always redundant
   setStatus(db, id, "diarizing");
-  const embeddingSpec = cfg.embeddingModel
-    ? (findEmbedding(cfg.embeddingModel) ?? raise(cfg.embeddingModel))
-    : defaultEmbedding();
   const segmentation = await fetchModel(ctx, SEGMENTATION, cfg.downloadModels, signal);
   const embedding = await fetchModel(ctx, embeddingSpec, cfg.downloadModels, signal);
 
+  report("diarizing", 0);
+  const startedDiarize = Date.now();
   // diarize's persist() writes status = 'done' in the same transaction as the merge
   await diarize(
     db,
@@ -165,9 +192,10 @@ export async function processRecording(
         speakers: cfg.diarizeSpeakers,
       },
     },
-    (f) => onProgress("diarizing", f),
+    (f) => report("diarizing", f),
     signal,
   );
+  stageRates.record(db, keys.diarizing, Date.now() - startedDiarize, probed.duration_ms ?? 0);
 }
 
 /** Small models (vad) or a caller that opted into downloads: fetch if missing. Otherwise a

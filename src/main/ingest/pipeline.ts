@@ -96,6 +96,9 @@ export async function transcribe(
     switch (reply.type) {
       case "plan":
         chunks = reply.chunks;
+        // a resume starts partway in; say so before the first chunk lands, or the eta reads
+        // the whole backlog as work still to do
+        if (from > 0) progress(clamp01(from / chunks.length));
         return undefined;
       case "chunk":
         checkpoint(db, spec.recordingId, reply.idx, reply.utterances);

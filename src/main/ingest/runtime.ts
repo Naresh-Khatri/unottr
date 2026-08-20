@@ -52,10 +52,11 @@ export async function stopIngest(): Promise<void> {
 /** Queue concurrency is 1, so `active` only ever reaches 0 or 1 — `total` is the queue depth
  *  including the job in flight. Same accounting as the rust `update_job_count`. */
 let jobs = { active: 0, total: 0 };
-let statusSink: ((active: number, total: number) => void) | null = null;
+let statusSink: ((active: number, total: number, etaMs: number | null) => void) | null = null;
+let etaMs: number | null = null;
 
 /** The tray's status line subscribes here; nothing else needs to be pushed the counts. */
-export function onJobCounts(fn: (active: number, total: number) => void): void {
+export function onJobCounts(fn: (active: number, total: number, etaMs: number | null) => void): void {
   statusSink = fn;
 }
 
@@ -64,9 +65,14 @@ export const jobCounts = (): { active: number; total: number } => jobs;
 
 function count(e: IngestEvent): void {
   if (e.kind === "discovered") jobs.total += 1;
-  else if (e.kind === "progress") jobs.active = 1;
-  else jobs = { active: 0, total: Math.max(0, jobs.total - 1) };
-  statusSink?.(jobs.active, jobs.total);
+  else if (e.kind === "progress") {
+    jobs.active = 1;
+    etaMs = e.eta_ms;
+  } else {
+    jobs = { active: 0, total: Math.max(0, jobs.total - 1) };
+    etaMs = null;
+  }
+  statusSink?.(jobs.active, jobs.total, etaMs);
 }
 
 function forward(e: IngestEvent): void {
@@ -75,7 +81,12 @@ function forward(e: IngestEvent): void {
     case "discovered":
       return events.recordingDiscovered({ recording_id: e.recording_id });
     case "progress":
-      return events.jobProgress({ recording_id: e.recording_id, stage: e.stage, pct: e.pct });
+      return events.jobProgress({
+        recording_id: e.recording_id,
+        stage: e.stage,
+        pct: e.pct,
+        eta_ms: e.eta_ms,
+      });
     case "done":
       return events.jobDone({ recording_id: e.recording_id });
     case "failed":

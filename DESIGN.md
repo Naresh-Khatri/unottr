@@ -104,6 +104,7 @@ people(id, name, name_key UNIQUE, embedding BLOB, samples)
 segments_fts    -- FTS5 over segments.text
 watch_folders(id, path, track_rule, enabled)
 settings(key, value)
+stage_rates(key, rate, samples)   -- learned pipeline speed, see *Time remaining*
 ```
 
 `available = false` when the video is gone; transcript stays searchable, player disabled.
@@ -238,6 +239,25 @@ cluster is matched against all of them and takes the name if it fits.
   escape hatch when it does go wrong.
 - **Forward only.** Existing recordings are not rescanned when a person is created;
   re-diarizing keeps whatever the user already decided, by label.
+
+## Time remaining
+
+Progress bars answer "how far", not "how long", and the difference between the two is a
+factor of thirty here depending on the device. So the eta is built on the one number that
+travels: **wall ms per ms of source audio**, per `stage:device:model`.
+
+- **Learned, not tabulated.** `stage_rates` holds an EWMA (α 0.3) of that ratio, written
+  when a stage finishes. The numbers in *Measured performance* below are only the priors a
+  machine that has never run a job starts from; one recording replaces them with its own.
+- **Blended while running.** A stage's live rate — elapsed over progress made — is what
+  notices a loaded machine or a CPU fallback, but it is noise in the first few percent. It
+  is weighted in linearly and takes over completely 20% into the stage.
+- **The whole job, not the stage.** Every tick quotes the remaining stages too, so the
+  number falls monotonically instead of resetting when diarization starts.
+- **Nothing learned from a resumed run.** Its wall covers only the chunks it actually ran;
+  clips under 30 s are skipped too, where process spawn dominates.
+- **Minute-grained in the ui.** The estimate jitters by tens of seconds; a twitching number
+  reads as broken even when it is right.
 
 ## Measured performance
 

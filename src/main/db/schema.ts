@@ -4,7 +4,7 @@
 // introspect or generate an fts5 virtual table, and `push` would propose dropping them.
 
 import { sql } from "drizzle-orm";
-import { blob, index, integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, real, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 
 /** The frozen state machine (05-ipc-contract.md). */
 export const STATUSES = [
@@ -120,6 +120,19 @@ export const watchFolders = sqliteTable("watch_folders", {
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
+});
+
+/**
+ * What a stage costs *on this machine*: wall ms per ms of source audio, learned from jobs
+ * that finished. `key` is `stage:device:model`, the three things the number depends on —
+ * transcription on a gpu and on 12 cpu threads differ by 30×, so one global number would be
+ * useless. Feeds the eta only; losing the table costs accuracy, not correctness.
+ */
+export const stageRates = sqliteTable("stage_rates", {
+  key: text("key").primaryKey(),
+  rate: real("rate").notNull(),
+  samples: integer("samples").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
 });
 
 /**

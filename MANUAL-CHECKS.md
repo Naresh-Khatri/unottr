@@ -18,6 +18,25 @@ acceptance criteria in `docs/plan/05-ui.md`, re-pointed at the Electron app by p
 - [ ] Remove a watch folder; its existing recordings stay in the list (removal only stops
       future watching, per decision — doesn't delete history).
 
+## Time remaining (eta)
+
+- [ ] The first job on a fresh database shows an estimate next to the status chip as soon as
+      probing finishes — the prior alone is enough, before anything has been measured.
+- [ ] It counts down monotonically and does **not** jump back up when transcription hands
+      over to diarization.
+- [ ] The number lands within roughly 20% of the real wall time by mid-transcription, and
+      within a few percent on the *second* recording of the same length and model (the rate is
+      learned by then).
+- [ ] Force the CPU fallback (Settings -> device, or a gpu-oom retry). The estimate grows to
+      match the much slower run instead of holding the gpu figure.
+- [ ] Retry a checkpointed job: the estimate opens at the resume point rather than quoting the
+      whole file, and that run does not poison the next estimate (a same-length fresh job still
+      quotes sensibly).
+- [ ] Tray menu status line shows the same figure as the list row, and stops at "Idle" when
+      the queue drains.
+- [ ] A recording with no duration (probe failed to report one) shows a progress bar and no
+      estimate — never `NaN` or `~0m left`.
+
 ## Failure / retry
 
 - [ ] Force a job to fail (e.g. point a watch folder at a corrupt/truncated file). The row

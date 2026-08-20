@@ -11,13 +11,13 @@ import { PipelineError, err, isCancelled } from "../errors";
 
 export type IngestEvent =
   | { kind: "discovered"; recording_id: number }
-  | { kind: "progress"; recording_id: number; stage: Status; pct: number }
+  | { kind: "progress"; recording_id: number; stage: Status; pct: number; eta_ms: number | null }
   | { kind: "done"; recording_id: number }
   | { kind: "failed"; recording_id: number; error: string };
 
 export type RunJob = (
   id: number,
-  onProgress: (stage: Status, pct: number) => void,
+  onProgress: (stage: Status, pct: number, etaMs: number | null) => void,
   signal: AbortSignal,
 ) => Promise<void>;
 
@@ -77,7 +77,11 @@ export class Queue {
     for (;;) {
       if (signal.aborted) return;
       try {
-        await run(id, (stage, pct) => onEvent({ kind: "progress", recording_id: id, stage, pct }), signal);
+        await run(
+          id,
+          (stage, pct, eta_ms) => onEvent({ kind: "progress", recording_id: id, stage, pct, eta_ms }),
+          signal,
+        );
         onEvent({ kind: "done", recording_id: id });
         return;
       } catch (e) {

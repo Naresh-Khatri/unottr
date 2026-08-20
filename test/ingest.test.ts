@@ -369,7 +369,7 @@ describe("queue", () => {
     const q = queueOf(events, async (_id, onProgress) => {
       inFlight += 1;
       expect(inFlight).toBe(1);
-      onProgress("probing", 0.5);
+      onProgress("probing", 0.5, 120_000);
       await Promise.resolve();
       inFlight -= 1;
     });
@@ -379,7 +379,9 @@ describe("queue", () => {
     await q.idle();
 
     expect(events.filter((e) => e.kind === "done").map((e) => e.recording_id)).toEqual([a, b]);
-    expect(events.filter((e) => e.kind === "progress")).toHaveLength(2);
+    const ticks = events.filter((e) => e.kind === "progress");
+    expect(ticks).toHaveLength(2);
+    expect(ticks[0]).toMatchObject({ pct: 0.5, eta_ms: 120_000 });
   });
 
   it("retries a bounded failure up to max_attempts, then parks it", async () => {

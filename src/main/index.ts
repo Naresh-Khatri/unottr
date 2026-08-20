@@ -29,7 +29,7 @@ app.whenReady().then(() => {
   const tray = Tray.build();
   attachTray(tray);
   setTrayAvailable(tray !== null);
-  if (tray) onJobCounts((active, total) => tray.setStatus(active, total));
+  if (tray) onJobCounts((active, total, eta) => tray.setStatus(active, total, eta));
 
   startIngest();
   // autostart writes `--hidden`, so a session login does not pop the window open

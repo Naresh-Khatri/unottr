@@ -8,7 +8,7 @@ import {
 } from "@/ipc/client";
 import type { RecordingSummary, WatchFolder } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
-import { dateLabel, durationLabel, hms, timeLabel } from "@/lib/format";
+import { dateLabel, durationLabel, etaLabel, hms, timeLabel } from "@/lib/format";
 import { errorInfo } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useVirtual } from "@/lib/virtual";
@@ -156,7 +156,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
   onOpenSettings: () => void;
 }) {
   const [rows, setRows] = useState<RecordingSummary[]>([]);
-  const [progress, setProgress] = useState<Record<number, number>>({});
+  const [progress, setProgress] = useState<Record<number, { pct: number; eta: number | null }>>({});
   const [folders, setFolders] = useState<WatchFolder[]>([]);
 
   const load = useCallback(() => {
@@ -170,7 +170,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
     const offs = [
       // progress ticks are frequent — patch in place instead of refetching the list
       onJobProgress((p) => {
-        setProgress((prev) => ({ ...prev, [p.recording_id]: p.pct }));
+        setProgress((prev) => ({ ...prev, [p.recording_id]: { pct: p.pct, eta: p.eta_ms } }));
         setRows((prev) => prev.map((r) => (r.id === p.recording_id ? { ...r, status: p.stage } : r)));
       }),
       // terminal/new-row events are rare — a full refetch keeps duration/speaker_count/error correct
@@ -232,7 +232,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                         {!r.available && (
                           <div className="text-xs text-muted-foreground">source unavailable</div>
                         )}
-                        {live && <Progress value={(progress[r.id] ?? 0) * 100} className="mt-2" />}
+                        {live && <Progress value={(progress[r.id]?.pct ?? 0) * 100} className="mt-2" />}
                         {r.status === "failed" && (() => {
                           const info = errorInfo(r.error);
                           return (
@@ -269,6 +269,11 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end"><StatusChip status={r.status} /></div>
+                        {live && progress[r.id]?.eta != null && (
+                          <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+                            {etaLabel(progress[r.id].eta)}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end"><RetryAction row={r} onRetried={load} /></div>

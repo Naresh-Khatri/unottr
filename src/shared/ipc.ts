@@ -110,6 +110,8 @@ export interface JobProgress {
   recording_id: number;
   stage: Status;
   pct: number;
+  /** Remaining wall time for the whole job; null when there is nothing to estimate from. */
+  eta_ms: number | null;
 }
 export interface JobDone {
   recording_id: number;
