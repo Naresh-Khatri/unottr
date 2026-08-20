@@ -6,6 +6,7 @@ import { Search } from "@/ui/Search";
 import { SettingsScreen } from "@/ui/Settings";
 import { FirstRun } from "@/ui/FirstRun";
 import { FfmpegBanner } from "@/ui/FfmpegBanner";
+import { ResourceMeters } from "@/ui/ResourceMeters";
 import { api } from "@/ipc/client";
 import { Button } from "@/components/ui/button";
 
@@ -54,6 +55,7 @@ export default function App() {
             className="mt-auto justify-start" onClick={() => setView({ screen: "settings" })}>
             <Gear />Settings
           </Button>
+          <ResourceMeters />
         </nav>
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

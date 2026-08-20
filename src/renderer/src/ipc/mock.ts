@@ -20,6 +20,7 @@ import type {
   Segment,
   Settings,
   Speaker,
+  SystemStats,
   WatchFolder,
 } from "./types";
 
@@ -158,6 +159,33 @@ export const mockCommands = {
   list_models: () => wait(models.map((m) => ({ ...m }))),
   detected_device: () => wait<Resolved>("gpu"),
   disk_usage: () => wait<DiskUsage>({ models_bytes: 1_624_000_000, cache_bytes: 412_000_000 }),
+  system_stats(): Promise<SystemStats> {
+    // a slow wander rather than random noise, so the meters look like real telemetry
+    mockLoad = (mockLoad + 0.17) % 1;
+    const wave = (offset: number) => 0.25 + 0.35 * (1 + Math.sin((mockLoad + offset) * Math.PI * 2)) / 2;
+    return wait<SystemStats>({
+      cpu: {
+        usage: wave(0),
+        cores: Array.from({ length: 12 }, (_, i) => wave(i / 7)),
+        load1: 2.4,
+        mem_used: 11_500_000_000,
+        mem_total: 32_000_000_000,
+        temp_c: Math.round(42 + wave(0) * 35),
+        watts: Math.round(18 + wave(0) * 60),
+      },
+      gpu: {
+        name: "AMD Radeon RX 6750 XT",
+        usage: wave(0.3),
+        vram_used: 6_787_919_872,
+        vram_total: 12_868_124_672,
+        temp_c: 59,
+        watts: 156,
+      },
+      device: "gpu",
+      jobs_active: 1,
+      jobs_queued: 2,
+    });
+  },
   download_model(tier: string) {
     const m = models.find((x) => x.tier === tier);
     if (!m) return wait(undefined);
@@ -207,6 +235,8 @@ const models: ModelInfo[] = [
 ];
 
 const downloads = new Map<string, ReturnType<typeof setInterval>>();
+
+let mockLoad = 0;
 
 // A tiny event bus so the mock can push the same five events the main process will.
 type Payloads = {

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
-import type { ModelInfo, RecordingFilter, RecordingSort } from "../../shared/ipc";
+import type { ModelInfo, RecordingFilter, RecordingSort, SystemStats } from "../../shared/ipc";
 import { getAutostart, setAutostart } from "../autostart";
 import { db } from "../db";
 import * as queries from "../db/queries";
@@ -11,12 +11,13 @@ import { events } from "../events";
 import { load as loadTranscript, parseFormat, render } from "../export";
 import * as backfill from "../ingest/backfill";
 import { defaultIngestConfig } from "../ingest/config";
-import { ingest } from "../ingest/runtime";
+import { ingest, jobCounts } from "../ingest/runtime";
 import { check, discover, fromSettings } from "../media/ffmpeg";
 import * as catalog from "../models/catalog";
 import { resolve } from "../models/device";
 import { ensure, isPresent } from "../models/download";
 import { logsDir, pcmCacheDir } from "../paths";
+import { sampleCpu, sampleGpu } from "../system/stats";
 
 /** Live model downloads by tier, so `cancel_model_download` has something to abort. */
 const downloads = new Map<string, AbortController>();
@@ -113,6 +114,18 @@ const handlers: Record<string, Handler> = {
 
   disk_usage: () => queries.diskUsage(),
   get_log_dir: () => logsDir(),
+
+  /** Polled once a second or so by the sidebar meters — keep every reader in here cheap. */
+  async system_stats(): Promise<SystemStats> {
+    const { active, total } = jobCounts();
+    return {
+      cpu: sampleCpu(),
+      gpu: await sampleGpu(),
+      device: resolve(settingsDb.load(db()).device),
+      jobs_active: active,
+      jobs_queued: Math.max(0, total - active),
+    };
+  },
 
   // ----------------------------------------------------------------------- files
 

@@ -88,6 +88,23 @@ mirrors the acceptance criteria in `docs/plan/05-ui.md`.
 
 - [ ] Change model tier / language / device / diarize threshold in Settings, then drop a new
       file in a watch folder. The next job picks up the new value with **no app restart**
+## Resource meters (sidebar footer)
+
+- [ ] With the app idle, CPU and GPU sit low and both bars move on their own every ~1.5s.
+- [ ] Start a transcription: the meters climb and the GPU bar tracks whatever `radeontop` /
+      `nvidia-smi` reports (within a poll of each other).
+- [ ] Expand the caret: per-core bars, load, RAM, CPU temp/power, GPU name/VRAM/temp/power,
+      the resolved compute device and the queue counts all appear; the queue line matches
+      the library.
+- [ ] CPU **Temp** and **Power** match `sensors` and `turbostat`/`powerstat` within a few
+      units, and climb under a transcription. Where `energy_uj` is root-only (common outside
+      Arch) or no die sensor is exposed, the row is simply absent — no `undefined`, and
+      everything else still renders.
+- [ ] On a machine with no GPU (or with the Vulkan ICD hidden), the GPU row reads `—` and
+      the expanded panel says `none detected` — no crash, CPU keeps updating.
+- [ ] Minimize to tray, wait a minute, restore: numbers resume immediately and no polling
+      happened while hidden (check the main-process log / CPU of the app while minimized).
+
       (confirm in logs — no restart happened, and the pipeline config reflects the change).
 - [ ] Set an ffmpeg/ffprobe path override or a cache location override in Settings, then
       restart the app. Only *after* restart does the new path/location actually take effect

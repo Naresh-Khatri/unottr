@@ -4,7 +4,7 @@
 import type {
   BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress, ModelInfo,
   RecordingDetail, RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary,
-  Resolved, SearchHit, Settings, WatchFolder,
+  Resolved, SearchHit, Settings, SystemStats, WatchFolder,
 } from "./types";
 import { mockCommands, mockEvents } from "./mock";
 
@@ -45,6 +45,8 @@ export const api = {
     USE_MOCK ? mockCommands.detected_device() : invoke("detected_device"),
   diskUsage: (): Promise<DiskUsage> =>
     USE_MOCK ? mockCommands.disk_usage() : invoke("disk_usage"),
+  systemStats: (): Promise<SystemStats> =>
+    USE_MOCK ? mockCommands.system_stats() : invoke("system_stats"),
   downloadModel: (tier: string): Promise<void> =>
     USE_MOCK ? mockCommands.download_model(tier) : invoke("download_model", { tier }),
   cancelModelDownload: (tier: string): Promise<void> =>

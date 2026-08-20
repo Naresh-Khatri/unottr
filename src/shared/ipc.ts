@@ -157,3 +157,35 @@ export interface ModelDownloadProgress {
   model: string; // tier name, not registry filename
   pct: number; // 0..1
 }
+
+// Phase 09 — live resource meters. Polled by the renderer while the window is visible; there
+// is no event for these because the ui decides its own cadence.
+
+export interface CpuStats {
+  usage: number; // 0..1 across every logical core
+  cores: number[]; // 0..1, one per logical core
+  load1: number; // 1-minute load average
+  mem_used: number; // bytes
+  mem_total: number;
+  temp_c: number | null;
+  /** package power, null where rapl is absent or root-only. */
+  watts: number | null;
+}
+
+export interface GpuStats {
+  name: string;
+  /** null when the driver publishes no busy counter — the card is still shown, without a bar. */
+  usage: number | null; // 0..1
+  vram_used: number | null; // bytes
+  vram_total: number | null;
+  temp_c: number | null;
+  watts: number | null;
+}
+
+export interface SystemStats {
+  cpu: CpuStats;
+  gpu: GpuStats | null; // null = no gpu found at all
+  device: Resolved; // what a job started right now would run on
+  jobs_active: number; // 0 or 1 — queue concurrency is 1
+  jobs_queued: number; // waiting, not counting the one in flight
+}

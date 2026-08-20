@@ -54,10 +54,13 @@ export async function stopIngest(): Promise<void> {
 let jobs = { active: 0, total: 0 };
 let statusSink: ((active: number, total: number) => void) | null = null;
 
-/** The tray's status line subscribes here; nothing else needs the counts. */
+/** The tray's status line subscribes here; nothing else needs to be pushed the counts. */
 export function onJobCounts(fn: (active: number, total: number) => void): void {
   statusSink = fn;
 }
+
+/** Pull side of the same counters, for the ui's resource meters. */
+export const jobCounts = (): { active: number; total: number } => jobs;
 
 function count(e: IngestEvent): void {
   if (e.kind === "discovered") jobs.total += 1;
