@@ -210,7 +210,8 @@ async function grabFrame(
     "-nostdin", "-v", "error", "-y",
     "-ss", seconds.toFixed(3), "-i", path,
     "-frames:v", "1", "-vf", `scale=${width}:-2`, "-q:v", "4",
-    tmp,
+    // tmp name has no usable extension -> ffmpeg can't infer the muxer
+    "-f", "image2", tmp,
   ];
 
   const result = await run(cli.ffmpeg, args, { signal });
