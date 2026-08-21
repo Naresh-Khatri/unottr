@@ -63,8 +63,17 @@ export function createWindow(hidden = false): BrowserWindow {
   });
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
-  if (devUrl) void win_.loadURL(devUrl);
-  else void win_.loadFile(join(__dirname, "../renderer/index.html"));
+  if (devUrl) {
+    // the page <title> wins otherwise, and a dev window is indistinguishable from a packaged
+    // one sitting in the tray
+    win_.on("page-title-updated", (e, title) => {
+      e.preventDefault();
+      win_.setTitle(`${title} — dev`);
+    });
+    void win_.loadURL(devUrl);
+  } else {
+    void win_.loadFile(join(__dirname, "../renderer/index.html"));
+  }
 
   return win_;
 }
@@ -79,12 +88,17 @@ export function showMainWindow(): void {
 
 export const mainWindow = (): BrowserWindow | null => win;
 
+const isDev = (): boolean => process.env.ELECTRON_RENDERER_URL != null;
+
 /**
  * True when the close should hide to tray instead. Needs a tray to hide to, a quit that is
- * not already under way, and the setting left on. Marks the one-time hint as it goes.
+ * not already under way, a packaged run, and the setting left on. Marks the one-time hint
+ * as it goes.
  */
 function absorbClose(): boolean {
-  if (quitting || !tray) return false;
+  // a dev run must never outlive its window: a hidden one keeps the single-instance lock and
+  // the next `pnpm dev` dies against it
+  if (quitting || !tray || isDev()) return false;
   let explained = false;
   try {
     const conn = db();

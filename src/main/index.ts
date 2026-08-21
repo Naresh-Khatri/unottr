@@ -1,3 +1,5 @@
+import { readlinkSync } from "node:fs";
+import { join } from "node:path";
 import { app, protocol } from "electron";
 import { closeDatabase, db } from "./db";
 import { sweepRunning } from "./db/overviews";
@@ -19,7 +21,18 @@ protocol.registerSchemesAsPrivileged([
 
 // a second launch focuses the running window and exits — the watcher and the queue assume
 // they are the only writer of this database
-if (!app.requestSingleInstanceLock()) app.exit(0);
+if (!app.requestSingleInstanceLock()) {
+  // silent otherwise: `pnpm dev` against an open packaged build just raises the old window,
+  // and the dev run looks like it started and did nothing
+  const pid = lockHolderPid();
+  console.error(
+    pid == null
+      ? "[unottr] another instance already holds the lock — quit it first. exiting."
+      : `[unottr] another instance (pid ${pid}) already holds the lock — quit it first ` +
+        `(\`kill ${pid}\`). exiting.`,
+  );
+  app.exit(0);
+}
 app.on("second-instance", () => showMainWindow());
 
 app.whenReady().then(() => {
@@ -63,3 +76,14 @@ app.on("before-quit", (e) => {
 
 // checkpoints the wal, so a `-wal` file isn't left behind next to the database
 app.on("will-quit", closeDatabase);
+
+/** Chromium's lock is a symlink to `<hostname>-<pid>`; a hostname may itself contain dashes. */
+function lockHolderPid(): number | null {
+  try {
+    const target = readlinkSync(join(app.getPath("userData"), "SingletonLock"));
+    const pid = Number(target.slice(target.lastIndexOf("-") + 1));
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
