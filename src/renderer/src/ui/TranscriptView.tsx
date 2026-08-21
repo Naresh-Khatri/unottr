@@ -216,6 +216,10 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
               && canPlayContainer(detail.recording.path) ? (
               <VideoPlayer
                 recordingId={detail.recording.id}
+                durationMs={detail.recording.duration_ms}
+                hasVideo={detail.recording.has_video}
+                segments={detail.segments}
+                speakers={speakers}
                 currentMs={currentMs}
                 onTimeUpdate={setCurrentMs}
                 onError={() => setVideoFailed(true)}
