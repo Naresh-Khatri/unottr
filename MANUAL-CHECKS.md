@@ -110,6 +110,18 @@ acceptance criteria in `docs/plan/05-ui.md`, re-pointed at the Electron app by p
 - [ ] Search over an `available = 0` recording's transcript still returns hits (search must
       not silently exclude unavailable recordings).
 
+## Mouse back / forward
+
+- [ ] With a mouse that has side buttons: Library -> Search -> open a hit's transcript, then
+      press **back** twice -> transcript -> Search -> Library, and **forward** walks the same
+      path in reverse.
+- [ ] Back from a transcript opened out of Search lands on Search (not Library); the in-view
+      **Back** button does the same.
+- [ ] Pressing back while on Library (nothing behind it) does nothing — no blank screen, no
+      reload of the app.
+- [ ] Pressing the side buttons over the video player or the transcript list still navigates
+      (the events are taken at the window, before any widget can swallow them).
+
 ## Virtualization / scale
 
 - [ ] A recordings list with several hundred+ rows scrolls smoothly (no visible jank), and

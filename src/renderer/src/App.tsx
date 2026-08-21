@@ -8,6 +8,7 @@ import { FirstRun } from "@/ui/FirstRun";
 import { FfmpegBanner } from "@/ui/FfmpegBanner";
 import { ResourceMeters } from "@/ui/ResourceMeters";
 import { api } from "@/ipc/client";
+import { useHistory } from "@/lib/useHistory";
 import { Button } from "@/components/ui/button";
 
 type View =
@@ -16,8 +17,13 @@ type View =
   | { screen: "settings" }
   | { screen: "transcript"; id: number; ms: number; tab?: "transcript" | "overview" };
 
+// what counts as the same place in history — a fresh timestamp on the open recording isn't a move
+const viewKey = (v: View): string =>
+  v.screen === "transcript" ? `transcript:${v.id}:${v.tab ?? "transcript"}` : v.screen;
+
 export default function App() {
-  const [view, setView] = useState<View>({ screen: "library" });
+  const nav = useHistory<View>({ screen: "library" }, viewKey);
+  const { view, go: setView } = nav;
   const [firstRunDone, setFirstRunDone] = useState<boolean | null>(null);
   const [ffmpegOk, setFfmpegOk] = useState(true);
 
@@ -37,7 +43,7 @@ export default function App() {
         id={view.id}
         initialMs={view.ms}
         initialTab={view.tab}
-        onBack={() => setView({ screen: "library" })}
+        onBack={() => (nav.canBack ? nav.back() : setView({ screen: "library" }))}
         onOpenSettings={() => setView({ screen: "settings" })}
       />
     );
