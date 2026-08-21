@@ -54,7 +54,7 @@ before falling back to plaintext.
 ```sh
 pnpm install
 pnpm dev                      # electron-vite: main, preload and renderer, all hot-reloaded
-pnpm typecheck                # five tsconfig projects
+pnpm typecheck                # two projects: node (main/preload/worker/test) and web
 pnpm test                     # vitest; the *.integration.test.ts files need real models
 ```
 

@@ -1,24 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "types": ["node"],
-    "useDefineForClassFields": true,
-    "skipLibCheck": true,
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "esModuleInterop": true,
-    "noEmit": true,
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
-  },
-  // inherited by every child config (only `include` is overridden), so the one ambient
-  // declaration sherpa-onnx-node needs is in scope wherever it is imported from
-  "files": ["src/worker/sherpa-onnx-node.d.ts"],
-  "include": ["electron.vite.config.ts", "drizzle.config.ts", "vitest.config.ts", "test"]
+  "files": [],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
 }

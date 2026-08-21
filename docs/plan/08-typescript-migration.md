@@ -353,8 +353,8 @@ query is ported.
 
 **Acceptance**
 - [ ] App window opens, all nine screens render against mocks. *(needs a dev run — yours)*
-- [x] `tsc --noEmit` clean across all four tsconfig projects. *(five now: base, main,
-      preload, worker, web.)*
+- [x] `tsc --noEmit` clean across all tsconfig projects. *(base + node + web, the layout
+      this phase specified.)*
 - [x] `<video>` plays a corpus `.mp4` over `unottr://` and seeking works. **This is the bug
       that started the migration; it dies here.** *(Protocol verified against recording 1,
       a 106 MB `.mp4`: `bytes=1000-2000` -> `206`/`Content-Range`, suffix `bytes=-512` ->

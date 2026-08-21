@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "src/main",
+    "src/preload",
+    "src/worker",
+    "src/shared",
+    "test",
+    "electron.vite.config.ts",
+    "drizzle.config.ts",
+    "vitest.config.ts"
+  ]
+}
