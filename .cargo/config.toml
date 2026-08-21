@@ -1,5 +1,0 @@
-# sherpa-onnx ships as prebuilt .so files that its build script drops next to our binary.
-# $ORIGIN is what lets `cargo run`/`cargo test` and the packaged app find them with no
-# LD_LIBRARY_PATH; the libs carry their own $ORIGIN rpath for libonnxruntime.
-[target.'cfg(target_os = "linux")']
-rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]

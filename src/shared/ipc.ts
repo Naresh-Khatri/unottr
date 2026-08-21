@@ -109,7 +109,7 @@ export interface RecordingSort {
   dir: "asc" | "desc";
 }
 
-// Rust -> UI events. pct is 0..1.
+// main -> renderer events. pct is 0..1.
 export interface JobProgress {
   recording_id: number;
   stage: Status;

@@ -1,9 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-// Mirrors crates/unottr-core/src/paths.rs so both runtimes see the same install while the
-// migration is in flight. UNOTTR_DATA_DIR relocates cache and state too — one env var
-// fully isolates a test run.
+// UNOTTR_DATA_DIR relocates cache and state too — one env var fully isolates a test run.
 const override = process.env.UNOTTR_DATA_DIR || undefined;
 
 const xdg = (key: string, fallback: string): string =>

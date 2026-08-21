@@ -753,7 +753,8 @@ meeting and marking it done is the worst bug this app can have.
 6. Rewrite `docs/plan/README.md` — phases 00–07 describe a Rust app that no longer exists.
    Keep them as history, mark them superseded.
 
-**Status.** Steps 1, 5 and 6 are done; the rest waits on a packaging run, which is yours.
+**Status.** Steps 1, 4, 5 and 6 are done; steps 2 and 3 wait on a packaging run, which is
+yours.
 
 - `electron-builder.yml` exists: AppImage target, `npmRebuild: false` (every native dep is
   an n-api prebuild, and a rebuild would break the node-side test run against the same
@@ -770,16 +771,24 @@ meeting and marking it done is the worst bug this app can have.
   useless `onProgress`), `README.md`, `THIRD-PARTY.md`, `MANUAL-CHECKS.md`,
   `docs/plan/README.md`.
 
-**Step 4 (the deletions) is deliberately not done yet, and stays that way until asked.**
-The corpus-02 regression that needed `crates/` as a reference is closed, but the packaged
-app has not been run and the Rust source is still the only place the oracle's behaviour is
-written down in executable form. Delete after the acceptance boxes below are ticked, and
-only on an explicit go-ahead.
+**Step 4 is done** (on an explicit go-ahead, ahead of the packaging run). Deleted:
+`crates/`, `src-tauri/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.cargo/`,
+`scripts/{build-appimage,package-tarball,dump-fixtures,verify-fixtures}.sh`,
+`docs/fixtures/seed.sql` (superseded by `test/seed.ts`), the `PRAGMA user_version` bridge
+*and* `adoptRustSchema` in `migrate.ts`, and the five `@tauri-apps/*` packages.
+
+The last commit that still contains the Rust is tagged **`rust-final`**. Regenerating the
+08.0 oracle needs that tag checked out — `fixtures/` is frozen from here on, which is the
+accepted trade: the fixtures are still what every port test reads, they just cannot be
+re-derived in place.
 
 **Acceptance**
 - [ ] AppImage runs on a clean machine, GPU and CPU-only.
-- [ ] `rg -i "rust|cargo|tauri"` returns only history and licence text.
-- [ ] `git rm -r crates src-tauri` and the app still builds.
+- [x] `rg -i "rust|cargo|tauri"` returns only history and licence text. *(What is left in
+      `src/` is the `// Port of crates/…` provenance comments, kept deliberately — they
+      carry the *why* behind non-obvious ports and `rust-final` still resolves them.)*
+- [x] `git rm -r crates src-tauri` and the app still builds. *(`pnpm typecheck` clean,
+      `pnpm test` 234 passed / 3 skipped.)*
 - [ ] Fixtures still pass against the packaged binary.
 
 ---

@@ -1,4 +1,4 @@
-// Port of docs/fixtures/seed.sql. Gives the read side data without running a pipeline.
+// Gives the read side data without running a pipeline (was docs/fixtures/seed.sql).
 // Idempotent: clears its own fixed-id rows first. Ids >= 9000 so real rows are never touched.
 //
 //   pnpm seed                  -> seeds the real database

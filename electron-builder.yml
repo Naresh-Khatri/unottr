@@ -13,7 +13,7 @@ files:
   - out/**
   - package.json
   # the renderer is bundled; nothing under src/ ships
-  - "!**/{.vscode,.github,docs,test,fixtures,scripts,crates,src-tauri,src}/**"
+  - "!**/{.vscode,.github,docs,test,fixtures,scripts,src}/**"
 
 # native addons cannot be dlopen'd from inside an asar, and the two prebuilt packages carry
 # the .so files those addons need next to them
