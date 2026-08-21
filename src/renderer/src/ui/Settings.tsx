@@ -5,13 +5,15 @@ import {
 } from "@phosphor-icons/react";
 import { api, onModelDownloadProgress, os } from "@/ipc/client";
 import type {
-  BackfillEstimate, DiskUsage, ModelInfo, Person, Resolved, Settings as SettingsT, WatchFolder,
+  AiSettings, BackfillEstimate, DiskUsage, ModelInfo, Person, Resolved, Settings as SettingsT,
+  WatchFolder,
 } from "@/ipc/types";
 import { bytesLabel, durationLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Spinner } from "@/components/ui/spinner";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -105,6 +107,8 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
 
         <PeopleCard people={people} onChange={loadPeople} />
 
+        <AiCard onSetSetting={setSetting} />
+
         <ModelCard
           models={models}
           activeTier={settings.model_tier}
@@ -161,9 +165,11 @@ function PeopleCard({ people, onChange }: { people: Person[]; onChange: () => vo
 
 function PersonRow({ person, onChange }: { person: Person; onChange: () => void }) {
   const [draft, setDraft] = useState(person.name);
+  const [role, setRole] = useState(person.role ?? "");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => setDraft(person.name), [person.name]);
+  useEffect(() => setRole(person.role ?? ""), [person.role]);
 
   async function commit() {
     const name = draft.trim();
@@ -173,31 +179,185 @@ function PersonRow({ person, onChange }: { person: Person; onChange: () => void 
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <Input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") { setDraft(person.name); e.currentTarget.blur(); }
-        }}
-        className="h-8 w-56"
-      />
-      <span className="flex-1 text-xs text-muted-foreground">
-        {person.recordings === 1 ? "1 recording" : `${person.recordings} recordings`}
-        {person.samples === 0 && " · no voiceprint yet"}
-      </span>
-      {error && <span className="text-xs text-destructive">{error}</span>}
-      <Button
-        size="xs"
-        variant="ghost"
-        title="Forget this voice — their speakers go back to unnamed"
-        onClick={async () => { await api.forgetPerson(person.id); onChange(); }}
-      >
-        <Trash />Forget
-      </Button>
+    <div className="flex flex-col gap-1.5 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") { setDraft(person.name); e.currentTarget.blur(); }
+          }}
+          className="h-8 w-56"
+        />
+        <span className="flex-1 text-xs text-muted-foreground">
+          {person.recordings === 1 ? "1 recording" : `${person.recordings} recordings`}
+          {person.samples === 0 && " · no voiceprint yet"}
+        </span>
+        {error && <span className="text-xs text-destructive">{error}</span>}
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Forget this voice — their speakers go back to unnamed"
+          onClick={async () => { await api.forgetPerson(person.id); onChange(); }}
+        >
+          <Trash />Forget
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <label className="flex items-center gap-1.5">
+          <input
+            type="radio" name="is-me" checked={person.is_me} className="size-3.5 accent-primary"
+            onChange={async () => { await api.personSetMe(person.id); onChange(); }}
+          />
+          This is me
+        </label>
+        {person.is_me && (
+          <>
+            <span>·</span>
+            <Input
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              onBlur={async () => {
+                if (role.trim() !== (person.role ?? "")) {
+                  await api.personSetRole(person.id, role.trim());
+                  onChange();
+                }
+              }}
+              onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+              placeholder="your role, e.g. engineering manager"
+              className="h-6 w-72 text-xs"
+            />
+          </>
+        )}
+      </div>
     </div>
+  );
+}
+
+/**
+ * The only part of unottr that talks to a network. Off until a key is here, and even then it
+ * never runs by itself — the Overview tab's button is the one trigger.
+ */
+function AiCard({ onSetSetting }: { onSetSetting: (key: string, value: string) => Promise<void> }) {
+  const [ai, setAi] = useState<AiSettings | null>(null);
+  const [models, setModels] = useState<{ id: string; name: string }[]>([]);
+  const [key, setKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  // safeStorage said no keyring; storing in the clear needs a yes, not a shrug
+  const [needsPlain, setNeedsPlain] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.aiSettings().then(setAi, () => {});
+    api.aiModels().then(setModels, () => {});
+  }, []);
+
+  async function save(allowPlain: boolean) {
+    setSaving(true);
+    setError(null);
+    try {
+      setAi(await api.aiKeySet(key.trim(), allowPlain));
+      setKey("");
+      setNeedsPlain(false);
+    } catch (e) {
+      setError(String(e));
+      setNeedsPlain(String(e).includes("keyring"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function change(setting: string, value: string) {
+    await onSetSetting(setting, value);
+    setAi(await api.aiSettings());
+  }
+
+  if (!ai) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI overview</CardTitle>
+        <CardDescription>
+          Transcription and diarization never touch a network. This does: the transcript text —
+          never the audio or video — is sent to Mistral when you press Generate.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Label className="w-32 shrink-0">API key</Label>
+          <Input
+            type="password"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && key.trim()) save(false); }}
+            placeholder={ai.key_set ? "•••••••• (stored)" : "paste a Mistral API key"}
+            className="h-8 flex-1"
+          />
+          <Button size="xs" disabled={saving || !key.trim()} onClick={() => save(false)}>
+            {saving && <Spinner />}Save
+          </Button>
+          {ai.key_set && (
+            <Button size="xs" variant="ghost" onClick={async () => { setKey(""); setAi(await api.aiKeySet("")); }}>
+              <X />Remove
+            </Button>
+          )}
+        </div>
+
+        {needsPlain && (
+          <div className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+            <span className="inline-flex items-center gap-1.5 font-medium">
+              <Warning className="size-4 shrink-0" />No OS keyring on this system.
+            </span>
+            <span className="text-muted-foreground">
+              The key can only be stored as plain text in unottr’s database. Anyone with read
+              access to your home directory can read it.
+            </span>
+            <Button size="xs" variant="outline" className="self-start" onClick={() => save(true)}>
+              Store it unencrypted anyway
+            </Button>
+          </div>
+        )}
+        {error && !needsPlain && <span className="text-xs text-destructive">{error}</span>}
+        {ai.key_set && ai.key_storage === "plain" && (
+          <span className="text-xs text-amber-600">Stored unencrypted — no keyring was available.</span>
+        )}
+
+        <div className="flex items-center gap-2">
+          <Label htmlFor="ai-model" className="w-32 shrink-0">Model</Label>
+          <select
+            id="ai-model"
+            className="h-8 rounded-lg border bg-transparent px-2 text-sm"
+            value={ai.model}
+            onChange={(e) => change("ai_model", e.target.value)}
+          >
+            {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col">
+            <Label htmlFor="pseudonymize">Send speakers as “Speaker A”, not their names</Label>
+            <span className="text-xs text-muted-foreground">
+              Attribution still works — names are reattached here, after the answer comes back.
+            </span>
+          </div>
+          <Switch
+            id="pseudonymize"
+            checked={ai.pseudonymize}
+            onCheckedChange={(on) => change("ai_pseudonymize", on ? "1" : "0")}
+          />
+        </div>
+      </CardContent>
+      <CardFooter className="justify-start text-xs text-muted-foreground">
+        Estimated spend so far: {ai.spend_cents < 100
+          ? `${ai.spend_cents.toFixed(1)}¢`
+          : `$${(ai.spend_cents / 100).toFixed(2)}`}
+      </CardFooter>
+    </Card>
   );
 }
 

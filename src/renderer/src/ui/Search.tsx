@@ -5,8 +5,11 @@ import type { SearchHit } from "@/ipc/types";
 import { hms } from "@/lib/format";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
-export function Search({ onOpen }: { onOpen: (recordingId: number, ms: number) => void }) {
+export function Search({ onOpen }: {
+  onOpen: (recordingId: number, ms: number, tab?: "transcript" | "overview") => void;
+}) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searched, setSearched] = useState(false);
@@ -32,12 +35,16 @@ export function Search({ onOpen }: { onOpen: (recordingId: number, ms: number) =
 
       <div className="mt-4 space-y-2">
         {hits.map((h) => (
-          <Card key={h.segment_id} onClick={() => onOpen(h.recording_id, h.start_ms)}
+          // an overview hit has no moment of its own — it opens the tab, not 0:00
+          <Card key={`${h.kind}-${h.recording_id}-${h.segment_id}`}
+            onClick={() => onOpen(h.recording_id, h.start_ms, h.kind === "overview" ? "overview" : undefined)}
             className="cursor-pointer transition-colors hover:bg-muted/50">
             <CardContent className="flex flex-col gap-1">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span className="truncate">{h.filename}</span>
-                <span className="font-mono tabular-nums">{hms(h.start_ms)}</span>
+                {h.kind === "overview"
+                  ? <Badge variant="secondary" className="shrink-0 px-1 py-0 text-[10px]">Overview</Badge>
+                  : <span className="font-mono tabular-nums">{hms(h.start_ms)}</span>}
               </div>
               <p className="text-sm [&_b]:bg-primary/20 [&_b]:font-medium [&_b]:text-foreground"
                 dangerouslySetInnerHTML={{ __html: h.snippet }} />

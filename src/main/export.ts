@@ -2,8 +2,9 @@
 
 import { basename } from "node:path";
 import { asc, eq, sql } from "drizzle-orm";
-import type { ExportFormat } from "../shared/ipc";
+import type { ExportFormat, Overview, Task } from "../shared/ipc";
 import type { Db } from "./db/client";
+import { getPayload } from "./db/overviews";
 import { people, recordings, segments, speakers } from "./db/schema";
 
 const FORMATS: ExportFormat[] = ["txt", "json", "srt", "vtt"];
@@ -21,6 +22,9 @@ export interface ExportSegment {
 export interface Transcript {
   filename: string;
   segments: ExportSegment[];
+  /** null until an overview has been generated; srt/vtt ignore it either way */
+  overview: Overview | null;
+  tasks: Task[];
 }
 
 /**
@@ -49,20 +53,52 @@ export function load(db: Db, recordingId: number): Transcript {
     .orderBy(asc(segments.startMs), asc(segments.id))
     .all();
 
-  return { filename: basename(path) || path, segments: rows };
+  const { overview, tasks } = getPayload(db, recordingId);
+  return { filename: basename(path) || path, segments: rows, overview, tasks };
 }
 
 export function render(format: ExportFormat, t: Transcript): string {
   switch (format) {
     case "txt":
-      return t.segments.map((s) => `[${hms(s.start_ms)}] ${prefix(s)}${s.text}\n`).join("");
+      return header(t) + t.segments.map((s) => `[${hms(s.start_ms)}] ${prefix(s)}${s.text}\n`).join("");
     case "json":
       return JSON.stringify(t, null, 2);
+    // subtitle formats stay subtitles: prose in them breaks every consumer
     case "srt":
       return subtitles(t, srtTs, "");
     case "vtt":
       return subtitles(t, vttTs, "WEBVTT\n\n");
   }
+}
+
+/** The overview above the transcript, as plain text — a .txt export is something you paste. */
+function header(t: Transcript): string {
+  const o = t.overview;
+  if (!o || o.status !== "done") return "";
+
+  const out = [o.title ?? "", "", o.tldr ?? "", ""];
+  for (const s of o.sections) {
+    out.push(`## ${s.heading} [${hms(s.start_ms)}–${hms(s.end_ms)}]`);
+    for (const b of s.bullets) out.push(`  - ${b.text} [${hms(b.start_ms)}]`);
+    out.push("");
+  }
+  if (o.decisions.length) {
+    out.push("## Decisions");
+    for (const d of o.decisions) out.push(`  - ${d.text} [${hms(d.start_ms)}]`);
+    out.push("");
+  }
+  const live = t.tasks.filter((x) => x.status !== "dismissed");
+  if (live.length) {
+    out.push("## Actions");
+    for (const x of live) {
+      const who = x.owner_name ? `${x.owner_name}: ` : "";
+      const due = x.due_date ? ` (due ${x.due_date})` : x.due_raw ? ` (${x.due_raw})` : "";
+      out.push(`  [${x.status === "done" ? "x" : " "}] ${who}${x.text}${due}`);
+    }
+    out.push("");
+  }
+  out.push("---", "");
+  return out.join("\n");
 }
 
 const prefix = (s: ExportSegment): string => (s.speaker ? `${s.speaker}: ` : "");

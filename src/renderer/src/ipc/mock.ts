@@ -3,6 +3,7 @@
 // has no data layer. 08.2 flips USE_MOCK back off.
 
 import type {
+  AiSettings,
   BackfillEstimate,
   DiskUsage,
   JobDone,
@@ -10,6 +11,9 @@ import type {
   JobProgress,
   ModelDownloadProgress,
   ModelInfo,
+  Overview,
+  OverviewChanged,
+  OverviewPayload,
   Person,
   RecordingDetail,
   RecordingDiscovered,
@@ -22,6 +26,8 @@ import type {
   Settings,
   Speaker,
   SystemStats,
+  Task,
+  TaskStatus,
   WatchFolder,
 } from "./types";
 
@@ -30,7 +36,9 @@ const speakers9001: Speaker[] = [
   { id: 9102, recording_id: 9001, label: "Speaker 2", display_name: null, person_id: null },
 ];
 
-let people: Person[] = [{ id: 1, name: "Priya", samples: 3, recordings: 2, created_at: 1759700000 }];
+let people: Person[] = [
+  { id: 1, name: "Priya", samples: 3, recordings: 2, created_at: 1759700000, is_me: true, role: "Engineering manager" },
+];
 
 const segments9001: Segment[] = [
   { id: 1, chunk_idx: 0, start_ms: 1360, end_ms: 4200,
@@ -96,13 +104,20 @@ export const mockCommands = {
   },
   search(query: string): Promise<SearchHit[]> {
     const q = query.toLowerCase();
-    const hits = segments9001
+    const mark = (text: string) => text.replace(new RegExp(`(${query})`, "ig"), "<b>$1</b>");
+    const hits: SearchHit[] = segments9001
       .filter((s) => s.text.toLowerCase().includes(q))
       .map((s) => ({
-        recording_id: 9001, filename: recordings[0].filename,
-        segment_id: s.id, start_ms: s.start_ms,
-        snippet: s.text.replace(new RegExp(`(${query})`, "ig"), "<b>$1</b>"),
+        kind: "transcript", recording_id: 9001, filename: recordings[0].filename,
+        segment_id: s.id, start_ms: s.start_ms, snippet: mark(s.text),
       }));
+    // overview hits sort first and carry no moment — clicking one opens the tab
+    if (overview.tldr && overview.tldr.toLowerCase().includes(q)) {
+      hits.unshift({
+        kind: "overview", recording_id: 9001, filename: recordings[0].filename,
+        segment_id: 0, start_ms: 0, snippet: mark(overview.tldr),
+      });
+    }
     return wait(hits);
   },
   rename_speaker(speaker_id: number, name: string) {
@@ -112,7 +127,8 @@ export const mockCommands = {
     if (!name) s.person_id = null;
     else {
       const found = people.find((p) => p.name.toLowerCase() === name.toLowerCase());
-      const person = found ?? { id: people.length + 1, name, samples: 0, recordings: 1, created_at: 0 };
+      const person: Person =
+        found ?? { id: people.length + 1, name, samples: 0, recordings: 1, created_at: 0, is_me: false, role: null };
       if (!found) people.push(person);
       person.samples++;
       s.person_id = person.id;
@@ -238,7 +254,129 @@ export const mockCommands = {
   get_log_dir: () => wait("/home/naresh/.local/state/unottr/logs"),
   export_transcript: (_id: number, _format: string, _dest: string) => wait(undefined),
   open_in_default_player: (_id: number) => wait(undefined),
+
+  // ------------------------------------------------------------------ ai overview
+
+  person_set_me(id: number | null) {
+    for (const p of people) p.is_me = p.id === id;
+    return wait(undefined);
+  },
+  person_set_role(id: number, role: string) {
+    const p = people.find((x) => x.id === id);
+    if (p) p.role = role || null;
+    return wait(undefined);
+  },
+  overview_get(recording_id: number): Promise<OverviewPayload> {
+    if (recording_id !== 9001) return wait({ overview: null, tasks: [] });
+    return wait({ overview: { ...overview }, tasks: overviewTasks.map((t) => ({ ...t })) });
+  },
+  overview_generate(recording_id: number): Promise<OverviewPayload> {
+    if (recording_id !== 9001) return wait({ overview: null, tasks: [] }, 1500);
+    overview.status = "running";
+    emit("overview_changed", { recording_id });
+    return new Promise((resolve) =>
+      setTimeout(() => {
+        overview.status = "done";
+        overview.stale = false;
+        emit("overview_changed", { recording_id });
+        resolve({ overview: { ...overview }, tasks: overviewTasks.map((t) => ({ ...t })) });
+      }, 2500),
+    );
+  },
+  overview_cancel(recording_id: number) {
+    overview.status = "done";
+    emit("overview_changed", { recording_id });
+    return wait(undefined);
+  },
+  task_set_status(id: number, status: TaskStatus) {
+    const t = overviewTasks.find((x) => x.id === id);
+    if (t) t.status = status;
+    emit("overview_changed", { recording_id: 9001 });
+    return wait(undefined);
+  },
+  task_update(id: number, patch: { text?: string; owner_speaker_id?: number | null; due_date?: string | null }) {
+    const t = overviewTasks.find((x) => x.id === id);
+    if (t) {
+      Object.assign(t, patch);
+      t.user_edited = true;
+      if (patch.owner_speaker_id !== undefined) {
+        const s = speakers9001.find((x) => x.id === patch.owner_speaker_id);
+        t.owner_name = s?.display_name ?? s?.label ?? null;
+        t.is_mine = s?.person_id === 1;
+      }
+    }
+    emit("overview_changed", { recording_id: 9001 });
+    return wait(undefined);
+  },
+  ai_settings_get: () => wait({ ...aiSettings }),
+  ai_models: () => wait([{ id: "mistral-large-2512", name: "Mistral Large" }]),
+  ai_key_set(key: string): Promise<AiSettings> {
+    aiSettings.key_set = key.length > 0;
+    return wait({ ...aiSettings });
+  },
 };
+
+const aiSettings: AiSettings = {
+  model: "mistral-large-2512",
+  pseudonymize: false,
+  consented: true,
+  key_set: true,
+  key_storage: "encrypted",
+  spend_cents: 4.2,
+};
+
+// One finished overview, so the tab is reviewable with no key configured.
+const overview: Overview = {
+  recording_id: 9001,
+  status: "done",
+  error: null,
+  error_kind: null,
+  model: "mistral-large-2512",
+  role_used: "Engineering manager",
+  title: "Q4 roadmap review",
+  tldr:
+    "Priya opened the quarterly roadmap review and walked the team through search latency, " +
+    "which has regressed since the index rebuild. The team agreed to cut the reranker from " +
+    "the Q4 scope and ship the latency fix first.",
+  sections: [
+    {
+      heading: "Search latency regression",
+      start_ms: 1360,
+      end_ms: 7800,
+      bullets: [
+        { text: "p95 search latency has doubled since the index rebuild.", segment_id: 1, start_ms: 1360, frame_url: "unottr://frame/9001/1360" },
+        { text: "The numbers were pulled the morning of the meeting, so they are current.", segment_id: 2, start_ms: 4200, frame_url: "unottr://frame/9001/4200" },
+      ],
+    },
+    {
+      heading: "Q4 scope",
+      start_ms: 7800,
+      end_ms: 11200,
+      bullets: [
+        { text: "The reranker slips to Q1 so the latency fix can ship alone.", segment_id: 3, start_ms: 7800, frame_url: "unottr://frame/9001/7800" },
+      ],
+    },
+  ],
+  decisions: [
+    { text: "Cut the reranker from Q4 and ship the latency fix first.", segment_id: 3, start_ms: 7800, frame_url: "unottr://frame/9001/7800" },
+  ],
+  tokens_in: 8420,
+  tokens_out: 1160,
+  updated_at: 1765400000,
+  stale: false,
+};
+
+const overviewTasks: Task[] = [
+  { id: 1, recording_id: 9001, text: "Write up the latency regression and circulate it before Friday.",
+    owner_speaker_id: 9101, owner_name: "Priya", is_mine: true, start_ms: 1360,
+    due_raw: "before Friday", due_date: "2026-08-21", status: "open", user_edited: false },
+  { id: 2, recording_id: 9001, text: "Re-run the search benchmarks against the rebuilt index.",
+    owner_speaker_id: 9102, owner_name: "Speaker 2", is_mine: false, start_ms: 4200,
+    due_raw: null, due_date: null, status: "open", user_edited: false },
+  { id: 3, recording_id: 9001, text: "Move the reranker epic to the Q1 board.",
+    owner_speaker_id: null, owner_name: null, is_mine: false, start_ms: 7800,
+    due_raw: "next sprint", due_date: null, status: "done", user_edited: false },
+];
 
 const settings: Settings = {
   model_tier: "auto",
@@ -265,13 +403,14 @@ const downloads = new Map<string, ReturnType<typeof setInterval>>();
 
 let mockLoad = 0;
 
-// A tiny event bus so the mock can push the same five events the main process will.
+// A tiny event bus so the mock can push the same events the main process will.
 type Payloads = {
   job_progress: JobProgress;
   job_done: JobDone;
   job_failed: JobFailed;
   recording_discovered: RecordingDiscovered;
   model_download_progress: ModelDownloadProgress;
+  overview_changed: OverviewChanged;
 };
 
 const subscribers: { [K in keyof Payloads]: Set<(p: Payloads[K]) => void> } = {
@@ -280,6 +419,7 @@ const subscribers: { [K in keyof Payloads]: Set<(p: Payloads[K]) => void> } = {
   job_failed: new Set(),
   recording_discovered: new Set(),
   model_download_progress: new Set(),
+  overview_changed: new Set(),
 };
 
 function emit<K extends keyof Payloads>(event: K, payload: Payloads[K]): void {
@@ -304,6 +444,7 @@ export const mockEvents = {
   job_failed: subscribe("job_failed"),
   recording_discovered: subscribe("recording_discovered"),
   model_download_progress: subscribe("model_download_progress"),
+  overview_changed: subscribe("overview_changed"),
 };
 
 // Fake progress for recording 9002 so the live progress bar has something to render.

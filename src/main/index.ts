@@ -1,5 +1,6 @@
 import { app, protocol } from "electron";
-import { closeDatabase } from "./db";
+import { closeDatabase, db } from "./db";
+import { sweepRunning } from "./db/overviews";
 import { onJobCounts, startIngest, stopIngest } from "./ingest/runtime";
 import { registerHandlers, setTrayAvailable } from "./ipc/handlers";
 import { initLogging } from "./logging";
@@ -30,6 +31,11 @@ app.whenReady().then(() => {
   attachTray(tray);
   setTrayAvailable(tray !== null);
   if (tray) onJobCounts((active, total, eta) => tray.setStatus(active, total, eta));
+
+  // an overview generating when the app died has no resume: the call is not checkpointable
+  // and it costs money, so it fails and the user decides whether to spend again
+  const swept = sweepRunning(db());
+  if (swept) console.warn(`marked ${swept} interrupted overview(s) failed`);
 
   startIngest();
   // autostart writes `--hidden`, so a session login does not pop the window open

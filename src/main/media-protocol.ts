@@ -5,7 +5,8 @@ import { protocol } from "electron";
 import { db } from "./db";
 import { recordingPath } from "./db/queries";
 import { load } from "./db/settings";
-import { PREVIEW_COUNT, previewPathFor, thumbPathFor, thumbsDirFor } from "./media/thumbs";
+import { fromSettings, grabFrame } from "./media/ffmpeg";
+import { PREVIEW_COUNT, framePathFor, previewPathFor, thumbPathFor, thumbsDirFor } from "./media/thumbs";
 
 export const MEDIA_SCHEME = "unottr";
 
@@ -41,6 +42,8 @@ export function registerMediaProtocol(): void {
         return imageResponse(thumbFile(url));
       case "preview":
         return imageResponse(previewFile(url));
+      case "frame":
+        return frameResponse(url);
       default:
         return plain(404, "not found");
     }
@@ -73,6 +76,46 @@ function previewFile(url: URL): string | null {
   if (!Number.isInteger(id) || id <= 0) return null;
   if (!Number.isInteger(index) || index < 0 || index >= PREVIEW_COUNT) return null;
   return previewPathFor(cacheThumbsDir(), id, index);
+}
+
+/**
+ * `unottr://frame/<id>/<ms>` — the still an overview bullet points at. Extracted on the first
+ * request (~one seek) and cached forever, which is what lets the summary be visual without a
+ * keyframe pipeline running over every recording for pictures nobody asks for.
+ */
+const FRAME_WIDTH = 480;
+
+/** One ffmpeg per frame, not per request: a tab full of bullets asks for each one twice. */
+const pendingFrames = new Map<string, Promise<void>>();
+
+async function frameResponse(url: URL): Promise<Response> {
+  const [idStr, msStr] = url.pathname.slice(1).split("/");
+  const id = Number(idStr);
+  const ms = Number(msStr);
+  if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(ms) || ms < 0) return plain(400, "bad frame");
+
+  const out = framePathFor(cacheThumbsDir(), id, ms);
+  if (existsSync(out)) return imageResponse(out);
+
+  const path = recordingPath(db(), id);
+  if (!path || !existsSync(path)) return plain(404, "not found");
+
+  let pending = pendingFrames.get(out);
+  if (!pending) {
+    const settings = load(db());
+    pending = grabFrame(fromSettings(settings.ffmpeg_path, settings.ffprobe_path), path, ms / 1000, FRAME_WIDTH, out)
+      .finally(() => pendingFrames.delete(out));
+    pendingFrames.set(out, pending);
+  }
+
+  try {
+    await pending;
+  } catch (e) {
+    // audio-only, or a seek past the end — the ui already has a placeholder for "no picture"
+    console.warn(`frame ${id}@${ms}ms failed: ${String(e)}`);
+    return plain(404, "no frame");
+  }
+  return imageResponse(out);
 }
 
 const cacheThumbsDir = (): string => thumbsDirFor(load(db()).cache_dir);

@@ -197,7 +197,7 @@ export async function extractThumbnails(
   }
 }
 
-async function grabFrame(
+export async function grabFrame(
   cli: FfmpegCli,
   path: string,
   seconds: number,

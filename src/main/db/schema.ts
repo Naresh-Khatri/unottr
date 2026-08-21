@@ -44,6 +44,9 @@ export const recordings = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
     /** sticky "whisper OOM'd on the gpu for this file, use cpu" flag (decision #19) */
     forceCpu: integer("force_cpu").notNull().default(0),
+    /** user-set; outranks `aiTitle`, which outranks the filename (decision #32) */
+    title: text("title"),
+    aiTitle: text("ai_title"),
   },
   (t) => [
     index("idx_recordings_status").on(t.status),
@@ -64,6 +67,10 @@ export const people = sqliteTable("people", {
   /** null until the first confirmed speaker enrolls one; never crosses ipc */
   embedding: blob("embedding", { mode: "buffer" }),
   samples: integer("samples").notNull().default(0),
+  /** at most one row set; enforced by the setter, not a constraint (decision #31) */
+  isMe: integer("is_me").notNull().default(0),
+  /** free text — "Developer", "QA lead". Frames the task list, never filters it. */
+  role: text("role"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -134,6 +141,76 @@ export const stageRates = sqliteTable("stage_rates", {
   samples: integer("samples").notNull().default(0),
   updatedAt: integer("updated_at").notNull(),
 });
+
+/** The overview's own lifecycle (decision #27). `recordings.status` never enters an AI state. */
+export const OVERVIEW_STATUSES = ["pending", "running", "done", "failed"] as const;
+export type OverviewStatus = (typeof OVERVIEW_STATUSES)[number];
+
+/** Why a call failed, so the ui can say whether "retry" is even the right advice. */
+export const ERROR_KINDS = ["auth", "rate_limit", "network", "validation", "aborted", "unknown"] as const;
+export type ErrorKind = (typeof ERROR_KINDS)[number];
+
+/**
+ * One row per recording, updated in place — regeneration overwrites (prose is ~1.4¢ to remake).
+ * `sections` and `decisions` are json: nothing queries inside them, and flattening them into
+ * tables would buy a join for no reader. Tasks are rows because they *are* queried — by
+ * status, by owner, and one day across recordings.
+ */
+export const overviews = sqliteTable("overviews", {
+  id: integer("id").primaryKey(),
+  recordingId: integer("recording_id")
+    .notNull()
+    .unique()
+    .references(() => recordings.id, { onDelete: "cascade" }),
+  status: text("status").$type<OverviewStatus>().notNull(),
+  error: text("error"),
+  errorKind: text("error_kind").$type<ErrorKind>(),
+  model: text("model"),
+  /** bumped when prompt.ts changes; what makes an old overview knowably stale */
+  promptVersion: integer("prompt_version").notNull().default(0),
+  roleUsed: text("role_used"),
+  title: text("title"),
+  tldr: text("tldr"),
+  /** json OverviewSection[] */
+  sections: text("sections"),
+  /** json OverviewBullet[] */
+  decisions: text("decisions"),
+  tokensIn: integer("tokens_in"),
+  tokensOut: integer("tokens_out"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const TASK_STATUSES = ["open", "done", "dismissed"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
+/**
+ * Owner is a *speaker*, not a person: `people` rows only exist once someone has been named, so
+ * a people-keyed owner would be NULL on nearly every task in a fresh library. "Mine" is the
+ * join through `speakers.person_id` = the `is_me` person.
+ */
+export const tasks = sqliteTable(
+  "tasks",
+  {
+    id: integer("id").primaryKey(),
+    recordingId: integer("recording_id")
+      .notNull()
+      .references(() => recordings.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    ownerSpeakerId: integer("owner_speaker_id").references(() => speakers.id, { onDelete: "set null" }),
+    startMs: integer("start_ms").notNull(),
+    /** the phrase as spoken; kept even when it did not resolve to a date */
+    dueRaw: text("due_raw"),
+    /** YYYY-MM-DD, or null when it did not parse — a wrongly resolved date is worse than none */
+    dueDate: text("due_date"),
+    status: text("status").$type<TaskStatus>().notNull().default("open"),
+    /** regeneration never touches a row with this set */
+    userEdited: integer("user_edited").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [index("idx_tasks_recording").on(t.recordingId)],
+);
 
 /**
  * Correlated subquery, not a groupBy join — a recording with no speakers still has to appear.

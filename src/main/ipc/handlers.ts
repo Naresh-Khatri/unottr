@@ -1,8 +1,11 @@
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
-import type { ModelInfo, RecordingFilter, RecordingSort, SystemStats } from "../../shared/ipc";
+import type { ModelInfo, RecordingFilter, RecordingSort, SystemStats, TaskStatus } from "../../shared/ipc";
+import * as ai from "../ai/generate";
+import * as provider from "../ai/provider";
 import { getAutostart, setAutostart } from "../autostart";
 import { db } from "../db";
+import * as overviewsDb from "../db/overviews";
 import * as peopleDb from "../db/people";
 import * as queries from "../db/queries";
 import { resetForRetry } from "../db/recordings";
@@ -22,6 +25,9 @@ import { sampleCpu, sampleGpu } from "../system/stats";
 
 /** Live model downloads by tier, so `cancel_model_download` has something to abort. */
 const downloads = new Map<string, AbortController>();
+
+/** Overview generations in flight, so a user who changed their mind can stop paying for one. */
+const generating = new Map<number, AbortController>();
 
 type Args = Record<string, unknown> | undefined;
 type Handler = (args: Args, win: BrowserWindow | null) => unknown;
@@ -75,7 +81,13 @@ const handlers: Record<string, Handler> = {
     return detail;
   },
 
-  search: (a) => queries.search(db(), str(a?.query) ?? "", num(a?.limit) ?? 50),
+  /** Overview hits lead, because a summary line answers "which meeting was that" faster. */
+  search(a) {
+    const query = str(a?.query) ?? "";
+    const limit = num(a?.limit) ?? 50;
+    if (!query.trim()) return [];
+    return [...overviewsDb.searchOverviews(db(), query, 10), ...queries.search(db(), query, limit)];
+  },
 
   /** Names the person behind the cluster, not just this row — see db/people.ts. */
   rename_speaker: (a) => queries.renameSpeaker(db(), requireId(a, "speaker_id"), str(a?.name) ?? ""),
@@ -86,6 +98,64 @@ const handlers: Record<string, Handler> = {
   rename_person: (a) => peopleDb.rename(db(), requireId(a, "id"), str(a?.name) ?? ""),
   /** Drops the voiceprint too, so a bad match stops spreading. */
   forget_person: (a) => peopleDb.forget(db(), requireId(a, "id")),
+
+  /** `id: null` un-says it; setting anyone clears whoever held it before. */
+  person_set_me: (a) => peopleDb.setMe(db(), a?.id === null ? null : requireId(a, "id")),
+  person_set_role: (a) => peopleDb.setRole(db(), requireId(a, "id"), str(a?.role) ?? ""),
+
+  // -------------------------------------------------------------------- ai overview
+
+  overview_get: (a) => overviewsDb.getPayload(db(), requireId(a, "recording_id")),
+
+  /**
+   * Returns once the call has landed — the renderer awaits it rather than polling, and gets
+   * `overview_changed` too so a second window follows along.
+   */
+  async overview_generate(a) {
+    const id = requireId(a, "recording_id");
+    const controller = new AbortController();
+    generating.set(id, controller);
+    try {
+      await ai.generate(db(), id, controller.signal);
+    } finally {
+      generating.delete(id);
+    }
+    return overviewsDb.getPayload(db(), id);
+  },
+
+  overview_cancel(a) {
+    generating.get(requireId(a, "recording_id"))?.abort();
+  },
+
+  task_set_status(a) {
+    const status = str(a?.status);
+    if (status !== "open" && status !== "done" && status !== "dismissed") {
+      throw new Error(`unknown task status ${a?.status}`);
+    }
+    const recordingId = overviewsDb.setTaskStatus(db(), requireId(a, "id"), status as TaskStatus);
+    events.overviewChanged({ recording_id: recordingId });
+  },
+
+  task_update(a) {
+    const recordingId = overviewsDb.updateTask(db(), requireId(a, "id"), {
+      text: str(a?.text),
+      // undefined = leave alone, null = clear; `in` is the only way to tell them apart
+      ...("owner_speaker_id" in (a ?? {}) ? { ownerSpeakerId: num(a?.owner_speaker_id) ?? null } : {}),
+      ...("due_date" in (a ?? {}) ? { dueDate: str(a?.due_date) ?? null } : {}),
+    });
+    events.overviewChanged({ recording_id: recordingId });
+  },
+
+  // ------------------------------------------------------------------- ai settings
+
+  ai_settings_get: () => provider.aiSettings(db()),
+  ai_models: () => provider.MODELS.map(({ id, name }) => ({ id, name })),
+
+  /** The key never travels back out; `ai_settings_get` reports presence, not value. */
+  ai_key_set(a) {
+    provider.setKey(db(), str(a?.key) ?? "", a?.allow_plain === true);
+    return provider.aiSettings(db());
+  },
 
   // ---------------------------------------------------------------- watch folders
 

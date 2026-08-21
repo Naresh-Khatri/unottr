@@ -29,6 +29,13 @@
       "when": 1787228620424,
       "tag": "0003_stage_rates",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787240909319,
+      "tag": "0004_ai",
+      "breakpoints": true
     }
   ]
 }

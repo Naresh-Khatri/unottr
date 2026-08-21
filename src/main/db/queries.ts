@@ -167,7 +167,7 @@ export function search(db: Db, query: string, limit: number): SearchHit[] {
     )
     .all(phrase, limit) as SearchRow[];
 
-  return rows.map(({ path, ...hit }) => ({ ...hit, filename: filename(path) }));
+  return rows.map(({ path, ...hit }) => ({ ...hit, kind: "transcript" as const, filename: filename(path) }));
 }
 
 // ----------------------------------------------------------------------------- speakers
@@ -227,7 +227,7 @@ const filename = (path: string): string => basename(path) || path;
 // has_video isn't persisted (no column for it), so it's derived from the extension
 const VIDEO_EXTS = ["mp4", "mkv", "mov", "webm", "avi", "m4v", "ts", "flv", "wmv"];
 
-const hasVideo = (path: string): boolean =>
+export const hasVideo = (path: string): boolean =>
   VIDEO_EXTS.includes(extname(path).slice(1).toLowerCase());
 
 /** Rows written before this status set existed (e.g. "pending") must not fail a whole list. */

@@ -14,7 +14,7 @@ type View =
   | { screen: "library" }
   | { screen: "search" }
   | { screen: "settings" }
-  | { screen: "transcript"; id: number; ms: number };
+  | { screen: "transcript"; id: number; ms: number; tab?: "transcript" | "overview" };
 
 export default function App() {
   const [view, setView] = useState<View>({ screen: "library" });
@@ -33,8 +33,13 @@ export default function App() {
 
   if (view.screen === "transcript")
     return (
-      <TranscriptView id={view.id} initialMs={view.ms}
-        onBack={() => setView({ screen: "library" })} />
+      <TranscriptView
+        id={view.id}
+        initialMs={view.ms}
+        initialTab={view.tab}
+        onBack={() => setView({ screen: "library" })}
+        onOpenSettings={() => setView({ screen: "settings" })}
+      />
     );
 
   return (
@@ -66,7 +71,7 @@ export default function App() {
             />
           )}
           {view.screen === "search" && (
-            <Search onOpen={(id, ms) => setView({ screen: "transcript", id, ms })} />
+            <Search onOpen={(id, ms, tab) => setView({ screen: "transcript", id, ms, tab })} />
           )}
           {view.screen === "settings" && <SettingsScreen onFfmpegChange={setFfmpegOk} />}
         </main>

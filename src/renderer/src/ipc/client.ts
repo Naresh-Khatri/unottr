@@ -2,9 +2,10 @@
 // cheap writes are real. The pipeline commands (retry, backfill, models, cache) reach the
 // main process and get a "not implemented until 08.x" error until their sub-phase lands.
 import type {
-  BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress, ModelInfo,
-  Person, RecordingDetail, RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary,
-  Resolved, SearchHit, Settings, SystemStats, WatchFolder,
+  AiSettings, BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
+  ModelInfo, OverviewChanged, OverviewPayload, Person, RecordingDetail, RecordingDiscovered,
+  RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit, Settings, SystemStats,
+  TaskStatus, WatchFolder,
 } from "./types";
 import { mockCommands, mockEvents } from "./mock";
 
@@ -65,6 +66,31 @@ export const api = {
     USE_MOCK ? mockCommands.export_transcript(recording_id, format, dest_path) : invoke("export_transcript", { recording_id, format, dest_path }),
   openInDefaultPlayer: (recording_id: number): Promise<void> =>
     USE_MOCK ? mockCommands.open_in_default_player(recording_id) : invoke("open_in_default_player", { recording_id }),
+
+  // ------------------------------------------------------------------ ai overview
+
+  personSetMe: (id: number | null): Promise<void> =>
+    USE_MOCK ? mockCommands.person_set_me(id) : invoke("person_set_me", { id }),
+  personSetRole: (id: number, role: string): Promise<void> =>
+    USE_MOCK ? mockCommands.person_set_role(id, role) : invoke("person_set_role", { id, role }),
+  overviewGet: (recording_id: number): Promise<OverviewPayload> =>
+    USE_MOCK ? mockCommands.overview_get(recording_id) : invoke("overview_get", { recording_id }),
+  /** Resolves when the call has landed — it costs money, so nothing calls this on a render. */
+  overviewGenerate: (recording_id: number): Promise<OverviewPayload> =>
+    USE_MOCK ? mockCommands.overview_generate(recording_id) : invoke("overview_generate", { recording_id }),
+  overviewCancel: (recording_id: number): Promise<void> =>
+    USE_MOCK ? mockCommands.overview_cancel(recording_id) : invoke("overview_cancel", { recording_id }),
+  taskSetStatus: (id: number, status: TaskStatus): Promise<void> =>
+    USE_MOCK ? mockCommands.task_set_status(id, status) : invoke("task_set_status", { id, status }),
+  taskUpdate: (id: number, patch: { text?: string; owner_speaker_id?: number | null; due_date?: string | null }): Promise<void> =>
+    USE_MOCK ? mockCommands.task_update(id, patch) : invoke("task_update", { id, ...patch }),
+  aiSettings: (): Promise<AiSettings> =>
+    USE_MOCK ? mockCommands.ai_settings_get() : invoke("ai_settings_get"),
+  aiModels: (): Promise<{ id: string; name: string }[]> =>
+    USE_MOCK ? mockCommands.ai_models() : invoke("ai_models"),
+  /** `allow_plain` is the answer to "there is no keyring here, store it in the clear?". */
+  aiKeySet: (key: string, allow_plain = false): Promise<AiSettings> =>
+    USE_MOCK ? mockCommands.ai_key_set(key) : invoke("ai_key_set", { key, allow_plain }),
 };
 
 // Native dialogs, the file manager and autostart. Never mocked — these are the main
@@ -92,6 +118,10 @@ export const thumbUrl = (recording_id: number): string => `unottr://thumb/${reco
 export const previewUrl = (recording_id: number, index: number): string =>
   `unottr://preview/${recording_id}/${index}`;
 
+/** The still at one moment. Extracted on first request, so the first paint is ~50 ms late. */
+export const frameUrl = (recording_id: number, ms: number): string =>
+  `unottr://frame/${recording_id}/${ms}`;
+
 export function onJobProgress(cb: (p: JobProgress) => void): () => void {
   if (USE_MOCK) return mockEvents.job_progress(cb);
   return listen<JobProgress>("job_progress", cb);
@@ -111,6 +141,10 @@ export function onRecordingDiscovered(cb: (p: RecordingDiscovered) => void): () 
 export function onModelDownloadProgress(cb: (p: ModelDownloadProgress) => void): () => void {
   if (USE_MOCK) return mockEvents.model_download_progress(cb);
   return listen<ModelDownloadProgress>("model_download_progress", cb);
+}
+export function onOverviewChanged(cb: (p: OverviewChanged) => void): () => void {
+  if (USE_MOCK) return mockEvents.overview_changed(cb);
+  return listen<OverviewChanged>("overview_changed", cb);
 }
 
 function listen<T>(event: string, cb: (payload: T) => void): () => void {

@@ -1,7 +1,10 @@
 # unottr — v1 design
 
 An Electron desktop app that watches folders for meeting recordings and transcribes them
-locally with speaker diarization. No cloud, no accounts, no LLM.
+locally with speaker diarization. No cloud, no accounts, and no network call anywhere in
+the transcribe/diarize path. The single exception is the **AI overview** (#25–#34), which
+is opt-in, runs only when you click it, needs a key you supply, and sends transcript text —
+never audio, never video.
 
 ## Settled decisions
 
@@ -29,6 +32,16 @@ locally with speaker diarization. No cloud, no accounts, no LLM.
 | 22 | Identity | Path + cheap fingerprint — size + sha256 of the first and last 1 MiB (was blake3; `node:crypto` costs no dependency and both are 32 bytes, so the schema is unchanged); transcripts outlive deleted videos |
 | 23 | Embeddings | pyannote seg-3.0 + 3D-Speaker CAM++ (`campplus-zh-en`, 192-dim) |
 | 24 | Clustering | Unknown speaker count; two-stage fragment + average-linkage, see *Diarization* |
+| 25 | Inference | BYO Mistral key, `mistral-large-2512` pinned, switchable; provider module is the seam for local later |
+| 26 | Trigger | Explicit button per recording. Transcription stays automatic; AI never is |
+| 27 | Placement | Satellite `overviews` table, **not** a pipeline stage — a network failure cannot mark a good transcript failed |
+| 28 | Grounding | The model cites `segment_id`, never a timestamp; ids resolve locally, unknown ids are dropped |
+| 29 | Vision | None. No keyframe extraction, no OCR, no image tokens |
+| 30 | Visuals | `unottr://frame/<id>/<ms>` — lazy ffmpeg seek, cached; clicking seeks the player |
+| 31 | Identity | `people.is_me` + `people.role`; role ranks and frames tasks, never filters them |
+| 32 | Output | Title, TL;DR, sections, decisions, tasks — every line cited |
+| 33 | Language | Summary in English; quoted phrases stay verbatim in their original language |
+| 34 | Privacy | Transcript text only; key in `safeStorage`; opt-in dialog shows a real excerpt; pseudonymize toggle |
 
 ## Architecture
 
@@ -97,14 +110,21 @@ Each stage is a persisted queue state, so a crash resumes at a boundary.
 
 ```sql
 recordings(id, path, fp_size, fp_head, fp_tail, container, duration_ms,
-           recorded_at, status, error, attempts, last_chunk_idx, available)
+           recorded_at, status, error, attempts, last_chunk_idx, available,
+           title, ai_title)
 segments(id, recording_id, start_ms, end_ms, text, speaker_id)
 speakers(id, recording_id, label, display_name, person_id, embedding BLOB)
-people(id, name, name_key UNIQUE, embedding BLOB, samples)
+people(id, name, name_key UNIQUE, embedding BLOB, samples, is_me, role)
 segments_fts    -- FTS5 over segments.text
 watch_folders(id, path, track_rule, enabled)
 settings(key, value)
 stage_rates(key, rate, samples)   -- learned pipeline speed, see *Time remaining*
+overviews(id, recording_id UNIQUE, status, error, error_kind, model, prompt_version,
+          role_used, title, tldr, sections JSON, decisions JSON,
+          tokens_in, tokens_out)                    -- see *AI overview*
+tasks(id, recording_id, text, owner_speaker_id, start_ms,
+      due_raw, due_date, status, user_edited)
+overview_fts    -- FTS5, standalone; written by the overview writer, no triggers
 ```
 
 `available = false` when the video is gone; transcript stays searchable, player disabled.
@@ -259,6 +279,45 @@ travels: **wall ms per ms of source audio**, per `stage:device:model`.
 - **Minute-grained in the ui.** The estimate jitters by tens of seconds; a twitching number
   reads as broken even when it is right.
 
+## AI overview
+
+The one part of the app that talks to a server. It turns a finished transcript into a
+title, a TL;DR, topic sections, the decisions, and a task list split into yours and
+everyone else's — every line clickable back to the second it came from.
+
+- **Opt-in twice over.** Nothing happens without a key you supplied *and* a click on the
+  recording. Transcription stays automatic because it is free and local; this is neither.
+- **A satellite, not a stage** (#27). `recordings.status` never enters an AI state, so a
+  dropped connection cannot bury a transcript that is perfectly fine. `overviews` carries
+  its own `pending|running|done|failed|stale`, retryable from the tab it failed in. A
+  `running` row older than the 120 s timeout is flipped to `failed` at startup — otherwise
+  a mid-generate quit leaves a permanent zombie.
+- **The model cannot invent a timestamp** (#28). It is handed segments as `[id] Name: text`
+  and told to cite ids; ids are resolved to `start_ms` in one place, and a citation that
+  does not resolve is dropped rather than rendered as a confident link into the wrong
+  minute. This converts the category's signature failure — a summary that cites 32:14 where
+  the video shows someone eating lunch — from an unfalsifiable hallucination into a
+  validation check.
+- **Role frames, never filters** (#31). `people.role` tells the model what you do so your
+  items rank first and read usefully; it is explicitly told to extract every task
+  regardless of owner. Filtering by role would let one bad speaker attribution silently
+  delete a task you owned, and you would never know it was missing.
+- **Ownership is a speaker, not a person.** A `people` row only exists once someone has
+  been named, so a `people`-keyed owner would be NULL on nearly every task in a fresh
+  library. Tasks point at `speakers.id`; "mine" is the join through
+  `speakers.person_id = (select id from people where is_me = 1)`.
+- **Regeneration is not destructive.** Prose is overwritten — at roughly 1.4¢ a run it is
+  cheaper to remake than to version. Tasks are not: anything edited, checked, or dismissed
+  survives, and only untouched open suggestions are replaced.
+- **Cost, for calibration.** A 33-minute meeting is ~20k tokens; on `mistral-large-2512`
+  ($0.50/M in, $1.50/M out) that is about **1.4¢**, and a two-hour meeting about 4¢. The
+  256k context window means even a six-hour recording goes in one call, so there is no
+  map-reduce and no summary-of-summaries quality loss.
+- **No vision** (#29). Screenshots in the UI are not extracted or analysed — a bullet's
+  cited millisecond is seeked out of the video on demand by `unottr://frame/<id>/<ms>` and
+  cached. The picture is orientation; the click-to-seek is the payload. OCR of screen
+  shares is the obvious next addition and this route is its hook.
+
 ## Measured performance
 
 5 minutes of a real corpus recording. RX 6700 XT (RADV, Navi22) vs 12 CPU threads.
@@ -331,8 +390,9 @@ Full-text search is not a scaling concern at any realistic library size for this
 
 ## Out of v1
 
-Summaries or any LLM, transcript editing, live/in-progress transcription, calendar/Zoom/Meet
-integration, sharing, sync, mobile.
+Transcript editing, live/in-progress transcription, calendar/Zoom/Meet integration,
+sharing, sync, mobile. Vision/OCR of screen shares, cross-recording task rollups, and local
+inference are out of *this* phase but designed for — see `docs/plan/09-ai-overview.md`.
 
 ## Plan
 

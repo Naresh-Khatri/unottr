@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, Export, MagnifyingGlass, PencilSimple,
-  VideoCameraSlash,
+  Sparkle, VideoCameraSlash,
 } from "@phosphor-icons/react";
 import { api, os } from "@/ipc/client";
 import type { ExportFormat, Person, RecordingDetail, Segment, Speaker } from "@/ipc/types";
@@ -9,9 +9,11 @@ import { hms } from "@/lib/format";
 import { canPlayContainer } from "@/lib/media";
 import { useVirtual } from "@/lib/virtual";
 import { VideoPlayer } from "@/ui/VideoPlayer";
+import { OverviewPanel } from "@/ui/Overview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 type Item =
@@ -21,8 +23,10 @@ type Item =
 const HEADER_ESTIMATE = 32;
 const SEGMENT_ESTIMATE = 34;
 
-export function TranscriptView({ id, onBack, initialMs = 0 }: {
+export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transcript", onOpenSettings }: {
   id: number; onBack: () => void; initialMs?: number;
+  initialTab?: "transcript" | "overview";
+  onOpenSettings: () => void;
 }) {
   const [detail, setDetail] = useState<RecordingDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -36,6 +40,7 @@ export function TranscriptView({ id, onBack, initialMs = 0 }: {
   const [matchIndex, setMatchIndex] = useState(0);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("txt");
   const [exporting, setExporting] = useState(false);
+  const [tab, setTab] = useState<string>(initialTab);
   const userScrolling = useRef(false);
   const scrollTimer = useRef(0);
 
@@ -249,7 +254,14 @@ export function TranscriptView({ id, onBack, initialMs = 0 }: {
             </Card>
           </div>
 
-          <Card className="min-h-0 overflow-hidden p-0">
+          <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-col gap-2">
+            <TabsList variant="line">
+              <TabsTrigger value="transcript">Transcript</TabsTrigger>
+              <TabsTrigger value="overview"><Sparkle />Overview</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="transcript" className="min-h-0" keepMounted>
+              <Card className="h-full min-h-0 overflow-hidden p-0">
             <div
               ref={virtual.containerRef}
               onWheel={markUserScroll}
@@ -299,7 +311,22 @@ export function TranscriptView({ id, onBack, initialMs = 0 }: {
               })}
               <div style={{ height: virtual.bottomPad }} />
             </div>
-          </Card>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="overview" className="min-h-0">
+              <Card className="h-full min-h-0 overflow-hidden p-0">
+                <OverviewPanel
+                  recordingId={id}
+                  segments={detail.segments}
+                  speakers={speakers}
+                  ready={detail.recording.status === "done"}
+                  onSeek={setCurrentMs}
+                  onOpenSettings={onOpenSettings}
+                />
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       )}
     </div>

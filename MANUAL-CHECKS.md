@@ -1,4 +1,4 @@
-# Manual checks — phase 05, 06 & 07
+# Manual checks — phases 05, 06, 07 & 09
 
 `pnpm typecheck` and `pnpm test` are clean, but none of that runs the app. These need a
 live `pnpm dev` (or a packaged AppImage) against a real recording. Checklist mirrors the
@@ -214,6 +214,56 @@ acceptance criteria in `docs/plan/05-ui.md`, re-pointed at the Electron app by p
       text) render sanely.
 - [ ] `.json` export round-trips the segment/speaker data faithfully (spot check a few
       timestamps and speaker names against the transcript view).
+
+## AI overview (phase 09)
+
+The only checks here that a test suite cannot do are the ones that need a real model
+answering about a real meeting. Everything in this section costs API credit — the last two
+groups (no key, failure) do not.
+
+- [ ] **No key configured.** With `ai_key` unset the app behaves exactly as it does today,
+      everywhere: the Overview tab opens, says a key is needed, and links to Settings. No
+      network call is made at any point — confirm with the app running behind a proxy log or
+      `ss -tp` while opening recordings, browsing, searching and exporting.
+- [ ] **The consent dialog shows the real payload.** Before the first generate, the excerpt
+      shown is the actual serialized transcript (`[id] Name: text`), matching what
+      `prompt.ts` builds — not a paraphrase of it. Turn on **Pseudonymize** and confirm the
+      excerpt itself changes to `Speaker N`.
+- [ ] **Citations land.** Generate on a real corpus recording. Click through every bullet,
+      decision and task timecode and confirm each one opens the video at the moment that
+      claim actually came from. One that lands on the wrong minute is the failure this whole
+      feature is judged on.
+- [ ] **Quoted phrases survive code-switching.** On the mixed English/Malay recordings, the
+      prose is English but any quoted phrase is verbatim in the language it was spoken in —
+      a translated "quote" is a fabricated one.
+- [ ] **Mine vs theirs.** Mark a person as "me" in Settings -> People and give them a role.
+      Regenerate; tasks split correctly into *Your actions* and *Everyone else's*, and the
+      role visibly biases what gets extracted (an engineering manager's list should not read
+      like an IC's).
+- [ ] **Anonymous speakers.** On a recording where nobody has been named, *Your actions*
+      says so and points at the naming affordance — not an empty list that looks like a bug.
+- [ ] **Regenerate merges.** Check one task done, dismiss another, edit a third's text, then
+      Regenerate. All three survive verbatim; everything untouched is replaced.
+- [ ] **Cancel.** Press Cancel mid-generate: the row leaves `running` immediately, the tab
+      returns to its Generate state, and no partial overview is written.
+- [ ] **Quit mid-generate.** Kill the app while a generate is in flight, relaunch, and
+      confirm no recording is left stuck in `running`.
+- [ ] **A failed call is not a failed transcript.** Save a deliberately wrong API key and
+      generate. The error names the cause ("Check the key"), `recordings.status` stays
+      `done`, and the transcript stays readable and searchable throughout.
+- [ ] **Search finds overview text.** Search a phrase that appears only in a generated
+      summary -> the hit carries the *Overview* badge and clicking it opens that tab, not the
+      transcript at 0:00.
+- [ ] **Stale banner.** Rename a speaker (or Retry the recording) after generating -> the
+      Overview tab shows the stale notice and offers Regenerate, without discarding what is
+      already there.
+- [ ] **Export.** `.txt` gains the overview as a header block above the transcript; `.json`
+      carries `overview` and `tasks` in full; `.srt`/`.vtt` are **byte-identical** to what
+      the same recording exported before the overview existed (diff them).
+- [ ] **`safeStorage` on bare Linux.** On a session with no keyring (e.g. a bare WM with no
+      gnome-keyring/kwallet running), saving a key fails *loudly*: the app says encryption is
+      unavailable and requires an explicit "store it unencrypted anyway" before writing
+      anything. Afterwards Settings says "Stored unencrypted" plainly.
 
 ## Hardening / packaging (phase 07)
 

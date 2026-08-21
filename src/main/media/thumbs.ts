@@ -16,3 +16,7 @@ export const thumbPathFor = (thumbsDir: string, id: number): string =>
 
 export const previewPathFor = (thumbsDir: string, id: number, index: number): string =>
   join(thumbsDir, `${id}.p${index}.jpg`);
+
+/** A still an overview bullet cited. Written on first request, never by the ingest job. */
+export const framePathFor = (thumbsDir: string, id: number, ms: number): string =>
+  join(thumbsDir, `${id}.f${ms}.jpg`);

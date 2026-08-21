@@ -1,8 +1,8 @@
 # unottr — build plan
 
-**Current plan: [08-typescript-migration.md](08-typescript-migration.md).** Everything
-before it is superseded history — phases 00–07 describe a Rust/Tauri app that no longer
-exists. They are kept because they are where each behaviour the TypeScript app must
+**Current plan: [09-ai-overview.md](09-ai-overview.md)**, with phase 08's packaging and
+deletion boxes still open behind it. Everything before 08 is superseded history — phases
+00–07 describe a Rust/Tauri app that no longer exists. They are kept because they are where each behaviour the TypeScript app must
 reproduce was decided and measured, and because the fixtures they produced are still what
 the port is checked against.
 
@@ -16,7 +16,8 @@ the port is checked against.
 | 05 | [05-ui.md](05-ui.md) | Recordings list, transcript view, video player, search | superseded |
 | 06 | [06-settings-and-shell.md](06-settings-and-shell.md) | Settings, tray, autostart, first-run, export | superseded |
 | 07 | [07-hardening-and-packaging.md](07-hardening-and-packaging.md) | Failure handling, perf pass, AppImage | superseded |
-| 08 | [08-typescript-migration.md](08-typescript-migration.md) | Tauri/Rust -> Electron/TypeScript, `crates/` deleted | **current** |
+| 08 | [08-typescript-migration.md](08-typescript-migration.md) | Tauri/Rust -> Electron/TypeScript, `crates/` deleted | done bar packaging + deletions |
+| 09 | [09-ai-overview.md](09-ai-overview.md) | Mistral summary, decisions, role-aware tasks, cited frames | **current** |
 
 The decisions in 00–07 still hold; only their implementation moved. Where a superseded
 phase and phase 08 disagree about *how* something is done, phase 08 wins — where they

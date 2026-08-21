@@ -119,10 +119,13 @@ export function list(db: Conn): Person[] {
       samples: people.samples,
       recordings: recordingCount,
       created_at: people.createdAt,
+      is_me: people.isMe,
+      role: people.role,
     })
     .from(people)
     .orderBy(desc(recordingCount), people.name)
-    .all();
+    .all()
+    .map((p) => ({ ...p, is_me: p.is_me !== 0 }));
 }
 
 // -------------------------------------------------------------------------------- writes
@@ -226,6 +229,63 @@ export function forget(db: Db, personId: number): void {
     const changed = tx.delete(people).where(eq(people.id, personId)).run();
     if (changed.changes === 0) throw new Error(`no person with id ${personId}`);
   });
+}
+
+// ------------------------------------------------------------------------------ identity
+
+/**
+ * Mark who *you* are. At most one row can be set, which is a rule the setter keeps rather
+ * than a constraint — sqlite has no "one row where flag = 1" to express (decision #31).
+ * `null` clears it, so you can un-say it without picking someone else.
+ */
+export function setMe(db: Db, personId: number | null): void {
+  db.transaction((tx) => {
+    tx.update(people).set({ isMe: 0, updatedAt: now() }).where(eq(people.isMe, 1)).run();
+    if (personId === null) return;
+    const changed = tx.update(people).set({ isMe: 1, updatedAt: now() }).where(eq(people.id, personId)).run();
+    if (changed.changes === 0) throw new Error(`no person with id ${personId}`);
+  });
+}
+
+/** Free text — "Developer", "QA lead". Empty clears it. */
+export function setRole(db: Db, personId: number, role: string): void {
+  const trimmed = role.trim();
+  const changed = db
+    .update(people)
+    .set({ role: trimmed || null, updatedAt: now() })
+    .where(eq(people.id, personId))
+    .run();
+  if (changed.changes === 0) throw new Error(`no person with id ${personId}`);
+}
+
+export function me(db: Conn): { id: number; name: string; role: string | null } | null {
+  return (
+    db
+      .select({ id: people.id, name: people.name, role: people.role })
+      .from(people)
+      .where(eq(people.isMe, 1))
+      .get() ?? null
+  );
+}
+
+/** The role the *current* "me" has — what a regenerate would write tasks for. */
+export const myRole = (db: Conn): string | null => me(db)?.role ?? null;
+
+/** The speakers in one recording with whatever name they carry: the model's cast list. */
+export function cast(db: Conn, recordingId: number): { id: number; label: string; name: string | null; isMe: boolean }[] {
+  return db
+    .select({
+      id: speakers.id,
+      label: speakers.label,
+      name: sql<string | null>`coalesce(${people.name}, ${speakers.displayName})`,
+      isMe: sql<number>`coalesce(${people.isMe}, 0)`,
+    })
+    .from(speakers)
+    .leftJoin(people, eq(people.id, speakers.personId))
+    .where(eq(speakers.recordingId, recordingId))
+    .orderBy(speakers.label)
+    .all()
+    .map((s) => ({ ...s, isMe: s.isMe !== 0 }));
 }
 
 /** Person ids already spoken for in this recording, so identify() cannot hand one out twice. */
