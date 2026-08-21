@@ -2,10 +2,10 @@
 // cheap writes are real. The pipeline commands (retry, backfill, models, cache) reach the
 // main process and get a "not implemented until 08.x" error until their sub-phase lands.
 import type {
-  AiSettings, BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
-  ModelInfo, OverviewChanged, OverviewPayload, Person, RecordingDetail, RecordingDiscovered,
-  RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit, Settings, SystemStats,
-  TaskStatus, WatchFolder,
+  AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
+  ModelInfo, OverviewChanged, OverviewPayload, OverviewProgress, Person, ProbeResult, RecordingDetail,
+  RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit,
+  Settings, SystemStats, TaskStatus, WatchFolder,
 } from "./types";
 import { mockCommands, mockEvents } from "./mock";
 
@@ -86,11 +86,30 @@ export const api = {
     USE_MOCK ? mockCommands.task_update(id, patch) : invoke("task_update", { id, ...patch }),
   aiSettings: (): Promise<AiSettings> =>
     USE_MOCK ? mockCommands.ai_settings_get() : invoke("ai_settings_get"),
-  aiModels: (): Promise<{ id: string; name: string }[]> =>
-    USE_MOCK ? mockCommands.ai_models() : invoke("ai_models"),
-  /** `allow_plain` is the answer to "there is no keyring here, store it in the clear?". */
-  aiKeySet: (key: string, allow_plain = false): Promise<AiSettings> =>
-    USE_MOCK ? mockCommands.ai_key_set(key) : invoke("ai_key_set", { key, allow_plain }),
+  aiSettingsSet: (patch: { pseudonymize?: boolean }): Promise<AiSettings> =>
+    USE_MOCK ? mockCommands.ai_settings_set(patch) : invoke("ai_settings_set", patch),
+  aiPresets: (): Promise<AiPreset[]> =>
+    USE_MOCK ? mockCommands.ai_presets() : invoke("ai_presets"),
+  aiConnections: (): Promise<AiConnection[]> =>
+    USE_MOCK ? mockCommands.ai_connections_list() : invoke("ai_connections_list"),
+  /** `key` absent leaves the stored one alone; `allow_plain` answers "no keyring — store it in the clear?". */
+  aiConnectionSave: (input: AiConnectionInput): Promise<AiConnection> =>
+    USE_MOCK ? mockCommands.ai_connection_save(input) : invoke("ai_connection_save", { ...input } as Record<string, unknown>),
+  aiConnectionDelete: (id: number): Promise<AiConnection[]> =>
+    USE_MOCK ? mockCommands.ai_connection_delete(id) : invoke("ai_connection_delete", { id }),
+  aiConnectionActivate: (id: number): Promise<AiConnection[]> =>
+    USE_MOCK ? mockCommands.ai_connection_activate(id) : invoke("ai_connection_activate", { id }),
+  /** The four-rung setup test. Slow by nature — it really generates something. */
+  aiConnectionTest: (id: number): Promise<ProbeResult> =>
+    USE_MOCK ? mockCommands.ai_connection_test(id) : invoke("ai_connection_test", { id }),
+  /** By base url, so the add form can show a list before there is anything to save. */
+  aiModelsFetch: (q: { id?: number; preset?: string; base_url?: string; key?: string }): Promise<string[]> =>
+    USE_MOCK ? mockCommands.ai_models_fetch(q) : invoke("ai_models_fetch", q),
+  /** Local servers that answered a knock. Empty is the normal case, not a failure. */
+  aiDetectLocal: (): Promise<{ preset: string; base_url: string; models: string[] }[]> =>
+    USE_MOCK ? mockCommands.ai_detect_local() : invoke("ai_detect_local"),
+  aiNormalizeUrl: (base_url: string): Promise<string> =>
+    USE_MOCK ? mockCommands.ai_normalize_url(base_url) : invoke("ai_normalize_url", { base_url }),
 };
 
 // Native dialogs, the file manager and autostart. Never mocked — these are the main
@@ -145,6 +164,11 @@ export function onModelDownloadProgress(cb: (p: ModelDownloadProgress) => void):
 export function onOverviewChanged(cb: (p: OverviewChanged) => void): () => void {
   if (USE_MOCK) return mockEvents.overview_changed(cb);
   return listen<OverviewChanged>("overview_changed", cb);
+}
+
+export function onOverviewProgress(cb: (p: OverviewProgress) => void): () => void {
+  if (USE_MOCK) return mockEvents.overview_progress(cb);
+  return listen<OverviewProgress>("overview_progress", cb);
 }
 
 function listen<T>(event: string, cb: (payload: T) => void): () => void {

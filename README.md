@@ -3,7 +3,8 @@
 A desktop app that watches folders for meeting recordings and turns them into a
 searchable, speaker-labelled transcript with the video playable beside it. Point it at a
 folder, walk away, come back to a transcript. No cloud and no accounts; the one optional
-cloud feature is an AI overview you trigger yourself, with your own API key.
+cloud feature is an AI overview you trigger yourself, on a model you point it at — your
+own machine, or your own API key.
 
 ## What it does
 
@@ -13,8 +14,10 @@ cloud feature is an AI overview you trigger yourself, with your own API key.
 - Full-text search across every transcript, click a search hit to jump to that moment in
   the video.
 - Optional AI overview per recording: summary, decisions and action items, every bullet
-  linked to the moment it came from. Off until you paste your own Mistral key, and it only
-  ever runs when you press the button.
+  linked to the moment it came from. Bring your own model — Ollama or LM Studio on this
+  machine, or OpenAI, Anthropic, Mistral, OpenRouter, anything that speaks an
+  OpenAI-compatible endpoint. Off until you connect one, and it only ever runs when you
+  press the button.
 - Export to `.txt` / `.json` / `.srt` / `.vtt`.
 - Runs quietly in the background (tray icon), picks up where it left off after a crash or
   restart.
@@ -27,12 +30,14 @@ app fetches on its own are the model weights on first use (once, then cached) an
 update/packaging tooling at build time.
 
 The AI overview is the single exception, and it is opt-in twice over: nothing happens
-until you add an API key, and then nothing happens until you press *Generate* on a
-recording. Before the first call it shows you the exact text it is about to send. What
-goes out is transcript text and speaker names — never audio, never video, never frames.
-A pseudonymize toggle replaces names with "Speaker 1" before sending. The key is stored
-via the OS keyring (`safeStorage`); if the platform has none, the app says so and asks
-before falling back to plaintext.
+until you connect a model, and then nothing happens until you press *Generate* on a
+recording. Consent is per connection and asked once each — agreeing to send a transcript
+to a server on your own laptop is not agreeing to send it to somebody's cloud — and before
+the first call it shows you the exact text it is about to send. What goes out is transcript
+text and speaker names, never audio, never video, never frames; a pseudonymize toggle
+replaces names with "Speaker A" first. Point it at Ollama or LM Studio and nothing leaves
+the machine at all. Keys are stored via the OS keyring (`safeStorage`); if the platform has
+none, the app says so and asks before falling back to plaintext.
 
 ## What it needs
 
@@ -46,8 +51,8 @@ before falling back to plaintext.
   slower than realtime for the larger model tiers).
 - First run downloads a whisper model (~150 MB–575 MB depending on tier) and two small
   diarization models (~35 MB total); everything after that is offline.
-- A Mistral API key, only if you want AI overviews. Without one the rest of the app is
-  unaffected.
+- A model for AI overviews, only if you want them: a local server (Ollama, LM Studio) or an
+  API key for a hosted one. Without either, the rest of the app is unaffected.
 
 ## Developing
 

@@ -32,7 +32,7 @@ never audio, never video.
 | 22 | Identity | Path + cheap fingerprint — size + sha256 of the first and last 1 MiB (was blake3; `node:crypto` costs no dependency and both are 32 bytes, so the schema is unchanged); transcripts outlive deleted videos |
 | 23 | Embeddings | pyannote seg-3.0 + 3D-Speaker CAM++ (`campplus-zh-en`, 192-dim) |
 | 24 | Clustering | Unknown speaker count; two-stage fragment + average-linkage, see *Diarization* |
-| 25 | Inference | BYO Mistral key, `mistral-large-2512` pinned, switchable; provider module is the seam for local later |
+| 25 | Inference | Bring your own endpoint: any OpenAI-compatible base URL, plus Anthropic and Mistral wires. Presets are a convenience, not a whitelist (superseded the pinned-Mistral choice) |
 | 26 | Trigger | Explicit button per recording. Transcription stays automatic; AI never is |
 | 27 | Placement | Satellite `overviews` table, **not** a pipeline stage — a network failure cannot mark a good transcript failed |
 | 28 | Grounding | The model cites `segment_id`, never a timestamp; ids resolve locally, unknown ids are dropped |
@@ -42,6 +42,17 @@ never audio, never video.
 | 32 | Output | Title, TL;DR, sections, decisions, tasks — every line cited |
 | 33 | Language | Summary in English; quoted phrases stay verbatim in their original language |
 | 34 | Privacy | Transcript text only; key in `safeStorage`; opt-in dialog shows a real excerpt; pseudonymize toggle |
+| 35 | Connections | One `ai_connections` row per endpoint, many allowed, one active. Consent, key, model, price and probe are columns on it, not global settings |
+| 36 | Setup test | Four rungs — reachable, authorized, responds, structured — run and shown in order. A key check alone passes for models that then fail every generation |
+| 37 | Structured output | Ladder: `json_schema` -> `json_object` + schema in prompt -> prompt only + tolerant parse. Probed once per connection, stored, never re-guessed per call |
+| 38 | Base URL | One field, normalized in main: a pasted `/chat/completions`, a bare `localhost:11434`, or ollama's `/api` all resolve to the right root |
+| 39 | Model list | Shown in the server's own order, never sorted — `/v1/models` puts the loaded or newest model first and alphabetical throws that away. Embedding/image ids sink to the bottom but are never hidden. LM Studio is asked over its own `/api/v0` first, the only place that says which model is *loaded* |
+| 40 | Model choice | Always visible and always in a real picker. The list is fetched before the connection is saved, the test adopts whatever model it proved, and a connection with no model says so in amber everywhere it appears |
+| 41 | A model fills itself in | "No model picked" is a warning nobody can act on, so it is repaired rather than reported: opening the Models dialog or the edit form lists the endpoint and adopts the head of that list for any connection missing one. Labels are numbered on save (`LM Studio 2`) when a derived one collides, since two identical rows are not a choice |
+| 42 | Test owns one row | Test has to save before it can probe (the key and url are read back from the row), so the form remembers which row it created and every later press updates that one. A row that only exists because Test needed one is deleted again if the form is left without saving |
+| 43 | Long meetings | A transcript larger than the model's window is split into overlapping windows, summarized one at a time and joined back up — sections keep the meeting's order, tasks and decisions deduplicate by the segment they cite, and title/tldr come from one small pass over the parts' own summaries. Citations are unaffected: every window carries real segment ids. Refusing was the old behaviour and it is wrong here — an 8k local server against an hour of audio is the normal case, not the edge |
+| 44 | Context size is learned, not guessed | Taken from LM Studio's `loaded_context_length` (what the running instance was started with, routinely 16x smaller than the weights allow) when the model list is fetched. Failing that, it is read out of the server's own overflow 400 — the ceiling is the smaller of the two numbers every wording of that error names — stored on the connection, and the run is split and retried once. A number the user typed is never overwritten |
+| 45 | The clock is sized to the prompt | A flat two-minute ceiling cannot tell a slow server from a hung one, and on a local model it is simply wrong: reading a full 8k window at ~25 tokens a second is over two minutes before the first token of answer exists, so every run it was asked to do got cancelled mid-prompt. The ceiling is now the floor plus what the prompt itself is worth — its size over a pessimistic throughput, plus room to write, capped at twenty minutes. A cloud provider never approaches it. A timeout is also no longer filed as "aborted": nobody chose it, and the advice for it is different |
 
 ## Architecture
 
@@ -285,8 +296,10 @@ The one part of the app that talks to a server. It turns a finished transcript i
 title, a TL;DR, topic sections, the decisions, and a task list split into yours and
 everyone else's — every line clickable back to the second it came from.
 
-- **Opt-in twice over.** Nothing happens without a key you supplied *and* a click on the
-  recording. Transcription stays automatic because it is free and local; this is neither.
+- **Opt-in twice over, per connection.** Nothing happens without an endpoint you added
+  *and* a click on the recording — and consent is stored on the connection, because
+  agreeing to send a transcript to a server on your own laptop is not agreeing to send it
+  to somebody's cloud. Transcription stays automatic because it is free and local.
 - **A satellite, not a stage** (#27). `recordings.status` never enters an AI state, so a
   dropped connection cannot bury a transcript that is perfectly fine. `overviews` carries
   its own `pending|running|done|failed|stale`, retryable from the tab it failed in. A
@@ -309,10 +322,34 @@ everyone else's — every line clickable back to the second it came from.
 - **Regeneration is not destructive.** Prose is overwritten — at roughly 1.4¢ a run it is
   cheaper to remake than to version. Tasks are not: anything edited, checked, or dismissed
   survives, and only untouched open suggestions are replaced.
+- **Any endpoint, no whitelist** (#25). A connection is a base URL, a wire (`openai`,
+  `anthropic` or `mistral` — the request dialect, which a URL cannot tell you about), an
+  optional key and a model id. The presets are chips that prefill those four fields; typing
+  a URL by hand reaches exactly the same place. Ollama and LM Studio are knocked on when
+  the add form opens, so the common case is "the one we found, already filled in".
+- **The test has four rungs, not one** (#36). *Reachable*, *authorized*, *responds*,
+  *structured* — run in order and shown in order, including the ones not reached. A key
+  check alone is worthless here: a 3B model on a laptop happily accepts any key, answers
+  "hi", and then fails every structured generation. The last rung is the one that predicts
+  whether Generate will work, so it is the one that has to be tested.
+- **A ladder, probed once** (#37). Endpoints disagree about how to be made to emit a
+  schema, so the probe walks `json_schema` -> `json_object` + schema in the prompt ->
+  prompt only, keeps the best rung that worked on the row, and generation uses it directly.
+  Below the top rung the schema and one worked example ride in the system prompt, and the
+  answer is unwrapped from whatever fence or preamble the model packaged it in — that
+  packaging is not a schema failure, and treating it as one turns a working setup into
+  "your model can't do this".
+- **The url is normalized where it is used** (#38). People paste what their provider's curl
+  example shows. `localhost:11434`, `http://localhost:11434/api`, and
+  `https://api.anthropic.com/v1/messages` all resolve to the right root, in main, so the
+  same rule applies to a typed URL and a preset alike.
 - **Cost, for calibration.** A 33-minute meeting is ~20k tokens; on `mistral-large-2512`
-  ($0.50/M in, $1.50/M out) that is about **1.4¢**, and a two-hour meeting about 4¢. The
-  256k context window means even a six-hour recording goes in one call, so there is no
-  map-reduce and no summary-of-summaries quality loss.
+  ($0.50/M in, $1.50/M out) that is about **1.4¢**, and a two-hour meeting about 4¢. On a
+  local model it is zero, and unottr estimates nothing rather than showing a fake ¢ figure.
+  Prices for known hosted ids are prefilled and editable; an unknown id is left unpriced.
+  Everything goes in one call — there is no map-reduce and no summary-of-summaries quality
+  loss — so a context that is too small is a *pre-flight* error (chars/4 plus a 3k output
+  reserve, checked before anything is sent or spent), not a truncation nobody was told about.
 - **No vision** (#29). Screenshots in the UI are not extracted or analysed — a bullet's
   cited millisecond is seeked out of the video on demand by `unottr://frame/<id>/<ms>` and
   cached. The picture is orientation; the click-to-seek is the payload. OCR of screen

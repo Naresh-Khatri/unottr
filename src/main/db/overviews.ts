@@ -39,6 +39,7 @@ interface StoredSection {
 /** What `save` writes — already grounded, so every `segment_id` here is known to exist. */
 export interface OverviewWrite {
   model: string;
+  provider: string;
   roleUsed: string | null;
   title: string;
   tldr: string;
@@ -83,6 +84,7 @@ export function get(db: Db, recordingId: number): Overview | null {
     error: row.error,
     error_kind: row.errorKind,
     model: row.model,
+    provider: row.provider,
     role_used: row.roleUsed,
     title: row.title,
     tldr: row.tldr,
@@ -130,14 +132,20 @@ export function isRunning(db: Db, recordingId: number): boolean {
 
 // -------------------------------------------------------------------------------- writes
 
-export function markRunning(db: Db, recordingId: number, model: string, roleUsed: string | null): void {
+export function markRunning(
+  db: Db,
+  recordingId: number,
+  model: string,
+  provider: string,
+  roleUsed: string | null,
+): void {
   const ts = now();
   db.insert(overviews)
-    .values({ recordingId, status: "running", model, roleUsed, createdAt: ts, updatedAt: ts })
+    .values({ recordingId, status: "running", model, provider, roleUsed, createdAt: ts, updatedAt: ts })
     .onConflictDoUpdate({
       target: overviews.recordingId,
       // prose from the previous run is left in place: a failed retry should not blank the tab
-      set: { status: "running", error: null, errorKind: null, model, roleUsed, updatedAt: ts },
+      set: { status: "running", error: null, errorKind: null, model, provider, roleUsed, updatedAt: ts },
     })
     .run();
 }
@@ -163,6 +171,7 @@ export function save(db: Db, recordingId: number, w: OverviewWrite): void {
         error: null,
         errorKind: null,
         model: w.model,
+        provider: w.provider,
         promptVersion: PROMPT_VERSION,
         roleUsed: w.roleUsed,
         title: w.title,

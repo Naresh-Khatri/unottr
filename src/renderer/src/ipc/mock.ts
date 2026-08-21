@@ -3,7 +3,11 @@
 // has no data layer. 08.2 flips USE_MOCK back off.
 
 import type {
+  AiConnection,
+  AiConnectionInput,
+  AiPreset,
   AiSettings,
+  ProbeResult,
   BackfillEstimate,
   DiskUsage,
   JobDone,
@@ -13,6 +17,7 @@ import type {
   ModelInfo,
   Overview,
   OverviewChanged,
+  OverviewProgress,
   OverviewPayload,
   Person,
   RecordingDetail,
@@ -309,21 +314,89 @@ export const mockCommands = {
     return wait(undefined);
   },
   ai_settings_get: () => wait({ ...aiSettings }),
-  ai_models: () => wait([{ id: "mistral-large-2512", name: "Mistral Large" }]),
-  ai_key_set(key: string): Promise<AiSettings> {
-    aiSettings.key_set = key.length > 0;
+  ai_settings_set(patch: { pseudonymize?: boolean }): Promise<AiSettings> {
+    if (patch.pseudonymize !== undefined) aiSettings.pseudonymize = patch.pseudonymize;
     return wait({ ...aiSettings });
   },
+  ai_presets: () => wait(aiPresets),
+  ai_connections_list: () => wait(aiConnections.map((c) => ({ ...c }))),
+  ai_connection_save(input: AiConnectionInput): Promise<AiConnection> {
+    const found = aiConnections.find((c) => c.id === input.id);
+    const target = found ?? { ...aiConnections[0], id: aiConnections.length + 1, active: false };
+    Object.assign(target, {
+      label: input.label ?? target.label,
+      base_url: input.base_url ?? target.base_url,
+      active_model: input.active_model !== undefined ? input.active_model : target.active_model,
+      consented: input.consented ?? target.consented,
+      key_set: input.key !== undefined ? input.key.length > 0 : target.key_set,
+    });
+    if (!found) aiConnections.push(target);
+    return wait({ ...target });
+  },
+  ai_connection_delete(id: number): Promise<AiConnection[]> {
+    const i = aiConnections.findIndex((c) => c.id === id);
+    if (i >= 0) aiConnections.splice(i, 1);
+    return wait(aiConnections.map((c) => ({ ...c })));
+  },
+  ai_connection_activate(id: number): Promise<AiConnection[]> {
+    for (const c of aiConnections) c.active = c.id === id;
+    aiSettings.active_connection_id = id;
+    return wait(aiConnections.map((c) => ({ ...c })));
+  },
+  ai_connection_test: (id: number): Promise<ProbeResult> => {
+    const conn = aiConnections.find((c) => c.id === id);
+    return wait(conn?.probe ?? { ok: false, rungs: [], strategy: null, models: [], model: null }, 900);
+  },
+  ai_models_fetch: (q: { id?: number }) =>
+    wait(aiConnections.find((c) => c.id === q.id)?.models ?? ["qwen3:8b", "llama3.2:3b"], 400),
+  ai_detect_local: () => wait([{ preset: "ollama", base_url: "http://localhost:11434/v1", models: ["qwen3:8b"] }], 200),
+  ai_normalize_url: (base_url: string) => wait(base_url.replace(/\/+$/, "")),
 };
 
-const aiSettings: AiSettings = {
-  model: "mistral-large-2512",
-  pseudonymize: false,
-  consented: true,
-  key_set: true,
-  key_storage: "encrypted",
-  spend_cents: 4.2,
-};
+const aiSettings: AiSettings = { active_connection_id: 1, pseudonymize: false };
+
+const aiPresets: AiPreset[] = [
+  { id: "ollama", label: "Ollama", base_url: "http://localhost:11434/v1", wire: "openai", key_required: false, docs_url: null, local: true },
+  { id: "openai", label: "OpenAI", base_url: "https://api.openai.com/v1", wire: "openai", key_required: true, docs_url: null, local: false },
+  { id: "custom", label: "Other (OpenAI-compatible)", base_url: "", wire: "openai", key_required: false, docs_url: null, local: false },
+];
+
+const aiConnections: AiConnection[] = [
+  {
+    id: 1,
+    label: "Ollama",
+    preset: "ollama",
+    wire: "openai",
+    base_url: "http://localhost:11434/v1",
+    key_set: false,
+    key_storage: "none",
+    active_model: "qwen3:8b",
+    models: ["qwen3:8b", "llama3.2:3b"],
+    models_fetched_at: 1787240909,
+    strategy: "json_mode",
+    context_tokens: 32768,
+    timeout_ms: null,
+    price_in_usd: null,
+    price_out_usd: null,
+    consented: true,
+    spend_cents: 0,
+    local: true,
+    probe: {
+      ok: true,
+      rungs: [
+        { step: "reachable", ok: true, detail: "localhost:11434" },
+        { step: "authorized", ok: true, detail: "2 models" },
+        { step: "responds", ok: true, detail: "qwen3:8b" },
+        { step: "structured", ok: true, detail: "JSON mode" },
+      ],
+      strategy: "json_mode",
+      models: ["qwen3:8b", "llama3.2:3b"],
+      model: "qwen3:8b",
+    },
+    probed_at: 1787240909,
+    active: true,
+  },
+];
 
 // One finished overview, so the tab is reviewable with no key configured.
 const overview: Overview = {
@@ -331,7 +404,8 @@ const overview: Overview = {
   status: "done",
   error: null,
   error_kind: null,
-  model: "mistral-large-2512",
+  model: "qwen3:8b",
+  provider: "Ollama",
   role_used: "Engineering manager",
   title: "Q4 roadmap review",
   tldr:
@@ -411,6 +485,7 @@ type Payloads = {
   recording_discovered: RecordingDiscovered;
   model_download_progress: ModelDownloadProgress;
   overview_changed: OverviewChanged;
+  overview_progress: OverviewProgress;
 };
 
 const subscribers: { [K in keyof Payloads]: Set<(p: Payloads[K]) => void> } = {
@@ -420,6 +495,7 @@ const subscribers: { [K in keyof Payloads]: Set<(p: Payloads[K]) => void> } = {
   recording_discovered: new Set(),
   model_download_progress: new Set(),
   overview_changed: new Set(),
+  overview_progress: new Set(),
 };
 
 function emit<K extends keyof Payloads>(event: K, payload: Payloads[K]): void {
@@ -445,6 +521,7 @@ export const mockEvents = {
   recording_discovered: subscribe("recording_discovered"),
   model_download_progress: subscribe("model_download_progress"),
   overview_changed: subscribe("overview_changed"),
+  overview_progress: subscribe("overview_progress"),
 };
 
 // Fake progress for recording 9002 so the live progress bar has something to render.

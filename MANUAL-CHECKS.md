@@ -221,10 +221,11 @@ The only checks here that a test suite cannot do are the ones that need a real m
 answering about a real meeting. Everything in this section costs API credit — the last two
 groups (no key, failure) do not.
 
-- [ ] **No key configured.** With `ai_key` unset the app behaves exactly as it does today,
-      everywhere: the Overview tab opens, says a key is needed, and links to Settings. No
-      network call is made at any point — confirm with the app running behind a proxy log or
-      `ss -tp` while opening recordings, browsing, searching and exporting.
+- [ ] **No connection configured.** With `ai_connections` empty the app behaves exactly as
+      it does today, everywhere: the Overview tab opens, says no model is connected, and
+      links to Settings. No network call is made at any point — confirm with the app running
+      behind a proxy log or `ss -tp` while opening recordings, browsing, searching and
+      exporting.
 - [ ] **The consent dialog shows the real payload.** Before the first generate, the excerpt
       shown is the actual serialized transcript (`[id] Name: text`), matching what
       `prompt.ts` builds — not a paraphrase of it. Turn on **Pseudonymize** and confirm the
@@ -264,6 +265,92 @@ groups (no key, failure) do not.
       gnome-keyring/kwallet running), saving a key fails *loudly*: the app says encryption is
       unavailable and requires an explicit "store it unencrypted anyway" before writing
       anything. Afterwards Settings says "Stored unencrypted" plainly.
+
+## Providers (phase 10)
+
+Everything here is about setup, so most of it costs nothing — only the two rows marked
+*generates* actually spend anything.
+
+- [ ] **Ollama, found not typed.** With `ollama serve` running, open Settings -> AI ->
+      Manage. The add form arrives with Ollama already selected, the base URL filled in, and
+      its installed models in the dropdown. Nothing was typed. Stop ollama and reopen: the
+      form is empty and quiet, not an error.
+- [ ] **The URL people actually paste.** Type each of `localhost:11434`,
+      `http://localhost:11434/api`, `http://localhost:11434/v1/chat/completions` and
+      `api.openai.com` into the base URL field and tab away. Each resolves to the right
+      root, visibly, before you press anything.
+- [ ] **LM Studio's loaded model wins.** With LM Studio serving and one model loaded, pick
+      the LM Studio preset. The dropdown offers the loaded model *first*, embeddings are not
+      in it at all, and any image/video model sits at the bottom. Test passes without you
+      choosing anything — the alphabetically-first model is usually not a chat model, and
+      picking one is what made a working server report *not working*.
+- [ ] **The model is always visible.** Every path into the form — preset chip, pasted URL,
+      Test — ends with a model named in the picker or an amber line saying none is picked.
+      There is no state where the field is silently empty and Save is still offered as if
+      the connection were finished.
+- [ ] **An old row heals itself.** With a connection whose model was never set (`UPDATE
+      ai_connections SET active_model = NULL`), open Manage: the amber line is replaced by a
+      real model id within a moment, without pressing anything. Kill the server first and it
+      stays amber rather than hanging the dialog.
+- [ ] **A meeting longer than the context.** Point at an 8k local model and generate over an
+      hour-long recording. It does not fail: the log shows several completions instead of
+      one, the overview covers the whole meeting rather than its first ten minutes, and no
+      bullet appears twice at a window boundary. Timestamps still jump to the right moment.
+- [ ] **A slow model is waited for.** Generate against a local model that takes minutes to
+      read its prompt (LM Studio's log shows *Prompt processing progress*). It is not
+      cancelled at two minutes: the log runs to 100%, then generates, and the overview
+      arrives. The panel says which part is being read and the clock keeps counting.
+- [ ] **The window is learned.** Add an LM Studio connection with a model loaded at 8192 and
+      open the edit form's *Advanced*: *Context* reads 8192, not the model's 131072 maximum. Type your own
+      number and re-open — yours survives.
+- [ ] **A long list still fits.** With eight or more connections, the dialog stops growing:
+      the rows scroll on their own and *Add another*, the title and the close button stay
+      put. Shrink the window until it is shorter than the edit form — the whole dialog
+      scrolls rather than running off the top and bottom of the screen.
+- [ ] **Test does not add connections.** On the add form, press Test three times: the list
+      behind it gains exactly one row, not three. Press Cancel (or close the dialog with the
+      X) without saving and that row is gone; press Save and it stays, tested.
+- [ ] **Two of the same provider are distinguishable.** Add a second LM Studio connection:
+      it is named *LM Studio 2*, not a second *LM Studio*. Rename it and re-save — the name
+      you typed survives.
+- [ ] **Which one is active.** Open Manage with two or more connections: exactly one radio
+      is filled, its row is outlined, and it is badged *active*. Click another row anywhere
+      but its buttons — the selection moves, the settings card behind it follows. Edit and
+      the bin do not change the selection.
+- [ ] **Four rungs, in order.** Press Test against a working local server: all four tick,
+      in order, and the last one names the strategy it settled on. Then point the same
+      connection at a port with nothing on it — *reachable* fails and the rest stay grey
+      rather than silently green.
+- [ ] **A model that answers but cannot shape** (*generates*). Connect a small local model
+      (a 1-3B instruct without json-schema support). Test: the first three rungs pass and
+      *structured* either falls back to a lower rung and passes, or fails clearly. Whichever
+      it says, Generate must agree with it — a green Test followed by a failed Generate is
+      the exact bug this whole checklist exists to catch.
+- [ ] **Wrong key.** Save a deliberately wrong key on a hosted provider and Test:
+      *reachable* passes, *authorized* fails, and the message names the key rather than the
+      network.
+- [ ] **Test survives a reopen.** Test, close the dialog, quit the app, relaunch. The status
+      dot still reads *working* and the checklist is still there — it is stored, not
+      recomputed from nothing.
+- [ ] **Consent is per connection.** Consent to a local connection and generate. Add a
+      hosted one, activate it, and generate again: the consent dialog appears a second time,
+      and its wording says the transcript leaves the machine (the local one says it does
+      not).
+- [ ] **Two connections, one active.** Add both a local and a hosted connection. Only one is
+      active; switching which one is active changes what the Settings line and the Overview
+      tab say, and the next generate goes to the new one (check the overview footer names
+      it: "qwen3:8b via Ollama").
+- [ ] **Context too small, caught before spending** (*generates*). Set a connection's
+      context to something small (say 4096) and generate on a long recording. It refuses
+      up front, names the numbers, and no request is made — confirm with a proxy log — and
+      the transcript is untouched.
+- [ ] **Delete the active connection.** Remove it while it is active. The Overview tab falls
+      back to the no-connection state rather than erroring, and the stored key goes with the
+      row (check `ai_connections` is empty and no key lingers in `settings`).
+- [ ] **Upgrade from a 0.4 database.** Take a database that had a Mistral key configured,
+      launch this build: a single connection named Mistral exists, it is active, the key
+      still works without retyping, consent and spend carried over, and the old
+      `mistral_api_key_*` / `ai_model` / `ai_consented` settings rows are gone.
 
 ## Hardening / packaging (phase 07)
 

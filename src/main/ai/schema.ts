@@ -35,3 +35,32 @@ export const overviewSchema = z.object({
 });
 
 export type OverviewOutput = z.infer<typeof overviewSchema>;
+
+/** The whole-meeting half of the schema, asked for on its own when the transcript was split. */
+export const overviewHeadSchema = overviewSchema.pick({ title: true, tldr: true });
+
+/**
+ * One filled-in answer, for the rungs where the request cannot carry a schema. A small local
+ * model reads an example far better than it reads a JSON Schema — the schema says what is
+ * legal, this says what is wanted.
+ */
+export const overviewExample: OverviewOutput = {
+  title: "Pricing page rewrite",
+  tldr: "The team agreed to rewrite the pricing page around three tiers and drop the annual toggle. Priya owns the copy, Sam the layout.",
+  sections: [
+    {
+      heading: "Tier structure",
+      bullets: [{ text: "Three tiers replace the current five.", segment_id: 12 }],
+    },
+  ],
+  decisions: [{ text: "The annual/monthly toggle is removed.", segment_id: 31 }],
+  tasks: [
+    {
+      text: "Draft the copy for all three tiers",
+      owner_speaker_id: 2,
+      segment_id: 34,
+      due_raw: "by Friday",
+      due_date: "2026-03-06",
+    },
+  ],
+};

@@ -18,12 +18,10 @@ export const keys = {
   CLOSE_TO_TRAY: "close_to_tray", // "1" | "0", default "1"
   CLOSE_TO_TRAY_EXPLAINED: "close_to_tray_explained",
   FIRST_RUN_COMPLETE: "first_run_complete", // ui-only, gates the wizard
-  AI_MODEL: "ai_model", // pinned model id, never a `-latest` alias
   AI_PSEUDONYMIZE: "ai_pseudonymize", // "1" | "0", default "0"
-  AI_CONSENTED: "ai_consented", // the one-time "this leaves the machine" acknowledgement
-  AI_SPEND_CENTS: "ai_spend_cents", // running estimate, float as a string
-  MISTRAL_KEY_ENC: "mistral_api_key_enc", // safeStorage ciphertext, base64
-  MISTRAL_KEY_PLAIN: "mistral_api_key_plain", // no keyring on this box, and the user said ok
+  // "" = none. Everything else about a connection — key, model, consent, spend — is a
+  // column on `ai_connections`, not a setting.
+  AI_ACTIVE_CONNECTION_ID: "ai_active_connection_id",
 } as const;
 
 /** `base.en` stays cli-only, so it is not one of the three tiers settings offers. */
@@ -125,13 +123,10 @@ export function validate(key: string, value: string): string | null {
     case keys.CLOSE_TO_TRAY:
     case keys.FIRST_RUN_COMPLETE:
     case keys.AI_PSEUDONYMIZE:
-    case keys.AI_CONSENTED:
       return ok(value === "0" || value === "1");
-    case keys.AI_MODEL:
-      return ok(value.length > 0);
-    // written by main from usage the sdk reports, never by the renderer
-    case keys.AI_SPEND_CENTS:
-      return ok(Number.isFinite(num) && num >= 0);
+    // "" clears it; ai_connection_activate is the normal path
+    case keys.AI_ACTIVE_CONNECTION_ID:
+      return ok(value === "" || (Number.isInteger(num) && num > 0));
     default:
       return `unknown setting key ${key}`;
   }

@@ -213,7 +213,19 @@ export interface SystemStats {
 export type OverviewStatus = "pending" | "running" | "done" | "failed";
 
 /** Why a call failed, so the ui can say whether "Retry" is even the right advice. */
-export type ErrorKind = "auth" | "rate_limit" | "network" | "validation" | "aborted" | "unknown";
+export type ErrorKind =
+  | "auth"
+  | "rate_limit"
+  | "network"
+  | "validation"
+  | "aborted"
+  /** nobody cancelled it — the model was slower than the time it was given */
+  | "timeout"
+  /** the endpoint itself never answered — a local server that isn't running, usually */
+  | "unreachable"
+  /** the transcript did not fit, and could not be split small enough to */
+  | "too_long"
+  | "unknown";
 
 /**
  * One claim, anchored to the moment it was said. The model cites a segment id and never a
@@ -241,6 +253,8 @@ export interface Overview {
   error: string | null;
   error_kind: ErrorKind | null;
   model: string | null;
+  /** the connection's label at generation time — "qwen3:8b" alone doesn't say who served it */
+  provider: string | null;
   role_used: string | null; // the role the tasks were written for, as it was at generation time
   title: string | null;
   tldr: string | null;
@@ -275,19 +289,107 @@ export interface OverviewPayload {
   tasks: Task[];
 }
 
-export interface AiSettings {
-  model: string;
-  /** replace names with Speaker N before the transcript leaves the machine */
-  pseudonymize: boolean;
-  /** the one-time "this sends text to Mistral" acknowledgement (decision #34) */
-  consented: boolean;
+// Phase 10 — bring-your-own model. Every endpoint is a row the user added; nothing is
+// hardcoded to one vendor, and a key never crosses this boundary in either direction.
+
+/** Request shape. Comes from the preset, never sniffed: a url can't tell you its own dialect. */
+export type Wire = "openai" | "anthropic" | "mistral";
+
+/** How the model is made to emit our schema, cheapest-first. Probed, not assumed. */
+export type Strategy = "native" | "json_mode" | "prompted";
+
+/**
+ * The four rungs of a setup test, in order. A key check alone is worthless for a local model —
+ * it will happily accept any key, answer "hi", and then fail every structured generation.
+ */
+export type ProbeStep = "reachable" | "authorized" | "responds" | "structured";
+
+export interface ProbeRung {
+  step: ProbeStep;
+  ok: boolean;
+  /** what went wrong, or the useful detail when it went right ("14 models", "1.2 s") */
+  detail: string | null;
+}
+
+export interface ProbeResult {
+  ok: boolean;
+  rungs: ProbeRung[];
+  /** the best rung that worked; null when it never got that far */
+  strategy: Strategy | null;
+  models: string[];
+  /** the model the test actually ran against — chosen for the user when they had not picked one */
+  model: string | null;
+}
+
+export interface AiConnection {
+  id: number;
+  label: string;
+  preset: string; // a PRESETS id, or "custom"
+  wire: Wire;
+  base_url: string;
   key_set: boolean;
   /** "plain" = safeStorage had no keyring to talk to; the ui says so rather than pretending */
-  key_storage: "encrypted" | "plain";
-  /** running estimate in cents, so the number in settings is this library's, not a brochure's */
+  key_storage: "encrypted" | "plain" | "none";
+  active_model: string | null;
+  models: string[]; // last successful listing; survives the server being down
+  models_fetched_at: number | null;
+  strategy: Strategy;
+  context_tokens: number | null;
+  timeout_ms: number | null;
+  /** USD per million tokens; null = don't estimate spend at all */
+  price_in_usd: number | null;
+  price_out_usd: number | null;
+  /** per-connection: agreeing to send text to your own laptop is not agreeing to send it to a cloud */
+  consented: boolean;
   spend_cents: number;
+  /** loopback host — nothing leaves the machine, so the consent copy says that instead */
+  local: boolean;
+  probe: ProbeResult | null;
+  probed_at: number | null;
+  active: boolean;
+}
+
+/** What the renderer sends to create or update one. `key` absent = leave the stored key alone. */
+export interface AiConnectionInput {
+  id?: number;
+  label?: string;
+  preset?: string;
+  base_url?: string;
+  key?: string;
+  /** the answer to "there is no keyring here, store it in the clear?" */
+  allow_plain?: boolean;
+  active_model?: string | null;
+  context_tokens?: number | null;
+  timeout_ms?: number | null;
+  price_in_usd?: number | null;
+  price_out_usd?: number | null;
+  consented?: boolean;
+}
+
+/** A known endpoint, offered as a chip so nobody has to remember a base url. */
+export interface AiPreset {
+  id: string;
+  label: string;
+  base_url: string;
+  wire: Wire;
+  key_required: boolean;
+  docs_url: string | null;
+  local: boolean;
+}
+
+export interface AiSettings {
+  active_connection_id: number | null;
+  /** replace names with Speaker N before the transcript leaves the machine */
+  pseudonymize: boolean;
 }
 
 export interface OverviewChanged {
   recording_id: number;
+}
+
+/** Which window of a split transcript is being read. Transient: nothing stores it. */
+export interface OverviewProgress {
+  recording_id: number;
+  part: number;
+  total: number;
 }

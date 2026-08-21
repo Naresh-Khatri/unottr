@@ -52,6 +52,15 @@ inside the AppImage) and Node.js (MIT). Runtime npm dependencies — React, driz
 better-sqlite3, chokidar, electron-log and the UI libraries — are MIT or ISC; `pnpm licenses
 list --prod` prints the current set.
 
+## Provider brand marks — trademarks of their owners
+
+`src/renderer/src/ui/icons/providers/*.svg` are the OpenAI, Anthropic, Mistral, Ollama and
+LM Studio marks, downloaded once from [theSVG](https://thesvg.org) (`npx @thesvg/cli add
+<slug> --variant mono`) and committed rather than pulled in as a dependency. They are used
+only to label the provider each connection points at. The marks remain the trademarks of
+their respective owners and are not covered by this repo's MIT license; their presence is
+nominative use, not endorsement or affiliation.
+
 ## Models (downloaded on first use, not bundled)
 
 None of these are compiled into the binary or included in the AppImage — they are fetched

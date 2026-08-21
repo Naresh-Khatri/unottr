@@ -1,8 +1,17 @@
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
-import type { ModelInfo, RecordingFilter, RecordingSort, SystemStats, TaskStatus } from "../../shared/ipc";
+import type {
+  AiConnectionInput,
+  ModelInfo,
+  RecordingFilter,
+  RecordingSort,
+  SystemStats,
+  TaskStatus,
+} from "../../shared/ipc";
 import * as ai from "../ai/generate";
-import * as provider from "../ai/provider";
+import * as connections from "../ai/connections";
+import { probe } from "../ai/probe";
+import { PRESETS, chatDefault, listModels, modelContext, normalizeBaseUrl } from "../ai/providers";
 import { getAutostart, setAutostart } from "../autostart";
 import { db } from "../db";
 import * as overviewsDb from "../db/overviews";
@@ -29,6 +38,12 @@ const downloads = new Map<string, AbortController>();
 /** Overview generations in flight, so a user who changed their mind can stop paying for one. */
 const generating = new Map<number, AbortController>();
 
+/** Autodetect runs while the settings card is opening — it has to lose fast or not at all. */
+const DETECT_MS = 600;
+
+/** A deliberate "list my models" click, so it can afford to wait on a cold hosted api. */
+const FETCH_MS = 10_000;
+
 type Args = Record<string, unknown> | undefined;
 type Handler = (args: Args, win: BrowserWindow | null) => unknown;
 
@@ -46,6 +61,12 @@ function requireId(a: Args, key: string): number {
   const v = num(a?.[key]);
   if (v === undefined) throw new Error(`missing ${key}`);
   return v;
+}
+
+function requireConnection(a: Args): connections.Row {
+  const row = connections.row(db(), requireId(a, "id"));
+  if (!row) throw new Error(`no AI connection with id ${a?.id}`);
+  return row;
 }
 
 function requireFolder(id: number): { path: string } {
@@ -146,16 +167,91 @@ const handlers: Record<string, Handler> = {
     events.overviewChanged({ recording_id: recordingId });
   },
 
-  // ------------------------------------------------------------------- ai settings
+  // --------------------------------------------------------------- ai connections
 
-  ai_settings_get: () => provider.aiSettings(db()),
-  ai_models: () => provider.MODELS.map(({ id, name }) => ({ id, name })),
+  ai_settings_get: () => connections.settings(db()),
 
-  /** The key never travels back out; `ai_settings_get` reports presence, not value. */
-  ai_key_set(a) {
-    provider.setKey(db(), str(a?.key) ?? "", a?.allow_plain === true);
-    return provider.aiSettings(db());
+  ai_settings_set(a) {
+    if ("pseudonymize" in (a ?? {})) {
+      settingsDb.setRaw(db(), settingsDb.keys.AI_PSEUDONYMIZE, a?.pseudonymize ? "1" : "0");
+    }
+    return connections.settings(db());
   },
+
+  ai_presets: () => PRESETS,
+
+  /** Keys never travel back out; a connection reports that it has one, not what it is. */
+  ai_connections_list: () => connections.list(db()),
+
+  ai_connection_save: (a) => connections.save(db(), (a ?? {}) as AiConnectionInput),
+
+  ai_connection_delete(a) {
+    connections.remove(db(), requireId(a, "id"));
+    return connections.list(db());
+  },
+
+  ai_connection_activate(a) {
+    connections.activate(db(), requireId(a, "id"));
+    return connections.list(db());
+  },
+
+  async ai_connection_test(a) {
+    const row = requireConnection(a);
+    return probe(db(), row);
+  },
+
+  /**
+   * Fills the model dropdown. Takes a base url rather than only a saved id, because the add
+   * form needs the list *before* there is a row — being asked to type a model id you could
+   * have been shown is the whole reason people give up here.
+   */
+  async ai_models_fetch(a) {
+    const id = typeof a?.id === "number" ? a.id : null;
+    const row = id === null ? null : connections.row(db(), id);
+    const presetId = str(a?.preset) ?? row?.preset ?? "custom";
+    const baseUrl = normalizeBaseUrl(str(a?.base_url) ?? row?.baseUrl ?? "");
+    if (!baseUrl) throw new Error("ai_models_fetch: no base_url");
+
+    const spec = PRESETS.find((p) => p.id === presetId);
+    // a typed-but-unsaved key beats the stored one; both beat nothing
+    const key = str(a?.key) || (row ? connections.keyOf(row) : null);
+    const models = await listModels(baseUrl, key, spec?.wire ?? "openai", AbortSignal.timeout(FETCH_MS), presetId);
+    if (row) {
+      connections.setModels(db(), row.id, models);
+      // a row with no model is a broken Generate; the list we just fetched answers it
+      const fill = row.activeModel ? null : chatDefault(models);
+      if (fill) connections.setActiveModel(db(), row.id, fill);
+      const modelId = row.activeModel ?? fill;
+      // learn the window once, and never over a number the user typed themselves
+      if (modelId && !row.contextTokens) {
+        const ctx = await modelContext(baseUrl, modelId, presetId, AbortSignal.timeout(FETCH_MS));
+        if (ctx) connections.setContextTokens(db(), row.id, ctx);
+      }
+    }
+    return models;
+  },
+
+  /**
+   * Knock on the two local servers worth knocking on, so someone already running Ollama sees
+   * it offered instead of being asked for a base url they'd have to go look up. Silent on
+   * failure — "nothing found" is the common case and is not an error.
+   */
+  async ai_detect_local() {
+    const found: { preset: string; base_url: string; models: string[] }[] = [];
+    await Promise.all(
+      PRESETS.filter((p) => p.local).map(async (p) => {
+        try {
+          const models = await listModels(p.base_url, null, p.wire, AbortSignal.timeout(DETECT_MS), p.id);
+          found.push({ preset: p.id, base_url: p.base_url, models });
+        } catch {
+          // not running, wrong port, or something else entirely on 11434 — either way, no
+        }
+      }),
+    );
+    return found;
+  },
+
+  ai_normalize_url: (a) => normalizeBaseUrl(str(a?.base_url) ?? ""),
 
   // ---------------------------------------------------------------- watch folders
 

@@ -8,6 +8,7 @@ import type {
   JobProgress,
   ModelDownloadProgress,
   OverviewChanged,
+  OverviewProgress,
   RecordingDiscovered,
 } from "../shared/ipc";
 
@@ -25,4 +26,5 @@ export const events = {
   recordingDiscovered: (p: RecordingDiscovered) => emit("recording_discovered", p),
   modelDownloadProgress: (p: ModelDownloadProgress) => emit("model_download_progress", p),
   overviewChanged: (p: OverviewChanged) => emit("overview_changed", p),
+  overviewProgress: (p: OverviewProgress) => emit("overview_progress", p),
 };

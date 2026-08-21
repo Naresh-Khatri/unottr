@@ -36,6 +36,13 @@
       "when": 1787240909319,
       "tag": "0004_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787327309319,
+      "tag": "0005_ai_providers",
+      "breakpoints": true
     }
   ]
 }

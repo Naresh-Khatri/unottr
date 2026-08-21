@@ -30,11 +30,15 @@ export interface PromptInput {
   recordedAt: number | null; // unix seconds
   /** send `Speaker A/B/C` instead of real names; ids still carry attribution home */
   pseudonymize: boolean;
+  /** one window of a transcript too long to send at once; 1-based, absent when it all fits */
+  part?: { index: number; total: number };
 }
 
 export interface BuiltPrompt {
   system: string;
   prompt: string;
+  /** how much of `prompt` is transcript — the rest is fixed cost every window pays again */
+  transcriptChars: number;
   /** every id the model is allowed to cite */
   segmentIds: Set<number>;
   speakerIds: Set<number>;
@@ -71,6 +75,14 @@ export function build(input: PromptInput): BuiltPrompt {
 
   const date = input.recordedAt ? new Date(input.recordedAt * 1000).toISOString().slice(0, 10) : null;
 
+  const part = input.part
+    ? `This is part ${input.part.index} of ${input.part.total} of one meeting's transcript. You
+are seeing a slice of it, not the whole thing. Cover only what is in front of you — do not
+open with what came before or guess at what comes after, and do not say the meeting "began"
+or "ended" unless this part contains that. Give one or two sections, not six; the parts are
+joined back together afterwards. Write the tldr about this part alone.`
+    : "";
+
   const framing = input.role
     ? `The reader's role is: ${input.role}. Use that to decide what matters to them and how to
 phrase their items. It does not change what you extract — every task from every person is
@@ -84,7 +96,7 @@ is not a date at all. Leave due_date empty rather than guessing.`
     : `The meeting's date is unknown, so leave every due_date empty and keep the phrase in
 due_raw instead.`;
 
-  const prompt = `${framing}
+  const prompt = `${part ? `${part}\n\n` : ""}${framing}
 
 ${dating}
 
@@ -97,6 +109,7 @@ ${transcript}`;
   return {
     system: SYSTEM,
     prompt,
+    transcriptChars: transcript.length,
     segmentIds: new Set(input.segments.map((s) => s.id)),
     speakerIds: new Set(input.cast.map((c) => c.id)),
   };
@@ -111,4 +124,23 @@ function letter(i: number): string {
     n = Math.floor(n / 26) - 1;
   } while (n >= 0);
   return out;
+}
+
+/**
+ * The two fields a window cannot answer. Fed the parts' own summaries rather than the
+ * transcript, so it fits in any context the parts themselves fit in.
+ */
+export function buildHead(tldrs: string[], role: string | null): BuiltPrompt {
+  const framing = role ? `The reader's role is: ${role}.` : "";
+  return {
+    system: `You are given summaries of consecutive parts of one meeting, in order. Write the
+title and tldr for the meeting as a whole. Report only what the parts report — you are
+condensing, not adding. Write in English.`,
+    prompt: `${framing ? `${framing}\n\n` : ""}The parts, in order:
+
+${tldrs.map((t, i) => `Part ${i + 1}: ${t}`).join("\n\n")}`,
+    transcriptChars: 0,
+    segmentIds: new Set(),
+    speakerIds: new Set(),
+  };
 }

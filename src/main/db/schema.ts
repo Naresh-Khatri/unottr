@@ -147,7 +147,17 @@ export const OVERVIEW_STATUSES = ["pending", "running", "done", "failed"] as con
 export type OverviewStatus = (typeof OVERVIEW_STATUSES)[number];
 
 /** Why a call failed, so the ui can say whether "retry" is even the right advice. */
-export const ERROR_KINDS = ["auth", "rate_limit", "network", "validation", "aborted", "unknown"] as const;
+export const ERROR_KINDS = [
+  "auth",
+  "rate_limit",
+  "network",
+  "validation",
+  "aborted",
+  "timeout",
+  "unreachable",
+  "too_long",
+  "unknown",
+] as const;
 export type ErrorKind = (typeof ERROR_KINDS)[number];
 
 /**
@@ -166,6 +176,8 @@ export const overviews = sqliteTable("overviews", {
   error: text("error"),
   errorKind: text("error_kind").$type<ErrorKind>(),
   model: text("model"),
+  /** the connection's label at generation time; `model` alone can't name who served it */
+  provider: text("provider"),
   /** bumped when prompt.ts changes; what makes an old overview knowably stale */
   promptVersion: integer("prompt_version").notNull().default(0),
   roleUsed: text("role_used"),
@@ -177,6 +189,56 @@ export const overviews = sqliteTable("overviews", {
   decisions: text("decisions"),
   tokensIn: integer("tokens_in"),
   tokensOut: integer("tokens_out"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/**
+ * How a model is made to emit our schema, cheapest-first. Probed once per connection and
+ * stored, because a 7B local model passes "the endpoint answers" and then fails every real
+ * generation — which rung it reached is the only honest answer to "is this set up?".
+ */
+export const STRATEGIES = ["native", "json_mode", "prompted"] as const;
+export type Strategy = (typeof STRATEGIES)[number];
+
+/** Request shape. Never sniffed from a url — /v1/messages is indistinguishable from /v1. */
+export const WIRES = ["openai", "anthropic", "mistral"] as const;
+export type Wire = (typeof WIRES)[number];
+
+/**
+ * One endpoint the user has added. The key lives here and nowhere else; `connections.ts` is
+ * the only file that reads it, and it never crosses ipc. `spend_cents` is per-connection
+ * because a local model's is always 0 and a cloud one's is nobody else's business.
+ */
+export const aiConnections = sqliteTable("ai_connections", {
+  id: integer("id").primaryKey(),
+  label: text("label").notNull(),
+  /** which entry of PRESETS this came from; "custom" for a hand-typed url */
+  preset: text("preset").notNull(),
+  wire: text("wire").$type<Wire>().notNull(),
+  baseUrl: text("base_url").notNull(),
+  /** safeStorage ciphertext, base64 */
+  keyEnc: text("key_enc"),
+  /** no keyring on this box, and the user said ok */
+  keyPlain: text("key_plain"),
+  activeModel: text("active_model"),
+  /** json string[] — last successful /models listing, so the dropdown works offline */
+  modelsJson: text("models_json"),
+  modelsFetchedAt: integer("models_fetched_at"),
+  strategy: text("strategy").$type<Strategy>().notNull().default("native"),
+  /** what the model can actually hold; drives the pre-flight estimate, not a hard limit */
+  contextTokens: integer("context_tokens"),
+  /** a 7B on cpu is minutes, not seconds — one global ceiling would fail it every time */
+  timeoutMs: integer("timeout_ms"),
+  /** USD per million tokens; null = don't estimate spend at all (local models) */
+  priceInUsd: real("price_in_usd"),
+  priceOutUsd: real("price_out_usd"),
+  /** per-connection: consenting to send text to a laptop is not consenting to send it to a cloud */
+  consented: integer("consented").notNull().default(0),
+  spendCents: real("spend_cents").notNull().default(0),
+  /** json ProbeResult — the four-rung ladder's last verdict, shown as a checklist */
+  probeJson: text("probe_json"),
+  probedAt: integer("probed_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
