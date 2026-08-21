@@ -11,14 +11,25 @@ directories:
 
 files:
   - out/**
+  # db/migrate.ts resolves ../../drizzle off out/main at runtime
+  - drizzle/**
   - package.json
-  # the renderer is bundled; nothing under src/ ships
-  - "!**/{.vscode,.github,docs,test,fixtures,scripts,src}/**"
+  # NO "!**/{...,src,test,docs}/**" here. this list is an allowlist -- nothing outside it
+  # ships from the app dir anyway -- but electron-builder reuses these patterns when it
+  # copies node_modules, so a "**/" ignore reaches into deps. it stripped electron-log/src,
+  # whose main.js is a stub that requires ./src/main -> app dead on launch.
+  # whisper.node lists every backend as optional, so linux-x64 pulls three. we ask for
+  # vulkan and its own loader falls back to the plain build; cuda is never requested and
+  # wasm is the browser path. 204 MB of addon we would ship and never dlopen.
+  - "!node_modules/@fugood/node-whisper-linux-x64-cuda/**"
+  - "!node_modules/@fugood/node-whisper-wasm/**"
 
 # native addons cannot be dlopen'd from inside an asar, and the two prebuilt packages carry
 # the .so files those addons need next to them
 asarUnpack:
   - "**/*.node"
+  # drizzle's migrator stats the folder before reading it; unpacked keeps that honest
+  - drizzle/**
   - node_modules/sherpa-onnx-linux-x64/**
   - node_modules/@fugood/node-whisper-linux-x64-vulkan/**
   - node_modules/better-sqlite3/**
