@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
@@ -337,6 +338,14 @@ function WatchFoldersCard({ folders, onChange }: { folders: WatchFolder[]; onCha
 type RuleMode = "auto" | "stream" | "mic_desktop";
 type ParsedRule = { mode: RuleMode; stream: number; mic: number; desktop: number };
 
+const TRACK_RULES: Record<RuleMode, string> = {
+  auto: "Auto",
+  stream: "Single stream",
+  mic_desktop: "Mic + desktop",
+};
+
+const DEVICES: Record<string, string> = { auto: "Auto", gpu: "GPU", cpu: "CPU" };
+
 // wire encoding is media::TrackRule's #[serde(tag = "kind")] json, or the literal "auto"
 function parseTrackRule(raw: string): ParsedRule {
   if (raw !== "auto") {
@@ -419,15 +428,16 @@ function FolderRow({ folder, onChange }: { folder: WatchFolder; onChange: () => 
 
       <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
         <span>Tracks</span>
-        <select
-          className="h-6 rounded-md border bg-transparent px-1 text-xs"
-          value={rule.mode}
-          onChange={(e) => setRule({ ...rule, mode: e.target.value as RuleMode })}
-        >
-          <option value="auto">Auto</option>
-          <option value="stream">Single stream</option>
-          <option value="mic_desktop">Mic + desktop</option>
-        </select>
+        <Select value={rule.mode} onValueChange={(v) => setRule({ ...rule, mode: v as RuleMode })}>
+          <SelectTrigger size="sm" className="h-6 gap-1 rounded-md pr-1.5 pl-2 text-xs" aria-label="Tracks">
+            <SelectValue>{(v) => TRACK_RULES[v as RuleMode]}</SelectValue>
+          </SelectTrigger>
+          <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
+            {(Object.keys(TRACK_RULES) as RuleMode[]).map((m) => (
+              <SelectItem key={m} value={m} className="text-xs">{TRACK_RULES[m]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {rule.mode === "stream" && (
           <Input
             type="number" min={0} value={rule.stream}
@@ -559,16 +569,16 @@ function ComputeCard({ device, detected, onChange }: {
       </CardHeader>
       <CardContent className="flex items-center gap-3">
         <Label htmlFor="device-select">Device</Label>
-        <select
-          id="device-select"
-          className="h-8 rounded-lg border bg-transparent px-2 text-sm"
-          value={device}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          <option value="auto">Auto</option>
-          <option value="gpu">GPU</option>
-          <option value="cpu">CPU</option>
-        </select>
+        <Select value={device} onValueChange={(v) => onChange(v ?? "auto")}>
+          <SelectTrigger id="device-select">
+            <SelectValue>{(v) => DEVICES[v as string]}</SelectValue>
+          </SelectTrigger>
+          <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
+            {Object.entries(DEVICES).map(([v, label]) => (
+              <SelectItem key={v} value={v}>{label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {device === "auto" && detected && (
           <span className="text-xs text-muted-foreground">currently resolves to {detected.toUpperCase()}</span>
         )}

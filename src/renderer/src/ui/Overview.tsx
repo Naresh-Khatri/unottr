@@ -16,6 +16,7 @@ import { SpeakerDot } from "@/ui/SpeakerDot";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -298,6 +299,11 @@ function Bullet({ bullet, onSeek }: { bullet: OverviewBullet; onSeek: (ms: numbe
   );
 }
 
+function ownerLabel(speakers: Speaker[], sid: number): string {
+  const s = speakers.find((x) => x.id === sid);
+  return s ? s.display_name || s.label : "Unassigned";
+}
+
 function TaskRow({ task, speakers, palette, onSeek }: {
   task: Task; speakers: Speaker[]; palette: SpeakerPalette; onSeek: (ms: number) => void;
 }) {
@@ -342,16 +348,26 @@ function TaskRow({ task, speakers, palette, onSeek }: {
             {task.owner_speaker_id != null && (
               <SpeakerDot color={palette.ui(task.owner_speaker_id)} className="size-1.5" />
             )}
-            <select
+            <Select
               value={task.owner_speaker_id ?? 0}
-              onChange={(e) => api.taskUpdate(task.id, { owner_speaker_id: Number(e.target.value) || null })}
-              className="rounded border-none bg-transparent p-0 text-[11px] hover:underline"
+              onValueChange={(v) => api.taskUpdate(task.id, { owner_speaker_id: v || null })}
             >
-              <option value={0}>Unassigned</option>
-              {speakers.map((s) => (
-                <option key={s.id} value={s.id}>{s.display_name || s.label}</option>
-              ))}
-            </select>
+              <SelectTrigger
+                size="sm"
+                aria-label="Owner"
+                className="h-auto gap-0.5 rounded border-none bg-transparent p-0 text-[11px] hover:underline dark:bg-transparent dark:hover:bg-transparent [&_svg]:size-3"
+              >
+                <SelectValue>{(v) => ownerLabel(speakers, v as number)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
+                <SelectItem value={0} className="text-xs">Unassigned</SelectItem>
+                {speakers.map((s) => (
+                  <SelectItem key={s.id} value={s.id} className="gap-1.5 text-xs">
+                    <SpeakerDot color={palette.ui(s.id)} />{s.display_name || s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {task.due_date
               ? <Badge variant="secondary" className="px-1 py-0 text-[10px]">{task.due_date}</Badge>
               : task.due_raw && <span className="italic">“{task.due_raw}”</span>}
