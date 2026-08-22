@@ -188,7 +188,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-baseline justify-between px-6 pt-8 pb-5">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2 px-4 pt-6 pb-4 sm:px-6 sm:pt-8 sm:pb-5">
         <h1 className="text-lg font-semibold tracking-tight">Recordings</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{rows.length} in library</span>
@@ -198,7 +198,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
         </div>
       </header>
 
-      <div ref={virtual.containerRef} className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
+      <div ref={virtual.containerRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 sm:px-6">
         {rows.length === 0 ? (
           <EmptyState hasFolders={folders.length > 0} onOpenSettings={onOpenSettings} />
         ) : (
@@ -206,12 +206,12 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-28" />
+                  <TableHead className="hidden w-28 sm:table-cell" />
                   <TableHead>Name</TableHead>
-                  <TableHead className="w-28">Recorded</TableHead>
-                  <TableHead className="w-20 text-right">Length</TableHead>
-                  <TableHead className="w-16 text-right">Speakers</TableHead>
-                  <TableHead className="w-36 text-right">Status</TableHead>
+                  <TableHead className="hidden w-28 lg:table-cell">Recorded</TableHead>
+                  <TableHead className="hidden w-20 text-right md:table-cell">Length</TableHead>
+                  <TableHead className="hidden w-16 text-right xl:table-cell">Speakers</TableHead>
+                  <TableHead className="w-24 text-right sm:w-36">Status</TableHead>
                   <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
@@ -227,7 +227,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                       onClick={() => onOpen(r.id)}
                       className="group/row cursor-pointer"
                     >
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         <Preview row={r} onOpenAt={(ms) => onOpen(r.id, ms)} />
                       </TableCell>
                       <TableCell className="max-w-0">
@@ -242,6 +242,16 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                         {!r.available && (
                           <div className="text-xs text-muted-foreground">source unavailable</div>
                         )}
+                        {/* whatever the folded-away columns were carrying, restated inline */}
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground xl:hidden">
+                          <span className="lg:hidden">
+                            {dateLabel(r.recorded_at)} · {timeLabel(r.recorded_at)}
+                          </span>
+                          <span className="tabular-nums md:hidden">{durationLabel(r.duration_ms)}</span>
+                          {!!r.speaker_count && (
+                            <span className="inline-flex items-center gap-1"><Users />{r.speaker_count}</span>
+                          )}
+                        </div>
                         {live && <Progress value={(progress[r.id]?.pct ?? 0) * 100} className="mt-2" />}
                         {r.status === "failed" && (() => {
                           const info = errorInfo(r.error);
@@ -262,15 +272,15 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                           );
                         })()}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
                         <div>{dateLabel(r.recorded_at)}</div>
                         {/* several recordings a day is the norm; the date alone can't tell them apart */}
                         <div className="text-xs tabular-nums">{timeLabel(r.recorded_at)}</div>
                       </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground tabular-nums">
+                      <TableCell className="hidden text-right text-sm text-muted-foreground tabular-nums md:table-cell">
                         {durationLabel(r.duration_ms)}
                       </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">
+                      <TableCell className="hidden text-right text-sm text-muted-foreground xl:table-cell">
                         {r.speaker_count ? (
                           <span className="inline-flex items-center gap-1">
                             <Users />{r.speaker_count}

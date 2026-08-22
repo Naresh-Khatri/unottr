@@ -70,6 +70,10 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
   }, [id, initialMs, reloadKey]);
 
   const shownTitle = detail?.recording.title ?? null;
+  const playable = !!detail && detail.recording.available && !videoFailed
+    && canPlayContainer(detail.recording.path);
+  // the player is 16:9 unless the file is audio-only; the fallback card always is
+  const boxed = !playable || (detail?.recording.has_video ?? false);
   useEffect(() => {
     if (!detail) return;
     document.title = `${shownTitle ?? detail.recording.filename} — unottr`;
@@ -239,9 +243,9 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-3 border-b px-4 py-3">
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          <ArrowLeft />Library
+      <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2.5 sm:gap-x-3 sm:px-4 sm:py-3">
+        <Button variant="ghost" size="sm" onClick={onBack} aria-label="Back to library">
+          <ArrowLeft /><span className="hidden sm:inline">Library</span>
         </Button>
         <div className="min-w-0 flex-1 text-sm font-medium">
           {detail ? (
@@ -249,26 +253,29 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
               onCommit={renameRecording} inputClassName="w-full max-w-md text-sm font-medium" />
           ) : "Loading…"}
         </div>
-        <div className="relative w-56">
-          <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") jumpMatch(e.shiftKey ? -1 : 1);
-            }}
-            placeholder="Find in transcript"
-            className="h-8 pl-7"
-          />
-        </div>
-        {q && (
-          <div className="flex items-center gap-0.5 text-xs text-muted-foreground">
-            <span className="tabular-nums">{matches.length ? `${matchIndex + 1}/${matches.length}` : "0/0"}</span>
-            <Button size="icon-xs" variant="ghost" onClick={() => jumpMatch(-1)}><CaretUp /></Button>
-            <Button size="icon-xs" variant="ghost" onClick={() => jumpMatch(1)}><CaretDown /></Button>
+        {/* below md the field takes a row of its own rather than squeezing title + actions */}
+        <div className="order-last flex w-full items-center gap-0.5 md:order-none md:w-auto">
+          <div className="relative min-w-0 flex-1 md:w-40 md:flex-none lg:w-56">
+            <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") jumpMatch(e.shiftKey ? -1 : 1);
+              }}
+              placeholder="Find in transcript"
+              className="h-8 pl-7"
+            />
           </div>
-        )}
-        <div className="flex items-center gap-1.5">
+          {q && (
+            <div className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
+              <span className="tabular-nums">{matches.length ? `${matchIndex + 1}/${matches.length}` : "0/0"}</span>
+              <Button size="icon-xs" variant="ghost" onClick={() => jumpMatch(-1)}><CaretUp /></Button>
+              <Button size="icon-xs" variant="ghost" onClick={() => jumpMatch(1)}><CaretDown /></Button>
+            </div>
+          )}
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 md:ml-0">
           <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as ExportFormat)}>
             <SelectTrigger className="text-xs" aria-label="Export format">
               <SelectValue>{(v) => String(v).toUpperCase()}</SelectValue>
@@ -299,8 +306,8 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
               {copyError ?? (copied ? "Copied" : `Copy ${exportFormat.toUpperCase()} to clipboard`)}
             </TooltipContent>
           </Tooltip>
-          <Button size="sm" variant="outline" disabled={!detail || exporting} onClick={doExport}>
-            <Export />Export
+          <Button size="sm" variant="outline" aria-label="Export" disabled={!detail || exporting} onClick={doExport}>
+            <Export /><span className="hidden lg:inline">Export</span>
           </Button>
           <Menu
             align="end"
@@ -328,10 +335,13 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
       ) : !detail ? (
         <div className="p-8 text-sm text-muted-foreground">Loading…</div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-4 p-4">
-          <div className="flex flex-col gap-3">
-            {detail.recording.available && !videoFailed
-              && canPlayContainer(detail.recording.path) ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-4 lg:p-4">
+          <div className={cn(
+            "flex shrink-0 flex-col gap-3 lg:min-h-0",
+            // stacked, a full-width 16:9 box would eat the transcript — cap it by height instead
+            boxed && "mx-auto w-full max-w-[max(18rem,calc((100dvh_-_26rem)*16/9))] lg:mx-0 lg:max-w-none",
+          )}>
+            {playable ? (
               <VideoPlayer
                 recordingId={detail.recording.id}
                 durationMs={detail.recording.duration_ms}
@@ -367,7 +377,8 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                 </CardContent>
               </Card>
             )}
-            <Card>
+            {/* stacked, a long speaker list would push the transcript out of the viewport */}
+            <Card className="max-h-28 overflow-y-auto lg:max-h-none">
               <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
                 <SpeakerStrip
                   speakers={speakers}
@@ -380,7 +391,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
             </Card>
           </div>
 
-          <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-col gap-2">
+          <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-2">
             <TabsList variant="line">
               <TabsTrigger value="transcript">Transcript</TabsTrigger>
               <TabsTrigger value="overview"><Sparkle />Overview</TabsTrigger>
@@ -399,7 +410,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                 const idx = virtual.start + i;
                 if (it.kind === "header") {
                   return (
-                    <div key={`h-${it.blockIdx}`} ref={virtual.measureRef(idx)} className="px-4 pt-4 pb-1">
+                    <div key={`h-${it.blockIdx}`} ref={virtual.measureRef(idx)} className="px-3 pt-4 pb-1 sm:px-4">
                       <SpeakerName
                         sid={it.sid}
                         name={nameFor(it.sid)}
@@ -421,7 +432,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                     data-seg={seg.id}
                     onClick={() => setCurrentMs(seg.start_ms)}
                     className={cn(
-                      "group relative mx-4 cursor-pointer rounded-md py-1 pr-8 pl-2 text-sm leading-relaxed transition-colors",
+                      "group relative mx-3 cursor-pointer rounded-md py-1 pr-8 pl-2 text-sm leading-relaxed transition-colors sm:mx-4",
                       active ? "bg-primary/10 text-foreground" : "hover:bg-muted",
                       isMatch && "ring-1 ring-primary/40",
                       isCurrentMatch && "ring-2 ring-primary",

@@ -29,8 +29,9 @@ export const markQuitting = (): void => {
 export function createWindow(hidden = false): BrowserWindow {
   const win_ = new BrowserWindow({
     ...restoreBounds(),
-    minWidth: 940,
-    minHeight: 600,
+    // the ui folds down to an icon rail + stacked panes below this
+    minWidth: 640,
+    minHeight: 480,
     show: false,
     backgroundColor: "#0a0a0a",
     autoHideMenuBar: true,

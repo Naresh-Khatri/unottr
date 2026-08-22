@@ -52,21 +52,25 @@ export default function App() {
     <div className="flex h-full flex-col bg-background">
       {!ffmpegOk && <FfmpegBanner onOpenSettings={() => setView({ screen: "settings" })} />}
       <div className="flex min-h-0 flex-1">
-        <nav className="flex w-48 shrink-0 flex-col gap-1 border-r bg-sidebar px-3 py-4">
-          <div className="mb-4 px-2 text-sm font-semibold tracking-tight">unottr</div>
-          <Button variant={view.screen === "library" ? "secondary" : "ghost"}
-            className="justify-start" onClick={() => setView({ screen: "library" })}>
-            <FilmSlate />Library
+        {/* below lg the rail drops to icons only — labels and meters would crowd the content */}
+        <nav className="flex w-14 shrink-0 flex-col gap-1 border-r bg-sidebar px-2 py-4 lg:w-48 lg:px-3">
+          <div className="mb-4 truncate px-2 text-sm font-semibold tracking-tight">
+            <span className="lg:hidden">un</span>
+            <span className="hidden lg:inline">unottr</span>
+          </div>
+          <Button variant={view.screen === "library" ? "secondary" : "ghost"} title="Library"
+            className="justify-center lg:justify-start" onClick={() => setView({ screen: "library" })}>
+            <FilmSlate /><span className="hidden lg:inline">Library</span>
           </Button>
-          <Button variant={view.screen === "search" ? "secondary" : "ghost"}
-            className="justify-start" onClick={() => setView({ screen: "search" })}>
-            <MagnifyingGlass />Search
+          <Button variant={view.screen === "search" ? "secondary" : "ghost"} title="Search"
+            className="justify-center lg:justify-start" onClick={() => setView({ screen: "search" })}>
+            <MagnifyingGlass /><span className="hidden lg:inline">Search</span>
           </Button>
-          <Button variant={view.screen === "settings" ? "secondary" : "ghost"}
-            className="mt-auto justify-start" onClick={() => setView({ screen: "settings" })}>
-            <Gear />Settings
+          <Button variant={view.screen === "settings" ? "secondary" : "ghost"} title="Settings"
+            className="mt-auto justify-center lg:justify-start" onClick={() => setView({ screen: "settings" })}>
+            <Gear /><span className="hidden lg:inline">Settings</span>
           </Button>
-          <ResourceMeters />
+          <div className="hidden lg:block"><ResourceMeters /></div>
         </nav>
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

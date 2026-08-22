@@ -93,7 +93,7 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
   if (!settings) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-8">
+    <div className="h-full overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="mb-6 text-lg font-semibold tracking-tight">Settings</h1>
       <div className="mx-auto flex max-w-2xl flex-col gap-6 pb-8">
         {!settings.tray_available && (
@@ -212,7 +212,7 @@ function PersonRow({ person, onChange }: { person: Person; onChange: () => void 
             if (e.key === "Enter") e.currentTarget.blur();
             if (e.key === "Escape") { setDraft(person.name); e.currentTarget.blur(); }
           }}
-          className="h-8 w-56"
+          className="h-8 w-full max-w-56"
         />
         <span className="flex-1 text-xs text-muted-foreground">
           {person.recordings === 1 ? "1 recording" : `${person.recordings} recordings`}
@@ -251,7 +251,7 @@ function PersonRow({ person, onChange }: { person: Person; onChange: () => void 
               }}
               onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
               placeholder="your role, e.g. engineering manager"
-              className="h-6 w-72 text-xs"
+              className="h-6 w-full max-w-72 text-xs"
             />
           </>
         )}

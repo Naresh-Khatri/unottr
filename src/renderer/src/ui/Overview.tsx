@@ -263,7 +263,7 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
           </section>
         )}
 
-        <footer className="flex items-center gap-2 pt-2 text-[11px] text-muted-foreground">
+        <footer className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-2 text-[11px] text-muted-foreground">
           <span>{overview.model}{overview.provider && ` via ${overview.provider}`}</span>
           {overview.role_used && <span>· as {overview.role_used}</span>}
           <Button size="xs" variant="ghost" className="ml-auto" onClick={generate}>

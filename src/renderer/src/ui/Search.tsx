@@ -26,7 +26,7 @@ export function Search({ onOpen }: {
   }, [q]);
 
   return (
-    <div className="mx-auto h-full w-full max-w-2xl overflow-y-auto px-6 py-8">
+    <div className="mx-auto h-full w-full max-w-2xl overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
       <div className="relative">
         <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)}
