@@ -266,8 +266,10 @@ export interface Overview {
   tokens_in: number | null;
   tokens_out: number | null;
   updated_at: number;
-  /** prompt has moved on, or your role has, since this was written — offer a regenerate */
+  /** the prompt, your role or the cast has moved on since this was written — offer a regenerate */
   stale: boolean;
+  /** which of the three, so the nudge can name it; null when it is not stale */
+  stale_reason: "speakers" | "role" | "prompt" | null;
 }
 
 export type TaskStatus = "open" | "done" | "dismissed";

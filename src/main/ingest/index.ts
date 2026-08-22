@@ -11,12 +11,12 @@ import {
   defaultPipelineConfig,
   pipelineConfig,
 } from "./config";
-import { type JobCtx, processRecording } from "./job";
-import { type IngestEvent, Queue } from "./queue";
+import { type JobCtx, processRecording, rediarizeRecording } from "./job";
+import { type IngestEvent, type JobSpec, Queue } from "./queue";
 import { clearStalePcmCache, run as reconcileRun } from "./reconcile";
 import { Watcher } from "./watch";
 
-export type { IngestEvent } from "./queue";
+export type { IngestEvent, JobSpec } from "./queue";
 
 export interface ServiceOptions {
   db: Db;
@@ -62,7 +62,10 @@ export class IngestService {
     const queue = new Queue({
       db: o.db,
       maxAttempts: cfg.maxAttempts,
-      run: (id, onProgress, signal) => processRecording(ctxFor(), id, onProgress, signal),
+      run: (id, spec, onProgress, signal) =>
+        spec.kind === "rediarize"
+          ? rediarizeRecording(ctxFor(), id, spec.speakers, onProgress, signal)
+          : processRecording(ctxFor(), id, onProgress, signal),
       onEvent: o.onEvent,
     });
 
@@ -85,8 +88,8 @@ export class IngestService {
 
   /** For backfill's freshly inserted rows and the ui's retry, so a running service picks them
    *  up immediately instead of waiting for the next startup. */
-  enqueue(id: number): void {
-    this.queue.enqueue(id);
+  enqueue(id: number, spec?: JobSpec): void {
+    this.queue.enqueue(id, spec);
   }
 
   /** The running job finishes its current chunk and checkpoints before this resolves. */

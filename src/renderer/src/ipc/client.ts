@@ -22,6 +22,22 @@ export const api = {
     USE_MOCK ? mockCommands.set_title(id, title) : invoke("set_title", { id, title }),
   renameSpeaker: (speaker_id: number, name: string): Promise<void> =>
     USE_MOCK ? mockCommands.rename_speaker(speaker_id, name) : invoke("rename_speaker", { speaker_id, name }),
+  speakerSegmentCount: (speaker_id: number): Promise<number> =>
+    USE_MOCK ? mockCommands.speaker_segment_count(speaker_id) : invoke("speaker_segment_count", { speaker_id }),
+  mergeSpeakers: (recording_id: number, from_id: number, into_id: number): Promise<void> =>
+    USE_MOCK
+      ? mockCommands.merge_speakers(recording_id, from_id, into_id)
+      : invoke("merge_speakers", { recording_id, from_id, into_id }),
+  setSegmentSpeaker: (recording_id: number, segment_id: number, speaker_id: number | null): Promise<void> =>
+    USE_MOCK
+      ? mockCommands.set_segment_speaker(recording_id, segment_id, speaker_id)
+      : invoke("set_segment_speaker", { recording_id, segment_id, speaker_id }),
+  segmentNewSpeaker: (recording_id: number, segment_id: number): Promise<number> =>
+    USE_MOCK
+      ? mockCommands.segment_new_speaker(recording_id, segment_id)
+      : invoke("segment_new_speaker", { recording_id, segment_id }),
+  rediarize: (recording_id: number, speakers: number | null): Promise<void> =>
+    USE_MOCK ? mockCommands.rediarize(recording_id, speakers) : invoke("rediarize", { recording_id, speakers }),
   listPeople: (): Promise<Person[]> =>
     USE_MOCK ? mockCommands.list_people() : invoke("list_people"),
   renamePerson: (id: number, name: string): Promise<void> =>

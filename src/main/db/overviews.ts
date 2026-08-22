@@ -66,9 +66,12 @@ export function get(db: Db, recordingId: number): Overview | null {
   const row = db.select().from(overviews).where(eq(overviews.recordingId, recordingId)).get();
   if (!row) return null;
 
-  const video = hasVideo(
-    db.select({ path: recordings.path }).from(recordings).where(eq(recordings.id, recordingId)).get()?.path ?? "",
-  );
+  const rec = db
+    .select({ path: recordings.path, speakersVersion: recordings.speakersVersion })
+    .from(recordings)
+    .where(eq(recordings.id, recordingId))
+    .get();
+  const video = hasVideo(rec?.path ?? "");
   const bullet = (b: StoredBullet): OverviewBullet => ({
     ...b,
     frame_url: video ? `unottr://frame/${recordingId}/${b.start_ms}` : null,
@@ -77,6 +80,18 @@ export function get(db: Db, recordingId: number): Overview | null {
   const sections = parseJson<StoredSection[]>(row.sections, []).map(
     (s): OverviewSection => ({ ...s, bullets: (s.bullets ?? []).map(bullet) }),
   );
+
+  // speakers first: it is the most concrete thing to say, and the one the user just did
+  const reason: Overview["stale_reason"] =
+    row.status !== "done"
+      ? null
+      : row.speakersVersion !== (rec?.speakersVersion ?? 0)
+        ? "speakers"
+        : row.roleUsed !== myRole(db)
+          ? "role"
+          : row.promptVersion !== PROMPT_VERSION
+            ? "prompt"
+            : null;
 
   return {
     recording_id: recordingId,
@@ -93,7 +108,8 @@ export function get(db: Db, recordingId: number): Overview | null {
     tokens_in: row.tokensIn,
     tokens_out: row.tokensOut,
     updated_at: row.updatedAt,
-    stale: row.status === "done" && (row.promptVersion !== PROMPT_VERSION || row.roleUsed !== myRole(db)),
+    stale: reason !== null,
+    stale_reason: reason,
   };
 }
 
@@ -174,6 +190,7 @@ export function save(db: Db, recordingId: number, w: OverviewWrite): void {
         provider: w.provider,
         promptVersion: PROMPT_VERSION,
         roleUsed: w.roleUsed,
+        speakersVersion: castVersion(tx, recordingId),
         title: w.title,
         tldr: w.tldr,
         sections: JSON.stringify(w.sections),
@@ -284,6 +301,13 @@ export function sweepRunning(db: Db): number {
 // ----------------------------------------------------------------------------------- fts
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+const castVersion = (tx: Tx, recordingId: number): number =>
+  tx
+    .select({ v: recordings.speakersVersion })
+    .from(recordings)
+    .where(eq(recordings.id, recordingId))
+    .get()?.v ?? 0;
 
 /** One row per recording: title plus every line of prose flattened, so a hit means "in here". */
 function indexFts(tx: Tx, recordingId: number, w: OverviewWrite): void {

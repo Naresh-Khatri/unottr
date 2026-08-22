@@ -50,6 +50,12 @@ export interface DiarizeSpec {
   embedding: string;
   vadModel: string;
   config: Config;
+  /**
+   * Carry the recording's existing names across by label. True for the pipeline's own run,
+   * where the labels mean the same thing either side; false for a re-diarize with a different
+   * count, where they don't — there, only the voiceprints get a say (decision #50).
+   */
+  keepNames?: boolean;
 }
 
 export interface DiarizeReport {
@@ -153,7 +159,7 @@ export async function diarize(
     },
   );
 
-  const counts = persist(db, spec.recordingId, out.labels, out.embeddings, loaded, out.assigned);
+  const counts = persist(db, spec, out.labels, out.embeddings, loaded, out.assigned);
   progress(1);
 
   return {
@@ -344,18 +350,19 @@ function parseWords(json: string | null): Word[] {
 /** Replace this recording's speakers and reattach its segments, in one transaction. */
 function persist(
   db: Db,
-  recordingId: number,
+  spec: DiarizeSpec,
   labels: string[],
   embeddings: Float32Array[],
   loaded: Loaded[],
   assigned: Assigned[],
 ): { split: number; unattributed: number; identified: number } {
+  const recordingId = spec.recordingId;
   let split = 0;
   let unattributed = 0;
   let identified = 0;
 
   db.transaction((tx) => {
-    const prior = priorNames(tx, recordingId);
+    const prior = spec.keepNames === false ? new Map<string, PriorName>() : priorNames(tx, recordingId);
     const pinned = labels.map((label) => prior.get(label) ?? null);
 
     // cascades speaker_id back to NULL on every segment, so nothing points at a stale row
@@ -422,7 +429,14 @@ function persist(
     });
 
     tx.update(recordings)
-      .set({ status: "done", stageDetail: null, error: null, updatedAt: now() })
+      .set({
+        status: "done",
+        stageDetail: null,
+        error: null,
+        // the cast just changed under any overview written before now (decision #50)
+        speakersVersion: sql`${recordings.speakersVersion} + 1`,
+        updatedAt: now(),
+      })
       .where(eq(recordings.id, recordingId))
       .run();
   });

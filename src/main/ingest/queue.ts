@@ -15,8 +15,17 @@ export type IngestEvent =
   | { kind: "done"; recording_id: number }
   | { kind: "failed"; recording_id: number; error: string };
 
+/**
+ * What to run for a queued id. "rediarize" re-clusters a finished recording's voices at a
+ * known count (decision #50) — everything else is the full ingest.
+ */
+export type JobSpec = { kind: "full" } | { kind: "rediarize"; speakers: number | null };
+
+export const FULL: JobSpec = { kind: "full" };
+
 export type RunJob = (
   id: number,
+  spec: JobSpec,
   onProgress: (stage: Status, pct: number, etaMs: number | null) => void,
   signal: AbortSignal,
 ) => Promise<void>;
@@ -29,7 +38,7 @@ export interface QueueOptions {
 }
 
 export class Queue {
-  private readonly pending: number[] = [];
+  private readonly pending: { id: number; spec: JobSpec }[] = [];
   /** Ids queued or currently running — a second enqueue of either is a no-op. */
   private readonly known = new Set<number>();
   private readonly controller = new AbortController();
@@ -37,10 +46,10 @@ export class Queue {
 
   constructor(private readonly o: QueueOptions) {}
 
-  enqueue(id: number): void {
+  enqueue(id: number, spec: JobSpec = FULL): void {
     if (this.controller.signal.aborted || this.known.has(id)) return;
     this.known.add(id);
-    this.pending.push(id);
+    this.pending.push({ id, spec });
     this.pump();
   }
 
@@ -58,18 +67,37 @@ export class Queue {
 
   private pump(): void {
     if (this.current || this.controller.signal.aborted) return;
-    const id = this.pending.shift();
-    if (id === undefined) return;
-    this.current = this.runJob(id).finally(() => {
+    const next = this.pending.shift();
+    if (next === undefined) return;
+    const { id, spec } = next;
+    this.current = this.runJob(id, spec).finally(() => {
       this.known.delete(id);
       this.current = null;
       this.pump();
     });
   }
 
-  private async runJob(id: number): Promise<void> {
+  private async runJob(id: number, spec: JobSpec): Promise<void> {
     const { db, maxAttempts, run, onEvent } = this.o;
     const signal = this.controller.signal;
+
+    // a re-diarize runs against a recording that is already done: it must not be able to park
+    // that row as failed, retry it, or switch its device — it just reports and leaves
+    if (spec.kind === "rediarize") {
+      try {
+        await run(id, spec, (stage, pct, eta_ms) =>
+          onEvent({ kind: "progress", recording_id: id, stage, pct, eta_ms }),
+        signal);
+        onEvent({ kind: "done", recording_id: id });
+      } catch (e) {
+        if (isCancelled(e) || signal.aborted) return;
+        const error = e instanceof PipelineError ? e : err.db(e);
+        console.warn(`re-diarize of recording ${id} failed: ${error.message}`);
+        onEvent({ kind: "failed", recording_id: id, error: error.slug });
+      }
+      return;
+    }
+
     // read back rather than assumed false: a previous run may already have forced cpu for
     // this recording, and that one automatic retry is not owed twice
     let forcedCpu = forceCpuOf(db, id);
@@ -79,6 +107,7 @@ export class Queue {
       try {
         await run(
           id,
+          spec,
           (stage, pct, eta_ms) => onEvent({ kind: "progress", recording_id: id, stage, pct, eta_ms }),
           signal,
         );

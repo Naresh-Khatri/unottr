@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
-  ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, Export, MagnifyingGlass, PencilSimple,
-  Sparkle, VideoCameraSlash,
+  ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, DotsThree, Export, MagnifyingGlass, PencilSimple,
+  Sparkle, UsersThree, VideoCameraSlash,
 } from "@phosphor-icons/react";
-import { api, os } from "@/ipc/client";
+import { api, onJobDone, onJobFailed, os } from "@/ipc/client";
 import type { ExportFormat, Person, RecordingDetail, Segment, Speaker } from "@/ipc/types";
 import { hms } from "@/lib/format";
 import { canPlayContainer } from "@/lib/media";
@@ -42,6 +43,8 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
   const [exportFormat, setExportFormat] = useState<ExportFormat>("txt");
   const [exporting, setExporting] = useState(false);
   const [tab, setTab] = useState<string>(initialTab);
+  const [rediarizing, setRediarizing] = useState(false);
+  const [speakerError, setSpeakerError] = useState<string | null>(null);
   const userScrolling = useRef(false);
   const scrollTimer = useRef(0);
 
@@ -157,6 +160,46 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
     setPeople(known);
   }
 
+  /** Re-read without blanking the view: a speaker fix must not flash the whole screen. */
+  const refresh = useCallback(async () => {
+    const d = await api.getRecording(id);
+    setDetail(d);
+    setSpeakers(d.speakers);
+  }, [id]);
+
+  useEffect(() => {
+    const offs = [
+      onJobDone((p) => { if (p.recording_id === id) { setRediarizing(false); void refresh(); } }),
+      onJobFailed((p) => {
+        if (p.recording_id !== id) return;
+        setRediarizing(false);
+        setSpeakerError(`Re-running speakers failed (${p.error}). The old speakers are unchanged.`);
+      }),
+    ];
+    return () => { for (const off of offs) off(); };
+  }, [id, refresh]);
+
+  const fix = useCallback(async (act: () => Promise<unknown>) => {
+    setSpeakerError(null);
+    try {
+      await act();
+      await refresh();
+    } catch (e) {
+      setSpeakerError(String(e));
+    }
+  }, [refresh]);
+
+  async function startRediarize(count: number | null) {
+    setSpeakerError(null);
+    setRediarizing(true);
+    try {
+      await api.rediarize(id, count);
+    } catch (e) {
+      setRediarizing(false);
+      setSpeakerError(String(e));
+    }
+  }
+
   async function doExport() {
     if (!detail) return;
     const stem = detail.recording.filename.replace(/\.[^.]+$/, "");
@@ -214,6 +257,18 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
           <Button size="sm" variant="outline" disabled={!detail || exporting} onClick={doExport}>
             <Export />Export
           </Button>
+          <Menu
+            align="end"
+            trigger={<Button size="icon-sm" variant="ghost" aria-label="More"><DotsThree /></Button>}
+          >
+            {(close) => (
+              <RediarizeForm
+                current={speakers.length}
+                disabled={!detail || detail.recording.status !== "done" || rediarizing}
+                onSubmit={(n) => { close(); void startRediarize(n); }}
+              />
+            )}
+          </Menu>
         </div>
       </header>
 
@@ -268,10 +323,13 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
               </Card>
             )}
             <Card>
-              <CardContent className="text-sm text-muted-foreground">
-                {speakers.length
-                  ? <>Speakers: {speakers.map((s) => s.display_name || s.label).join(", ")}</>
-                  : "No speakers yet."}
+              <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+                <SpeakerStrip
+                  speakers={speakers}
+                  busy={rediarizing}
+                  onMerge={(fromId, intoId) => fix(() => api.mergeSpeakers(id, fromId, intoId))}
+                />
+                {speakerError && <span className="text-xs text-destructive">{speakerError}</span>}
               </CardContent>
             </Card>
           </div>
@@ -310,13 +368,13 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                 const isMatch = q !== "" && seg.text.toLowerCase().includes(q);
                 const isCurrentMatch = matches[matchIndex] === seg.id;
                 return (
-                  <p
+                  <div
                     key={seg.id}
                     ref={virtual.measureRef(idx)}
                     data-seg={seg.id}
                     onClick={() => setCurrentMs(seg.start_ms)}
                     className={cn(
-                      "mx-4 cursor-pointer rounded-md px-2 py-1 text-sm leading-relaxed transition-colors",
+                      "group relative mx-4 cursor-pointer rounded-md py-1 pr-8 pl-2 text-sm leading-relaxed transition-colors",
                       active ? "bg-primary/10 text-foreground" : "hover:bg-muted",
                       isMatch && "ring-1 ring-primary/40",
                       isCurrentMatch && "ring-2 ring-primary",
@@ -328,7 +386,13 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                     {seg.speaker_id == null
                       ? <span className="text-muted-foreground italic">{seg.text}</span>
                       : seg.text}
-                  </p>
+                    <ReassignMenu
+                      speakers={speakers}
+                      current={seg.speaker_id}
+                      onPick={(sid) => fix(() => api.setSegmentSpeaker(id, seg.id, sid))}
+                      onNew={() => fix(() => api.segmentNewSpeaker(id, seg.id))}
+                    />
+                  </div>
                 );
               })}
               <div style={{ height: virtual.bottomPad }} />
@@ -387,5 +451,238 @@ function SpeakerName({ sid, name, known, onRename }: {
       onClick={() => setEditing(true)}>
       {name}<PencilSimple className="text-muted-foreground" />
     </Button>
+  );
+}
+
+
+/**
+ * A hand-rolled popover — there is no dropdown-menu primitive in this project. `children` is
+ * given a `close` so an item can dismiss the panel it lives in.
+ *
+ * The panel is portalled to the body and positioned fixed: `Card` sets `overflow-hidden`, and
+ * the transcript list is its own scroll box, so an in-flow absolute panel gets sliced off at
+ * the nearest edge. Fixed also keeps it out of the virtualiser's row measurements.
+ */
+function Menu({ trigger, children, align = "start", className }: {
+  trigger: ReactNode;
+  children: (close: () => void) => ReactNode;
+  align?: "start" | "end";
+  className?: string;
+}) {
+  const [at, setAt] = useState<{ top: number; left?: number; right?: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const open = at !== null;
+
+  const place = useCallback(() => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    setAt({
+      top: r.bottom + 4,
+      ...(align === "end" ? { right: window.innerWidth - r.right } : { left: r.left }),
+    });
+  }, [align]);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!ref.current?.contains(t) && !panel.current?.contains(t)) setAt(null);
+    };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setAt(null); };
+    // fixed coords go stale the moment anything scrolls, so close rather than chase it
+    const bail = () => setAt(null);
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    document.addEventListener("scroll", bail, true);
+    window.addEventListener("resize", bail);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", esc);
+      document.removeEventListener("scroll", bail, true);
+      window.removeEventListener("resize", bail);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className={cn("relative", className)}>
+      <span onClick={(e) => { e.stopPropagation(); if (open) setAt(null); else place(); }}>{trigger}</span>
+      {at && createPortal(
+        <div
+          ref={panel}
+          onClick={(e) => e.stopPropagation()}
+          style={{ top: at.top, left: at.left, right: at.right }}
+          className="fixed z-50 max-h-[min(20rem,60vh)] min-w-44 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+        >
+          {children(() => setAt(null))}
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+const ITEM = "w-full justify-start rounded-md px-2 py-1 text-left text-xs font-normal";
+
+function SpeakerStrip({ speakers, busy, onMerge }: {
+  speakers: Speaker[];
+  busy: boolean;
+  onMerge: (fromId: number, intoId: number) => void;
+}) {
+  const [pending, setPending] = useState<{ from: Speaker; into: Speaker; count: number } | null>(null);
+  const label = (s: Speaker) => s.display_name || s.label;
+
+  if (busy) return <span className="text-xs">Re-running speakers…</span>;
+  if (!speakers.length) return <span>No speakers yet.</span>;
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <UsersThree className="size-4" />
+        {speakers.map((s) => (
+          <Menu
+            key={s.id}
+            trigger={
+              <Button size="xs" variant="secondary" className="font-normal">
+                {label(s)}<CaretDown className="text-muted-foreground" />
+              </Button>
+            }
+          >
+            {(close) =>
+              speakers.length < 2 ? (
+                <p className="px-2 py-1 text-xs text-muted-foreground">Nobody to merge with.</p>
+              ) : (
+                <>
+                  <p className="px-2 py-1 text-[11px] tracking-wide text-muted-foreground uppercase">
+                    Merge into…
+                  </p>
+                  {speakers.filter((o) => o.id !== s.id).map((other) => (
+                    <Button
+                      key={other.id}
+                      variant="ghost"
+                      size="xs"
+                      className={ITEM}
+                      onClick={() => {
+                        close();
+                        api.speakerSegmentCount(s.id).then(
+                          (count) => setPending({ from: s, into: other, count }),
+                          () => setPending({ from: s, into: other, count: 0 }),
+                        );
+                      }}
+                    >
+                      {label(other)}
+                    </Button>
+                  ))}
+                </>
+              )
+            }
+          </Menu>
+        ))}
+      </div>
+
+      {pending && (
+        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-2 py-1.5 text-xs">
+          <span className="flex-1 text-foreground">
+            Merge {label(pending.from)} into {label(pending.into)}? {pending.count}{" "}
+            {pending.count === 1 ? "segment" : "segments"}.
+          </span>
+          <Button size="xs" variant="outline" onClick={() => setPending(null)}>Cancel</Button>
+          <Button
+            size="xs"
+            onClick={() => { onMerge(pending.from.id, pending.into.id); setPending(null); }}
+          >
+            Merge
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** The per-segment speaker fix. Hidden until the row is hovered, so it costs no reading space. */
+function ReassignMenu({ speakers, current, onPick, onNew }: {
+  speakers: Speaker[];
+  current: number | null;
+  onPick: (sid: number | null) => void;
+  onNew: () => void;
+}) {
+  return (
+    <Menu
+      align="end"
+      className="absolute top-0.5 right-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+      trigger={
+        <Button size="icon-xs" variant="ghost" aria-label="Change speaker">
+          <PencilSimple />
+        </Button>
+      }
+    >
+      {(close) => (
+        <>
+          <p className="px-2 py-1 text-[11px] tracking-wide text-muted-foreground uppercase">
+            Said by
+          </p>
+          {speakers.map((s) => (
+            <Button
+              key={s.id}
+              variant="ghost"
+              size="xs"
+              className={cn(ITEM, s.id === current && "bg-muted")}
+              onClick={() => { close(); if (s.id !== current) onPick(s.id); }}
+            >
+              {s.display_name || s.label}
+            </Button>
+          ))}
+          <Button variant="ghost" size="xs" className={ITEM} onClick={() => { close(); onNew(); }}>
+            New speaker
+          </Button>
+          {current !== null && (
+            <Button variant="ghost" size="xs" className={ITEM} onClick={() => { close(); onPick(null); }}>
+              Unattributed
+            </Button>
+          )}
+        </>
+      )}
+    </Menu>
+  );
+}
+
+/** "How many people spoke?" — the worker's fixed-k, exposed (decision #50). */
+function RediarizeForm({ current, disabled, onSubmit }: {
+  current: number;
+  disabled: boolean;
+  onSubmit: (count: number | null) => void;
+}) {
+  const [count, setCount] = useState(String(Math.max(1, current)));
+  const n = Number.parseInt(count, 10);
+  const valid = Number.isFinite(n) && n >= 1 && n <= 20;
+
+  if (disabled)
+    return (
+      <p className="w-60 px-2 py-1 text-xs text-muted-foreground">
+        Re-running speakers needs a finished recording.
+      </p>
+    );
+
+  return (
+    <div className="flex w-64 flex-col gap-2 p-1">
+      <p className="text-xs font-medium">Re-run speakers</p>
+      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+        How many people spoke?
+        <Input
+          autoFocus
+          value={count}
+          onChange={(e) => setCount(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && valid) onSubmit(n); }}
+          className="h-7 w-14 text-xs"
+        />
+      </label>
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        The transcript text is untouched. Names you typed here that are not a known person are
+        lost; voices the app recognises come back named.
+      </p>
+      <div className="flex justify-end">
+        <Button size="xs" disabled={!valid} onClick={() => onSubmit(n)}>Re-run</Button>
+      </div>
+    </div>
   );
 }

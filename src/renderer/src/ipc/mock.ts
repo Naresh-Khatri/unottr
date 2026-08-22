@@ -84,6 +84,14 @@ let folders: WatchFolder[] = [
 const wait = <T>(v: T, ms = 120): Promise<T> =>
   new Promise((r) => setTimeout(() => r(v), ms));
 
+/** Stands in for the speakers_version bump every speaker fix makes on the recording. */
+function markSpeakersStale(recording_id: number): void {
+  if (overview.status !== "done") return;
+  overview.stale = true;
+  overview.stale_reason = "speakers";
+  emit("overview_changed", { recording_id });
+}
+
 export const mockCommands = {
   list_recordings(filter?: RecordingFilter, sort?: RecordingSort) {
     let rows = recordings.slice();
@@ -143,6 +151,57 @@ export const mockCommands = {
       person.samples++;
       s.person_id = person.id;
     }
+    return wait(undefined);
+  },
+
+  // ----------------------------------------------------------- speaker fixes (#50)
+
+  speaker_segment_count: (speaker_id: number) =>
+    wait(segments9001.filter((s) => s.speaker_id === speaker_id).length),
+
+  merge_speakers(recording_id: number, from_id: number, into_id: number) {
+    const from = speakers9001.find((s) => s.id === from_id);
+    const into = speakers9001.find((s) => s.id === into_id);
+    if (!from || !into) return wait(undefined);
+    for (const seg of segments9001) if (seg.speaker_id === from_id) seg.speaker_id = into_id;
+    if (from.person_id !== null && into.person_id === null) {
+      into.person_id = from.person_id;
+      into.display_name = from.display_name;
+    }
+    speakers9001.splice(speakers9001.indexOf(from), 1);
+    markSpeakersStale(recording_id);
+    return wait(undefined);
+  },
+
+  set_segment_speaker(recording_id: number, segment_id: number, speaker_id: number | null) {
+    const seg = segments9001.find((s) => s.id === segment_id);
+    if (seg) seg.speaker_id = speaker_id;
+    markSpeakersStale(recording_id);
+    return wait(undefined);
+  },
+
+  segment_new_speaker(recording_id: number, segment_id: number) {
+    const highest = speakers9001.reduce(
+      (max, s) => Math.max(max, Number(/^Speaker (\d+)$/.exec(s.label)?.[1] ?? 0)),
+      0,
+    );
+    const id = Math.max(9102, ...speakers9001.map((s) => s.id)) + 1;
+    speakers9001.push({
+      id, recording_id: 9001, label: `Speaker ${highest + 1}`, display_name: null, person_id: null,
+    });
+    const seg = segments9001.find((s) => s.id === segment_id);
+    if (seg) seg.speaker_id = id;
+    markSpeakersStale(recording_id);
+    return wait(id);
+  },
+
+  /** No worker here, so it just reports the two events the real one would. */
+  rediarize(recording_id: number, _speakers: number | null) {
+    emit("job_progress", { recording_id, stage: "diarizing", pct: 0.4, eta_ms: 8000 });
+    setTimeout(() => {
+      markSpeakersStale(recording_id);
+      emit("job_done", { recording_id });
+    }, 1500);
     return wait(undefined);
   },
 
@@ -288,6 +347,7 @@ export const mockCommands = {
       setTimeout(() => {
         overview.status = "done";
         overview.stale = false;
+        overview.stale_reason = null;
         emit("overview_changed", { recording_id });
         resolve({ overview: { ...overview }, tasks: overviewTasks.map((t) => ({ ...t })) });
       }, 2500),
@@ -443,6 +503,7 @@ const overview: Overview = {
   tokens_out: 1160,
   updated_at: 1765400000,
   stale: false,
+  stale_reason: null,
 };
 
 const overviewTasks: Task[] = [

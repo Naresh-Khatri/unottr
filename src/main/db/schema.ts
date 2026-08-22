@@ -47,6 +47,9 @@ export const recordings = sqliteTable(
     /** user-set; outranks `aiTitle`, which outranks the filename (decision #32) */
     title: text("title"),
     aiTitle: text("ai_title"),
+    /** bumped by every speaker fix (merge, reassign, re-diarize) — what makes an overview
+     *  written against the old cast knowably stale (decision #50) */
+    speakersVersion: integer("speakers_version").notNull().default(0),
   },
   (t) => [
     index("idx_recordings_status").on(t.status),
@@ -181,6 +184,8 @@ export const overviews = sqliteTable("overviews", {
   /** bumped when prompt.ts changes; what makes an old overview knowably stale */
   promptVersion: integer("prompt_version").notNull().default(0),
   roleUsed: text("role_used"),
+  /** `recordings.speakers_version` as it stood when this was generated */
+  speakersVersion: integer("speakers_version").notNull().default(0),
   title: text("title"),
   tldr: text("tldr"),
   /** json OverviewSection[] */

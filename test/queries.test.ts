@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { type Db, openDatabase } from "../src/main/db/client";
 import { runMigrations } from "../src/main/db/migrate";
 import * as peopleDb from "../src/main/db/people";
+import * as overviewsDb from "../src/main/db/overviews";
 import * as q from "../src/main/db/queries";
-import { recordings, segments } from "../src/main/db/schema";
+import { recordings, segments, speakers, tasks } from "../src/main/db/schema";
+import * as speakersDb from "../src/main/db/speakers";
 import * as settingsDb from "../src/main/db/settings";
 import * as wf from "../src/main/db/watch-folders";
 import { load as loadTranscript, parseFormat, render } from "../src/main/export";
@@ -137,6 +139,103 @@ describe("renameSpeaker", () => {
 
   it("throws on an unknown speaker id", () => {
     expect(() => q.renameSpeaker(db, 404, "Nobody")).toThrow();
+  });
+});
+
+describe("speaker fixes", () => {
+  const detail = () => q.getRecording(db, 9001)!;
+  const segIds = () => detail().segments.map((s) => s.id);
+  const version = () =>
+    db.select({ v: recordings.speakersVersion }).from(recordings).where(eq(recordings.id, 9001)).get()?.v;
+
+  const addTask = (ownerSpeakerId: number | null): number =>
+    db
+      .insert(tasks)
+      .values({ recordingId: 9001, text: "Chase the numbers", ownerSpeakerId, startMs: 4200, createdAt: 0, updatedAt: 0 })
+      .returning({ id: tasks.id })
+      .get().id;
+
+  it("merge moves segments and tasks, then drops the row", () => {
+    const taskId = addTask(9102);
+    expect(speakersDb.segmentCount(db, 9102)).toBe(1);
+
+    speakersDb.mergeSpeakers(db, 9102, 9101);
+
+    const d = detail();
+    expect(d.speakers.map((s) => s.id)).toEqual([9101]);
+    expect(d.segments.map((s) => s.speaker_id)).toEqual([9101, 9101, 9101, null]);
+    expect(db.select().from(tasks).where(eq(tasks.id, taskId)).get()?.ownerSpeakerId).toBe(9101);
+    expect(version()).toBe(1);
+  });
+
+  it("merge carries a person link onto an anonymous target, and never the other way", () => {
+    speakersDb.mergeSpeakers(db, 9101, 9102);
+    const kept = detail().speakers[0];
+    expect(kept).toMatchObject({ id: 9102, person_id: 9201, display_name: "Priya" });
+
+    // the named one survived that merge, so a second one has nothing to carry
+    const fresh = speakersDb.assignToNewSpeaker(db, segIds()[0]);
+    speakersDb.mergeSpeakers(db, fresh, 9102);
+    expect(detail().speakers[0].person_id).toBe(9201);
+  });
+
+  it("merge refuses itself, an unknown id and a speaker from another recording", () => {
+    expect(() => speakersDb.mergeSpeakers(db, 9101, 9101)).toThrow();
+    expect(() => speakersDb.mergeSpeakers(db, 9101, 404)).toThrow();
+    const other = db
+      .insert(speakers)
+      .values({ recordingId: 9003, label: "Speaker 1" })
+      .returning({ id: speakers.id })
+      .get().id;
+    expect(() => speakersDb.mergeSpeakers(db, 9101, other)).toThrow();
+    expect(version()).toBe(0);
+  });
+
+  it("reassigns one segment, including off every speaker", () => {
+    const [first] = segIds();
+    speakersDb.setSegmentSpeaker(db, first, 9102);
+    expect(detail().segments[0].speaker_id).toBe(9102);
+
+    speakersDb.setSegmentSpeaker(db, first, null);
+    expect(detail().segments[0].speaker_id).toBeNull();
+    expect(version()).toBe(2);
+
+    expect(() => speakersDb.setSegmentSpeaker(db, 404, 9101)).toThrow();
+    expect(() => speakersDb.setSegmentSpeaker(db, first, 404)).toThrow();
+  });
+
+  it("new speaker takes the next free label", () => {
+    const crosstalk = detail().segments.find((s) => s.text === "(crosstalk)")!.id;
+    const created = speakersDb.assignToNewSpeaker(db, crosstalk);
+    expect(detail().speakers.find((s) => s.id === created)?.label).toBe("Speaker 3");
+    expect(detail().segments[3].speaker_id).toBe(created);
+
+    // merging it away frees the label again — nextLabel counts live rows, not history
+    speakersDb.mergeSpeakers(db, created, 9101);
+    const next = speakersDb.assignToNewSpeaker(db, crosstalk);
+    expect(detail().speakers.find((s) => s.id === next)?.label).toBe("Speaker 3");
+  });
+
+  it("leaves the transcript text alone, so search still finds it", () => {
+    speakersDb.mergeSpeakers(db, 9102, 9101);
+    expect(q.search(db, "roadmap", 10)).toHaveLength(1);
+  });
+
+  it("flips the overview stale, naming speakers as the reason", () => {
+    const write = {
+      model: "m", provider: "p", roleUsed: null, title: "Roadmap", tldr: "We talked.",
+      sections: [], decisions: [], tasks: [], tokensIn: null, tokensOut: null,
+    };
+    overviewsDb.markRunning(db, 9001, "m", "p", null);
+    overviewsDb.save(db, 9001, write);
+    expect(overviewsDb.get(db, 9001)).toMatchObject({ stale: false, stale_reason: null });
+
+    speakersDb.setSegmentSpeaker(db, segIds()[0], 9102);
+    expect(overviewsDb.get(db, 9001)).toMatchObject({ stale: true, stale_reason: "speakers" });
+
+    // regenerating against the new cast settles it again
+    overviewsDb.save(db, 9001, write);
+    expect(overviewsDb.get(db, 9001)?.stale).toBe(false);
   });
 });
 

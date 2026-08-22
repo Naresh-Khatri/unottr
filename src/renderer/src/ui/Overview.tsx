@@ -7,8 +7,8 @@ import {
 } from "@phosphor-icons/react";
 import { api, onOverviewChanged, onOverviewProgress } from "@/ipc/client";
 import type {
-  AiConnection, AiPreset, OverviewBullet, OverviewPayload, OverviewProgress, Person, Segment,
-  Speaker, Task,
+  AiConnection, AiPreset, Overview, OverviewBullet, OverviewPayload, OverviewProgress, Person,
+  Segment, Speaker, Task,
 } from "@/ipc/types";
 import { hms } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -198,7 +198,7 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
       <div className="flex flex-col gap-5 p-4">
         {overview.stale && (
           <div className="flex items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-            <span className="flex-1">Speakers or your role changed since this was written.</span>
+            <span className="flex-1">{STALE_COPY[overview.stale_reason ?? "prompt"]}</span>
             <Button size="xs" variant="outline" onClick={generate}><ArrowClockwise />Regenerate</Button>
           </div>
         )}
@@ -532,3 +532,9 @@ function toMarkdown({ overview, tasks }: OverviewPayload): string {
 function needsKey(conn: AiConnection, presets: AiPreset[]): boolean {
   return !conn.key_set && presets.find((p) => p.id === conn.preset)?.key_required === true;
 }
+
+const STALE_COPY: Record<NonNullable<Overview["stale_reason"]>, string> = {
+  speakers: "Speakers changed since this overview.",
+  role: "Your role changed since this was written.",
+  prompt: "unottr writes these differently now.",
+};

@@ -366,7 +366,7 @@ describe("queue", () => {
     const b = rec.stub(db, join(dir, "b.mkv"));
     const events: IngestEvent[] = [];
     let inFlight = 0;
-    const q = queueOf(events, async (_id, onProgress) => {
+    const q = queueOf(events, async (_id, _spec, onProgress) => {
       inFlight += 1;
       expect(inFlight).toBe(1);
       onProgress("probing", 0.5, 120_000);

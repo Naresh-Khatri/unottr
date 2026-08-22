@@ -17,8 +17,9 @@ import { db } from "../db";
 import * as overviewsDb from "../db/overviews";
 import * as peopleDb from "../db/people";
 import * as queries from "../db/queries";
-import { resetForRetry } from "../db/recordings";
+import { resetForRetry, statusOf } from "../db/recordings";
 import * as settingsDb from "../db/settings";
+import * as speakersDb from "../db/speakers";
 import * as watchFoldersDb from "../db/watch-folders";
 import { events } from "../events";
 import { load as loadTranscript, parseFormat, render } from "../export";
@@ -114,6 +115,39 @@ const handlers: Record<string, Handler> = {
 
   /** Names the person behind the cluster, not just this row — see db/people.ts. */
   rename_speaker: (a) => queries.renameSpeaker(db(), requireId(a, "speaker_id"), str(a?.name) ?? ""),
+
+  // ------------------------------------------------------- speaker fixes (decision #50)
+  // None of these touches transcript text; each bumps speakers_version, which is what the
+  // Overview tab reads to offer a regenerate.
+
+  /** How many segments a merge would move — quoted in the inline confirm before it happens. */
+  speaker_segment_count: (a) => speakersDb.segmentCount(db(), requireId(a, "speaker_id")),
+
+  merge_speakers(a) {
+    speakersDb.mergeSpeakers(db(), requireId(a, "from_id"), requireId(a, "into_id"));
+    events.overviewChanged({ recording_id: requireId(a, "recording_id") });
+  },
+
+  set_segment_speaker(a) {
+    const speakerId = a?.speaker_id === null ? null : requireId(a, "speaker_id");
+    speakersDb.setSegmentSpeaker(db(), requireId(a, "segment_id"), speakerId);
+    events.overviewChanged({ recording_id: requireId(a, "recording_id") });
+  },
+
+  segment_new_speaker(a) {
+    const id = speakersDb.assignToNewSpeaker(db(), requireId(a, "segment_id"));
+    events.overviewChanged({ recording_id: requireId(a, "recording_id") });
+    return id;
+  },
+
+  /** Re-cluster at a count the user gave. Refused mid-pipeline: there is nothing to re-cluster
+   *  yet, and the queue would fight the running job for the row's status. */
+  rediarize(a) {
+    const id = requireId(a, "recording_id");
+    if (statusOf(db(), id) !== "done") throw new Error(`recording ${id} is not finished`);
+    const speakers = a?.speakers === null ? null : num(a?.speakers);
+    ingest()?.enqueue(id, { kind: "rediarize", speakers: speakers ?? null });
+  },
 
   // ----------------------------------------------------------------------- people
 

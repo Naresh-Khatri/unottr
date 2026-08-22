@@ -10,13 +10,14 @@ import { dirname, join, parse } from "node:path";
 import type { Status } from "../../shared/ipc";
 import { DEFAULT_THRESHOLD } from "../../worker/cluster";
 import type { Db } from "../db/client";
-import { forceCpuOf, pathOf, setProbeResult, setStatus } from "../db/recordings";
+import { forceCpuOf, pathOf, setProbeResult, setStatus, statusOf } from "../db/recordings";
 import * as stageRates from "../db/stage-rates";
 import { findByPath as folderByPath } from "../db/watch-folders";
 import { err, isCancelled } from "../errors";
 import { type FfmpegCli, extractPcm, extractThumbnails, probe } from "../media/ffmpeg";
 import { mixPcm } from "../media/pcm";
 import { PREVIEW_COUNT, previewPathFor, thumbPathFor } from "../media/thumbs";
+import type { Probe } from "../media/types";
 import { AUTO, type TrackRule, parseRule, select } from "../media/track";
 import {
   type ModelSpec,
@@ -55,7 +56,7 @@ export async function processRecording(
   onProgress: OnProgress,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { db, cli, cacheDir, thumbsDir, cfg } = ctx;
+  const { db, cli, thumbsDir, cfg } = ctx;
   check(signal);
   const path = pathOf(db, id);
   if (path === null) throw err.probe("", `recording ${id} vanished from the database`);
@@ -107,37 +108,10 @@ export async function processRecording(
     }
   }
 
-  const choice = select(probed, owningTrackRule(db, path));
-
   // --- extracting ---
   setStatus(db, id, "extracting");
-  const extractTrack = async (audioIndex: number): Promise<string> => {
-    const out = pcmPathFor(cacheDir, path, audioIndex);
-    // an existing file is a finished one (extractPcm discards its output on failure), which
-    // makes a retry's extract stage a no-op
-    if (existsSync(out)) return out;
-    await extractPcm(cli, path, {
-      audioIndex,
-      out,
-      onProgress: (f) => report("extracting", f),
-      signal,
-    });
-    return out;
-  };
-
   report("extracting", 0);
-  let mainPcm: string;
-  let micPcm: string | null = null;
-  if (choice.selection.kind === "blind") {
-    mainPcm = await extractTrack(choice.selection.stream);
-  } else {
-    const mic = await extractTrack(choice.selection.mic);
-    const desktop = await extractTrack(choice.selection.desktop);
-    const mix = join(cacheDir, `${parse(path).name}.mix.pcm`);
-    if (!existsSync(mix)) mixPcm([mic, desktop], mix);
-    mainPcm = mix;
-    micPcm = mic;
-  }
+  const { mainPcm, micPcm } = await prepareAudio(ctx, path, probed, (f) => report("extracting", f), signal);
   report("extracting", 1);
 
   // --- transcribing (checkpointed inside transcribe) ---
@@ -196,6 +170,106 @@ export async function processRecording(
     signal,
   );
   stageRates.record(db, keys.diarizing, Date.now() - startedDiarize, probed.duration_ms ?? 0);
+}
+
+/** The tracks the compute stages read. Cached pcm is reused as-is, which is what makes a
+ *  re-diarize cheap: nothing is decoded twice. */
+interface Audio {
+  mainPcm: string;
+  micPcm: string | null;
+}
+
+async function prepareAudio(
+  ctx: JobCtx,
+  path: string,
+  probed: Probe,
+  onFraction: (f: number) => void,
+  signal?: AbortSignal,
+): Promise<Audio> {
+  const { db, cli, cacheDir } = ctx;
+  const choice = select(probed, owningTrackRule(db, path));
+
+  const extractTrack = async (audioIndex: number): Promise<string> => {
+    const out = pcmPathFor(cacheDir, path, audioIndex);
+    // an existing file is a finished one (extractPcm discards its output on failure), which
+    // makes a retry's extract stage a no-op
+    if (existsSync(out)) return out;
+    await extractPcm(cli, path, { audioIndex, out, onProgress: onFraction, signal });
+    return out;
+  };
+
+  if (choice.selection.kind === "blind") {
+    return { mainPcm: await extractTrack(choice.selection.stream), micPcm: null };
+  }
+  const mic = await extractTrack(choice.selection.mic);
+  const desktop = await extractTrack(choice.selection.desktop);
+  const mix = join(cacheDir, `${parse(path).name}.mix.pcm`);
+  if (!existsSync(mix)) mixPcm([mic, desktop], mix);
+  return { mainPcm: mix, micPcm: mic };
+}
+
+/**
+ * Re-cluster a finished recording's voices at a count the user supplied (decision #50). Only
+ * the speaker rows and `segments.speaker_id` change — the text is never touched, so fts stays
+ * valid. Names come back by voiceprint, not by label: with a different `speakers` the old
+ * "Speaker 2" is not the new one, so carrying names across by name would be a lie.
+ */
+export async function rediarizeRecording(
+  ctx: JobCtx,
+  id: number,
+  speakers: number | null,
+  onProgress: OnProgress,
+  signal?: AbortSignal,
+): Promise<void> {
+  const { db, cli, cfg } = ctx;
+  check(signal);
+  const path = pathOf(db, id);
+  if (path === null) throw err.probe("", `recording ${id} vanished from the database`);
+  // the transcript is already there; a failure has to put the row back exactly as it was
+  const was = statusOf(db, id) ?? "done";
+
+  setStatus(db, id, "diarizing");
+  try {
+    const probed = await probe(cli, path);
+    const { mainPcm, micPcm } = await prepareAudio(ctx, path, probed, () => {}, signal);
+
+    const embeddingSpec = cfg.embeddingModel
+      ? (findEmbedding(cfg.embeddingModel) ?? raise(cfg.embeddingModel))
+      : defaultEmbedding();
+    const vadModel = await fetchModel(ctx, VAD, true, signal);
+    const segmentation = await fetchModel(ctx, SEGMENTATION, cfg.downloadModels, signal);
+    const embedding = await fetchModel(ctx, embeddingSpec, cfg.downloadModels, signal);
+
+    const key = rateKey("diarizing", "cpu", embeddingSpec.name);
+    const eta = new Eta({
+      durationMs: probed.duration_ms,
+      // only the one stage runs, so the others cost nothing to be ahead of
+      rates: { extracting: 0, transcribing: 0, diarizing: stageRates.rate(db, key, prior(key)) },
+    });
+    onProgress("diarizing", 0, eta.tick("diarizing", 0));
+
+    const started = Date.now();
+    // persist() writes the new cast, bumps speakers_version and sets status = 'done'
+    await diarize(
+      db,
+      {
+        recordingId: id,
+        pcm: mainPcm,
+        micPcm,
+        segmentation,
+        embedding,
+        vadModel,
+        config: { threshold: cfg.diarizeThreshold ?? DEFAULT_THRESHOLD, speakers },
+        keepNames: false,
+      },
+      (f) => onProgress("diarizing", f, eta.tick("diarizing", f)),
+      signal,
+    );
+    stageRates.record(db, key, Date.now() - started, probed.duration_ms ?? 0);
+  } catch (e) {
+    setStatus(db, id, was);
+    throw e;
+  }
 }
 
 /** Small models (vad) or a caller that opted into downloads: fetch if missing. Otherwise a
