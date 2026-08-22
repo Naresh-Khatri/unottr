@@ -273,7 +273,9 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
             <SelectTrigger className="text-xs" aria-label="Export format">
               <SelectValue>{(v) => String(v).toUpperCase()}</SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            {/* default centers the popup on the selected item -> a 4-char trigger gets a menu
+                hanging off to its left */}
+            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
               {(["txt", "json", "srt", "vtt"] as const).map((f) => (
                 <SelectItem key={f} value={f} className="text-xs">{f.toUpperCase()}</SelectItem>
               ))}
