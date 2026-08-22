@@ -30,6 +30,7 @@ import * as settingsDb from "./settings";
 const SUMMARY_COLUMNS = {
   id: recordings.id,
   path: recordings.path,
+  title: sql<string | null>`coalesce(${recordings.title}, ${recordings.aiTitle})`,
   recorded_at: recordings.recordedAt,
   duration_ms: recordings.durationMs,
   status: recordings.status,
@@ -42,6 +43,7 @@ const SUMMARY_COLUMNS = {
 type SummaryRow = {
   id: number;
   path: string;
+  title: string | null;
   recorded_at: number | null;
   duration_ms: number | null;
   status: string;

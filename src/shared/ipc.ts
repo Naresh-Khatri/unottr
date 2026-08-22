@@ -61,6 +61,8 @@ export interface RecordingSummary {
   id: number;
   path: string;
   filename: string;
+  /** user title, else the AI one; null -> fall back to `filename` (decision #32) */
+  title: string | null;
   recorded_at: number | null; // unix seconds
   duration_ms: number | null;
   status: Status;

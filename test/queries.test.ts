@@ -4,7 +4,7 @@ import { type Db, openDatabase } from "../src/main/db/client";
 import { runMigrations } from "../src/main/db/migrate";
 import * as peopleDb from "../src/main/db/people";
 import * as q from "../src/main/db/queries";
-import { segments } from "../src/main/db/schema";
+import { recordings, segments } from "../src/main/db/schema";
 import * as settingsDb from "../src/main/db/settings";
 import * as wf from "../src/main/db/watch-folders";
 import { load as loadTranscript, parseFormat, render } from "../src/main/export";
@@ -33,6 +33,17 @@ describe("listRecordings", () => {
 
   it("filters by a path substring", () => {
     expect(q.listRecordings(db, { query: "standup" }, SORT).map((r) => r.id)).toEqual([9002]);
+  });
+
+  it("surfaces the display title, user-set outranking the ai one", () => {
+    const title = (id: number) => q.listRecordings(db, {}, SORT).find((x) => x.id === id)?.title;
+    expect(title(9001)).toBeNull();
+
+    db.update(recordings).set({ aiTitle: "Q4 roadmap trade-offs" }).where(eq(recordings.id, 9001)).run();
+    expect(title(9001)).toBe("Q4 roadmap trade-offs");
+
+    db.update(recordings).set({ title: "Roadmap, take two" }).where(eq(recordings.id, 9001)).run();
+    expect(title(9001)).toBe("Roadmap, take two");
   });
 
   it("computes speaker_count, filename and has_video", () => {

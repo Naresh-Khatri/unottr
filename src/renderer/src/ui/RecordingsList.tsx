@@ -3,7 +3,7 @@ import {
   ArrowClockwise, FileX, FilmSlate, FolderOpen, Gear, Play, Users, Waveform,
 } from "@phosphor-icons/react";
 import {
-  api, onJobDone, onJobFailed, onJobProgress, onRecordingDiscovered,
+  api, onJobDone, onJobFailed, onJobProgress, onOverviewChanged, onRecordingDiscovered,
   PREVIEW_COUNT, previewUrl, thumbUrl,
 } from "@/ipc/client";
 import type { RecordingSummary, WatchFolder } from "@/ipc/types";
@@ -177,6 +177,8 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
       onJobDone(load),
       onJobFailed(load),
       onRecordingDiscovered(load),
+      // an overview landing is how a row gets its ai title
+      onOverviewChanged(load),
     ];
     return () => offs.forEach((off) => off());
   }, [load]);
@@ -228,7 +230,10 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                         <Preview row={r} onOpenAt={(ms) => onOpen(r.id, ms)} />
                       </TableCell>
                       <TableCell className="max-w-0">
-                        <div className="truncate font-medium">{r.filename}</div>
+                        <div className="truncate font-medium">{r.title ?? r.filename}</div>
+                        {r.title && (
+                          <div className="truncate text-xs text-muted-foreground">{r.filename}</div>
+                        )}
                         {!r.available && (
                           <div className="text-xs text-muted-foreground">source unavailable</div>
                         )}
