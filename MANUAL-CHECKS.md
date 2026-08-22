@@ -226,6 +226,8 @@ acceptance criteria in `docs/plan/05-ui.md`, re-pointed at the Electron app by p
       text) render sanely.
 - [ ] `.json` export round-trips the segment/speaker data faithfully (spot check a few
       timestamps and speaker names against the transcript view).
+- [ ] The format dropdown's option list is readable when open (dark popup, light text), not
+      light-on-light.
 
 ## AI overview (phase 09)
 

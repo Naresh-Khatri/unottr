@@ -247,7 +247,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
           <select
             value={exportFormat}
             onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-            className="h-8 rounded-lg border bg-transparent px-1.5 text-xs"
+            className="h-8 rounded-lg border bg-background px-1.5 text-xs"
           >
             <option value="txt">TXT</option>
             <option value="json">JSON</option>

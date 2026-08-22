@@ -124,6 +124,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* chromium paints native option rows from these; a transparent select otherwise leaves the
+     popup on the platform's light default with our light-on-dark text = invisible */
+  select option {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
   body {
     @apply bg-background text-foreground;
   }
