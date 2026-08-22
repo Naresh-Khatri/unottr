@@ -9,6 +9,7 @@ import { hms } from "@/lib/format";
 import { canPlayContainer } from "@/lib/media";
 import { useVirtual } from "@/lib/virtual";
 import { VideoPlayer } from "@/ui/VideoPlayer";
+import { EditableTitle } from "@/ui/EditableTitle";
 import { OverviewPanel } from "@/ui/Overview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,20 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
     setCurrentMs(initialMs);
     return () => { stale = true; };
   }, [id, initialMs, reloadKey]);
+
+  const shownTitle = detail?.recording.title ?? null;
+  useEffect(() => {
+    if (!detail) return;
+    document.title = `${shownTitle ?? detail.recording.filename} — unottr`;
+    return () => { document.title = "unottr"; };
+  }, [detail, shownTitle]);
+
+  const renameRecording = useCallback(async (title: string) => {
+    await api.setTitle(id, title);
+    // an empty title falls back to the ai one, which only a reload knows
+    const d = await api.getRecording(id);
+    setDetail((cur) => (cur ? { ...cur, recording: d.recording } : cur));
+  }, [id]);
 
   // the names already known to the app, offered as completions so one voice gets one spelling
   useEffect(() => { api.listPeople().then(setPeople, () => {}); }, []);
@@ -160,9 +175,12 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeft />Library
         </Button>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {detail?.recording.filename ?? "Loading…"}
-        </span>
+        <div className="min-w-0 flex-1 text-sm font-medium">
+          {detail ? (
+            <EditableTitle value={shownTitle ?? detail.recording.filename} initial={detail.recording.title ?? ""}
+              onCommit={renameRecording} inputClassName="w-full max-w-md text-sm font-medium" />
+          ) : "Loading…"}
+        </div>
         <div className="relative w-56">
           <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input

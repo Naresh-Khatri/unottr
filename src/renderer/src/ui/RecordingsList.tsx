@@ -13,6 +13,7 @@ import { errorInfo } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useVirtual } from "@/lib/virtual";
 import { StatusChip } from "@/ui/StatusChip";
+import { EditableTitle } from "@/ui/EditableTitle";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -230,7 +231,11 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                         <Preview row={r} onOpenAt={(ms) => onOpen(r.id, ms)} />
                       </TableCell>
                       <TableCell className="max-w-0">
-                        <div className="truncate font-medium">{r.title ?? r.filename}</div>
+                        <div className="truncate font-medium">
+                          <EditableTitle value={r.title ?? r.filename} initial={r.title ?? ""}
+                            onCommit={(t) => api.setTitle(r.id, t).then(load)}
+                            inputClassName="w-full text-sm font-medium" />
+                        </div>
                         {r.title && (
                           <div className="truncate text-xs text-muted-foreground">{r.filename}</div>
                         )}

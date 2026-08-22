@@ -23,6 +23,7 @@ import { modelsDir, pcmCacheDir } from "../paths";
 import type { Db } from "./client";
 import * as peopleDb from "./people";
 import { STATUSES, people, recordings, segments, speakerCount, speakers } from "./schema";
+import { now } from "./recordings";
 import * as settingsDb from "./settings";
 
 // ---------------------------------------------------------------------------- recordings
@@ -145,6 +146,7 @@ export function recordingPath(db: Db, id: number): string | null {
 interface SearchRow {
   recording_id: number;
   path: string;
+  title: string | null;
   segment_id: number;
   start_ms: number;
   snippet: string;
@@ -158,7 +160,8 @@ export function search(db: Db, query: string, limit: number): SearchHit[] {
   const phrase = `"${query.replaceAll('"', '""')}"`;
   const rows = db.$client
     .prepare(
-      `SELECT s.recording_id AS recording_id, r.path AS path, s.id AS segment_id, s.start_ms AS start_ms,
+      `SELECT s.recording_id AS recording_id, r.path AS path, coalesce(r.title, r.ai_title) AS title,
+              s.id AS segment_id, s.start_ms AS start_ms,
               snippet(segments_fts, 0, '<b>', '</b>', '…', 8) AS snippet
        FROM segments_fts
        JOIN segments s ON s.id = segments_fts.rowid
@@ -170,6 +173,13 @@ export function search(db: Db, query: string, limit: number): SearchHit[] {
     .all(phrase, limit) as SearchRow[];
 
   return rows.map(({ path, ...hit }) => ({ ...hit, kind: "transcript" as const, filename: filename(path) }));
+}
+
+/** Empty or blank clears the user title, so the AI one (or the filename) shows again. */
+export function setTitle(db: Db, id: number, rawTitle: string): void {
+  const title = rawTitle.trim() || null;
+  const res = db.update(recordings).set({ title, updatedAt: now() }).where(eq(recordings.id, id)).run();
+  if (res.changes === 0) throw new Error(`recording ${id} not found`);
 }
 
 // ----------------------------------------------------------------------------- speakers

@@ -113,17 +113,22 @@ export const mockCommands = {
     const hits: SearchHit[] = segments9001
       .filter((s) => s.text.toLowerCase().includes(q))
       .map((s) => ({
-        kind: "transcript", recording_id: 9001, filename: recordings[0].filename,
+        kind: "transcript", recording_id: 9001, filename: recordings[0].filename, title: recordings[0].title,
         segment_id: s.id, start_ms: s.start_ms, snippet: mark(s.text),
       }));
     // overview hits sort first and carry no moment — clicking one opens the tab
     if (overview.tldr && overview.tldr.toLowerCase().includes(q)) {
       hits.unshift({
-        kind: "overview", recording_id: 9001, filename: recordings[0].filename,
+        kind: "overview", recording_id: 9001, filename: recordings[0].filename, title: recordings[0].title,
         segment_id: 0, start_ms: 0, snippet: mark(overview.tldr),
       });
     }
     return wait(hits);
+  },
+  set_title(id: number, title: string) {
+    const r = recordings.find((x) => x.id === id);
+    if (r) r.title = title.trim() || null;
+    return wait(undefined);
   },
   rename_speaker(speaker_id: number, name: string) {
     const s = speakers9001.find((x) => x.id === speaker_id);

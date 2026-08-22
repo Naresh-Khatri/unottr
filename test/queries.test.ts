@@ -46,6 +46,16 @@ describe("listRecordings", () => {
     expect(title(9001)).toBe("Roadmap, take two");
   });
 
+  it("setTitle writes the user title and blank clears it", () => {
+    const title = () => q.listRecordings(db, {}, SORT).find((x) => x.id === 9001)?.title;
+    q.setTitle(db, 9001, "  Roadmap  ");
+    expect(title()).toBe("Roadmap");
+    expect(q.search(db, "roadmap", 10)[0]?.title).toBe("Roadmap");
+    q.setTitle(db, 9001, "   ");
+    expect(title()).toBeNull();
+    expect(() => q.setTitle(db, 424242, "x")).toThrow();
+  });
+
   it("computes speaker_count, filename and has_video", () => {
     const r = q.listRecordings(db, {}, SORT).find((x) => x.id === 9001);
     expect(r).toMatchObject({

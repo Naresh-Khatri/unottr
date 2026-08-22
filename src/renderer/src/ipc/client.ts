@@ -18,6 +18,8 @@ export const api = {
     USE_MOCK ? mockCommands.get_recording(id) : invoke("get_recording", { id }),
   search: (query: string, limit = 50): Promise<SearchHit[]> =>
     USE_MOCK ? mockCommands.search(query) : invoke("search", { query, limit }),
+  setTitle: (id: number, title: string): Promise<void> =>
+    USE_MOCK ? mockCommands.set_title(id, title) : invoke("set_title", { id, title }),
   renameSpeaker: (speaker_id: number, name: string): Promise<void> =>
     USE_MOCK ? mockCommands.rename_speaker(speaker_id, name) : invoke("rename_speaker", { speaker_id, name }),
   listPeople: (): Promise<Person[]> =>

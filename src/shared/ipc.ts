@@ -88,6 +88,7 @@ export interface SearchHit {
   kind: "transcript" | "overview";
   recording_id: number;
   filename: string;
+  title: string | null; // same precedence as RecordingSummary.title
   segment_id: number; // 0 on an overview hit
   start_ms: number; // 0 on an overview hit
   snippet: string; // fts snippet(), <b>-marked

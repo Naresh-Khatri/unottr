@@ -310,7 +310,7 @@ export function searchOverviews(db: Db, query: string, limit: number): SearchHit
   const phrase = `"${query.replaceAll('"', '""')}"`;
   const rows = db.$client
     .prepare(
-      `SELECT f.recording_id AS recording_id, r.path AS path,
+      `SELECT f.recording_id AS recording_id, r.path AS path, coalesce(r.title, r.ai_title) AS title,
               snippet(overview_fts, 1, '<b>', '</b>', '…', 8) AS snippet
        FROM overview_fts f
        JOIN recordings r ON r.id = f.recording_id
@@ -318,12 +318,13 @@ export function searchOverviews(db: Db, query: string, limit: number): SearchHit
        ORDER BY rank
        LIMIT ?`,
     )
-    .all(phrase, limit) as { recording_id: number; path: string; snippet: string }[];
+    .all(phrase, limit) as { recording_id: number; path: string; title: string | null; snippet: string }[];
 
   return rows.map((r) => ({
     kind: "overview" as const,
     recording_id: r.recording_id,
     filename: basename(r.path) || r.path,
+    title: r.title,
     segment_id: 0,
     start_ms: 0,
     snippet: r.snippet,

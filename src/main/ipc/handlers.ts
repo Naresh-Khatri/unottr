@@ -110,6 +110,8 @@ const handlers: Record<string, Handler> = {
     return [...overviewsDb.searchOverviews(db(), query, 10), ...queries.search(db(), query, limit)];
   },
 
+  set_title: (a) => queries.setTitle(db(), requireId(a, "id"), str(a?.title) ?? ""),
+
   /** Names the person behind the cluster, not just this row — see db/people.ts. */
   rename_speaker: (a) => queries.renameSpeaker(db(), requireId(a, "speaker_id"), str(a?.name) ?? ""),
 

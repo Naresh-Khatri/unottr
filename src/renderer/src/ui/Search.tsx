@@ -41,7 +41,7 @@ export function Search({ onOpen }: {
             className="cursor-pointer transition-colors hover:bg-muted/50">
             <CardContent className="flex flex-col gap-1">
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span className="truncate">{h.filename}</span>
+                <span className="truncate">{h.title ?? h.filename}</span>
                 {h.kind === "overview"
                   ? <Badge variant="secondary" className="shrink-0 px-1 py-0 text-[10px]">Overview</Badge>
                   : <span className="font-mono tabular-nums">{hms(h.start_ms)}</span>}
