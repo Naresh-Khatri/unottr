@@ -355,6 +355,7 @@ export const mockCommands = {
   clear_cache: () => wait(undefined),
   get_log_dir: () => wait("/home/naresh/.local/state/unottr/logs"),
   export_transcript: (_id: number, _format: string, _dest: string) => wait(undefined),
+  copy_transcript: (_id: number, _format: string) => wait(undefined),
   open_in_default_player: (_id: number) => wait(undefined),
 
   // ------------------------------------------------------------------ ai overview

@@ -226,6 +226,8 @@ acceptance criteria in `docs/plan/05-ui.md`, re-pointed at the Electron app by p
       text) render sanely.
 - [ ] `.json` export round-trips the segment/speaker data faithfully (spot check a few
       timestamps and speaker names against the transcript view).
+- [ ] Copy button puts the whole transcript on the system clipboard in the selected format —
+      paste into an editor and compare against the exported file for that format.
 - [ ] The format dropdown's option list is readable when open (dark popup, light text), not
       light-on-light.
 

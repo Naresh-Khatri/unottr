@@ -86,6 +86,8 @@ export const api = {
     USE_MOCK ? mockCommands.get_log_dir() : invoke("get_log_dir"),
   exportTranscript: (recording_id: number, format: string, dest_path: string): Promise<void> =>
     USE_MOCK ? mockCommands.export_transcript(recording_id, format, dest_path) : invoke("export_transcript", { recording_id, format, dest_path }),
+  copyTranscript: (recording_id: number, format: string): Promise<void> =>
+    USE_MOCK ? mockCommands.copy_transcript(recording_id, format) : invoke("copy_transcript", { recording_id, format }),
   openInDefaultPlayer: (recording_id: number): Promise<void> =>
     USE_MOCK ? mockCommands.open_in_default_player(recording_id) : invoke("open_in_default_player", { recording_id }),
 

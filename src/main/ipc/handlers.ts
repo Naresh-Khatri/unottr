@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import type {
   AiConnectionInput,
   ModelInfo,
@@ -356,6 +356,13 @@ const handlers: Record<string, Handler> = {
     const dest = str(a?.dest_path);
     if (!dest) throw new Error("export_transcript: no dest_path");
     writeFileSync(dest, render(format, loadTranscript(db(), requireId(a, "recording_id"))));
+  },
+
+  /** Same render as the file export, straight onto the clipboard — nothing hits disk. */
+  copy_transcript(a) {
+    const format = parseFormat(str(a?.format) ?? "");
+    if (!format) throw new Error(`unknown export format ${a?.format}`);
+    clipboard.writeText(render(format, loadTranscript(db(), requireId(a, "recording_id"))));
   },
 
   /**

@@ -1,8 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, DotsThree, Export, MagnifyingGlass, PencilSimple,
-  Sparkle, UsersThree, VideoCameraSlash,
+  ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, Check, Copy, DotsThree, Export, MagnifyingGlass,
+  PencilSimple, Sparkle, UsersThree, VideoCameraSlash,
 } from "@phosphor-icons/react";
 import { api, onJobDone, onJobFailed, os } from "@/ipc/client";
 import type { ExportFormat, Person, RecordingDetail, Segment, Speaker } from "@/ipc/types";
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type Item =
@@ -42,6 +43,8 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
   const [matchIndex, setMatchIndex] = useState(0);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("txt");
   const [exporting, setExporting] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>(initialTab);
   const [rediarizing, setRediarizing] = useState(false);
   const [speakerError, setSpeakerError] = useState<string | null>(null);
@@ -212,6 +215,23 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
     finally { setExporting(false); }
   }
 
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+
+  async function doCopy() {
+    if (!detail) return;
+    setCopyError(null);
+    try {
+      await api.copyTranscript(id, exportFormat);
+      setCopied(true);
+    } catch (e) {
+      setCopyError(String(e));
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-b px-4 py-3">
@@ -254,6 +274,24 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
             <option value="srt">SRT</option>
             <option value="vtt">VTT</option>
           </select>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Copy transcript"
+                  disabled={!detail}
+                  onClick={doCopy}
+                >
+                  {copied ? <Check /> : <Copy />}
+                </Button>
+              }
+            />
+            <TooltipContent>
+              {copyError ?? (copied ? "Copied" : `Copy ${exportFormat.toUpperCase()} to clipboard`)}
+            </TooltipContent>
+          </Tooltip>
           <Button size="sm" variant="outline" disabled={!detail || exporting} onClick={doExport}>
             <Export />Export
           </Button>
