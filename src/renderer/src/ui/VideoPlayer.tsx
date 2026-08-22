@@ -10,6 +10,7 @@ import {
   clearPosition, loadPosition, loadPrefs, RATES, resumeOffer, savePosition, savePrefs,
   speakerBands, stepRate,
 } from "@/lib/playback";
+import { speakerPalette } from "@/lib/speakerColor";
 import { PlayerTimeline } from "@/ui/PlayerTimeline";
 import { cn } from "@/lib/utils";
 
@@ -83,7 +84,7 @@ export function VideoPlayer({
     setBufferedMs(0);
   }
 
-  const speakerIds = useMemo(() => speakers.map((s) => s.id), [speakers]);
+  const palette = useMemo(() => speakerPalette(speakers), [speakers]);
   const bands = useMemo(
     () => speakerBands(segments).filter((b) => b.end_ms - b.start_ms >= MIN_BAND_MS),
     [segments],
@@ -383,7 +384,7 @@ export function VideoPlayer({
           bufferedMs={bufferedMs}
           hasVideo={hasVideo}
           bands={bands}
-          speakerIds={speakerIds}
+          palette={palette}
           nameFor={nameFor}
           onSeek={seek}
           onScrubbing={setScrubbing}

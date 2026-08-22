@@ -8,13 +8,16 @@ import { api, onJobDone, onJobFailed, os } from "@/ipc/client";
 import type { ExportFormat, Person, RecordingDetail, Segment, Speaker } from "@/ipc/types";
 import { hms } from "@/lib/format";
 import { canPlayContainer } from "@/lib/media";
+import { speakerPalette, type SpeakerPalette } from "@/lib/speakerColor";
 import { useVirtual } from "@/lib/virtual";
+import { SpeakerDot } from "@/ui/SpeakerDot";
 import { VideoPlayer } from "@/ui/VideoPlayer";
 import { EditableTitle } from "@/ui/EditableTitle";
 import { OverviewPanel } from "@/ui/Overview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -149,6 +152,8 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
     scrollTimer.current = window.setTimeout(() => (userScrolling.current = false), 1500);
   }
 
+  const palette = useMemo(() => speakerPalette(speakers), [speakers]);
+
   function nameFor(sid: number | null): string {
     if (sid == null) return "";
     const s = speakers.find((x) => x.id === sid);
@@ -264,16 +269,16 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
           </div>
         )}
         <div className="flex items-center gap-1.5">
-          <select
-            value={exportFormat}
-            onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-            className="h-8 rounded-lg border bg-background px-1.5 text-xs"
-          >
-            <option value="txt">TXT</option>
-            <option value="json">JSON</option>
-            <option value="srt">SRT</option>
-            <option value="vtt">VTT</option>
-          </select>
+          <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as ExportFormat)}>
+            <SelectTrigger className="text-xs" aria-label="Export format">
+              <SelectValue>{(v) => String(v).toUpperCase()}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {(["txt", "json", "srt", "vtt"] as const).map((f) => (
+                <SelectItem key={f} value={f} className="text-xs">{f.toUpperCase()}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -364,6 +369,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
               <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
                 <SpeakerStrip
                   speakers={speakers}
+                  palette={palette}
                   busy={rediarizing}
                   onMerge={(fromId, intoId) => fix(() => api.mergeSpeakers(id, fromId, intoId))}
                 />
@@ -395,6 +401,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                       <SpeakerName
                         sid={it.sid}
                         name={nameFor(it.sid)}
+                        color={palette.ui(it.sid)}
                         known={people}
                         onRename={rename}
                       />
@@ -426,6 +433,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                       : seg.text}
                     <ReassignMenu
                       speakers={speakers}
+                      palette={palette}
                       current={seg.speaker_id}
                       onPick={(sid) => fix(() => api.setSegmentSpeaker(id, seg.id, sid))}
                       onNew={() => fix(() => api.segmentNewSpeaker(id, seg.id))}
@@ -457,8 +465,9 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
   );
 }
 
-function SpeakerName({ sid, name, known, onRename }: {
-  sid: number | null; name: string; known: Person[]; onRename: (sid: number, name: string) => void;
+function SpeakerName({ sid, name, color, known, onRename }: {
+  sid: number | null; name: string; color: string; known: Person[];
+  onRename: (sid: number, name: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -485,8 +494,10 @@ function SpeakerName({ sid, name, known, onRename }: {
 
   return (
     <Button variant="link" size="xs"
-      className="h-auto gap-1 p-0 text-xs font-semibold tracking-wide uppercase"
+      className="h-auto gap-1.5 p-0 text-xs font-semibold tracking-wide uppercase"
+      style={{ color }}
       onClick={() => setEditing(true)}>
+      <SpeakerDot color={color} className="size-1.5" />
       {name}<PencilSimple className="text-muted-foreground" />
     </Button>
   );
@@ -562,8 +573,9 @@ function Menu({ trigger, children, align = "start", className }: {
 
 const ITEM = "w-full justify-start rounded-md px-2 py-1 text-left text-xs font-normal";
 
-function SpeakerStrip({ speakers, busy, onMerge }: {
+function SpeakerStrip({ speakers, palette, busy, onMerge }: {
   speakers: Speaker[];
+  palette: SpeakerPalette;
   busy: boolean;
   onMerge: (fromId: number, intoId: number) => void;
 }) {
@@ -581,7 +593,8 @@ function SpeakerStrip({ speakers, busy, onMerge }: {
           <Menu
             key={s.id}
             trigger={
-              <Button size="xs" variant="secondary" className="font-normal">
+              <Button size="xs" variant="secondary" className="gap-1.5 font-normal">
+                <SpeakerDot color={palette.ui(s.id)} />
                 {label(s)}<CaretDown className="text-muted-foreground" />
               </Button>
             }
@@ -599,7 +612,7 @@ function SpeakerStrip({ speakers, busy, onMerge }: {
                       key={other.id}
                       variant="ghost"
                       size="xs"
-                      className={ITEM}
+                      className={cn(ITEM, "gap-1.5")}
                       onClick={() => {
                         close();
                         api.speakerSegmentCount(s.id).then(
@@ -608,7 +621,7 @@ function SpeakerStrip({ speakers, busy, onMerge }: {
                         );
                       }}
                     >
-                      {label(other)}
+                      <SpeakerDot color={palette.ui(other.id)} />{label(other)}
                     </Button>
                   ))}
                 </>
@@ -638,8 +651,9 @@ function SpeakerStrip({ speakers, busy, onMerge }: {
 }
 
 /** The per-segment speaker fix. Hidden until the row is hovered, so it costs no reading space. */
-function ReassignMenu({ speakers, current, onPick, onNew }: {
+function ReassignMenu({ speakers, palette, current, onPick, onNew }: {
   speakers: Speaker[];
+  palette: SpeakerPalette;
   current: number | null;
   onPick: (sid: number | null) => void;
   onNew: () => void;
@@ -664,10 +678,10 @@ function ReassignMenu({ speakers, current, onPick, onNew }: {
               key={s.id}
               variant="ghost"
               size="xs"
-              className={cn(ITEM, s.id === current && "bg-muted")}
+              className={cn(ITEM, "gap-1.5", s.id === current && "bg-muted")}
               onClick={() => { close(); if (s.id !== current) onPick(s.id); }}
             >
-              {s.display_name || s.label}
+              <SpeakerDot color={palette.ui(s.id)} />{s.display_name || s.label}
             </Button>
           ))}
           <Button variant="ghost" size="xs" className={ITEM} onClick={() => { close(); onNew(); }}>

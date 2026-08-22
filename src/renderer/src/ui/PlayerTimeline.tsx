@@ -2,6 +2,8 @@ import { memo, useEffect, useRef, useState } from "react";
 import { frameUrl, PREVIEW_COUNT, previewUrl } from "@/ipc/client";
 import { hms } from "@/lib/format";
 import type { SpeakerBand } from "@/lib/playback";
+import type { SpeakerPalette } from "@/lib/speakerColor";
+import { SpeakerDot } from "@/ui/SpeakerDot";
 import { cn } from "@/lib/utils";
 
 const BUBBLE_W = 176;
@@ -13,21 +15,12 @@ const nearestPreview = (frac: number): number =>
 /** Frames are cached per exact ms, so snap to a second — otherwise every pixel spawns an ffmpeg. */
 const snapMs = (ms: number): number => Math.round(ms / 1000) * 1000;
 
-/** Distinct enough to read as "a different voice" without inventing colour in a greyscale ui. */
-const BAND_ALPHA = [0.95, 0.66, 0.46, 0.34, 0.26];
-
-const bandAlpha = (sid: number | null, speakerIds: number[]): number => {
-  if (sid == null) return 0.14;
-  const i = speakerIds.indexOf(sid);
-  return BAND_ALPHA[(i === -1 ? 0 : i) % BAND_ALPHA.length];
-};
-
 /**
  * The scrub bar: buffered range, speaker map, and a hover preview that shows one of the frames
  * the ingest job already extracted, upgraded to the exact frame once the pointer settles.
  */
 export function PlayerTimeline({
-  recordingId, durationMs, currentMs, bufferedMs, hasVideo, bands, speakerIds, nameFor,
+  recordingId, durationMs, currentMs, bufferedMs, hasVideo, bands, palette, nameFor,
   onSeek, onScrubbing,
 }: {
   recordingId: number;
@@ -36,7 +29,7 @@ export function PlayerTimeline({
   bufferedMs: number;
   hasVideo: boolean;
   bands: SpeakerBand[];
-  speakerIds: number[];
+  palette: SpeakerPalette;
   nameFor: (sid: number | null) => string;
   onSeek: (ms: number) => void;
   onScrubbing: (on: boolean) => void;
@@ -124,9 +117,9 @@ export function PlayerTimeline({
       // currentMs sync suppressed for good
       onPointerCancel={() => { setDragging(false); setHover(null); onScrubbing(false); }}
     >
-      {/* speaker map — who holds the floor, at a glance */}
-      <div className="relative mb-[3px] h-[3px] w-full overflow-hidden rounded-full bg-white/10">
-        <Bands bands={bands} durationMs={durationMs} speakerIds={speakerIds} />
+      {/* speaker map — who holds the floor, at a glance, in each voice's own colour */}
+      <div className="relative mb-[3px] h-1 w-full overflow-hidden rounded-full bg-white/10">
+        <Bands bands={bands} durationMs={durationMs} palette={palette} />
         {/* everything ahead of the playhead reads as "not yet heard" */}
         <span className="absolute inset-y-0 right-0 bg-black/55" style={{ left: `${played * 100}%` }} />
       </div>
@@ -189,7 +182,7 @@ export function PlayerTimeline({
           )}
           <span className="flex max-w-60 items-center gap-1.5 rounded-md bg-black/85 px-1.5 py-0.5 text-[11px] text-white shadow">
             <span className="font-mono tabular-nums">{hms(hoverMs)}</span>
-            <SpeakerAt bands={bands} ms={hoverMs} nameFor={nameFor} />
+            <SpeakerAt bands={bands} ms={hoverMs} nameFor={nameFor} palette={palette} />
           </span>
         </div>
       )}
@@ -198,8 +191,8 @@ export function PlayerTimeline({
 }
 
 /** Hundreds of spans that only change when the transcript does — kept out of the timeupdate path. */
-const Bands = memo(function Bands({ bands, durationMs, speakerIds }: {
-  bands: SpeakerBand[]; durationMs: number; speakerIds: number[];
+const Bands = memo(function Bands({ bands, durationMs, palette }: {
+  bands: SpeakerBand[]; durationMs: number; palette: SpeakerPalette;
 }) {
   if (durationMs <= 0) return null;
   return (
@@ -211,7 +204,7 @@ const Bands = memo(function Bands({ bands, durationMs, speakerIds }: {
           style={{
             left: `${(b.start_ms / durationMs) * 100}%`,
             width: `${Math.max(0.2, ((b.end_ms - b.start_ms) / durationMs) * 100)}%`,
-            background: `oklch(1 0 0 / ${bandAlpha(b.sid, speakerIds)})`,
+            background: palette.onDark(b.sid),
           }}
         />
       ))}
@@ -219,11 +212,18 @@ const Bands = memo(function Bands({ bands, durationMs, speakerIds }: {
   );
 });
 
-function SpeakerAt({ bands, ms, nameFor }: {
-  bands: SpeakerBand[]; ms: number; nameFor: (sid: number | null) => string;
+function SpeakerAt({ bands, ms, nameFor, palette }: {
+  bands: SpeakerBand[]; ms: number;
+  nameFor: (sid: number | null) => string;
+  palette: SpeakerPalette;
 }) {
   const band = bands.find((b) => ms >= b.start_ms && ms < b.end_ms);
   const name = band ? nameFor(band.sid) : "";
-  if (!name) return null;
-  return <span className="truncate text-white/70">{name}</span>;
+  if (!name || !band) return null;
+  return (
+    <>
+      <SpeakerDot color={palette.onDark(band.sid)} className="size-1.5" />
+      <span className="truncate text-white/70">{name}</span>
+    </>
+  );
 }

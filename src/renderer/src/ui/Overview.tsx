@@ -1,7 +1,7 @@
 // The Overview tab. Everything here is a read of what the main process already grounded —
 // no citation is resolved in the renderer, so a bullet that renders is a bullet that lands.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowClockwise, Check, CheckSquare, Copy, PencilSimple, Sparkle, Square, Trash, X,
 } from "@phosphor-icons/react";
@@ -11,6 +11,8 @@ import type {
   Segment, Speaker, Task,
 } from "@/ipc/types";
 import { hms } from "@/lib/format";
+import { speakerPalette, type SpeakerPalette } from "@/lib/speakerColor";
+import { SpeakerDot } from "@/ui/SpeakerDot";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +39,8 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
   const [error, setError] = useState<string | null>(null);
   const [consenting, setConsenting] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const palette = useMemo(() => speakerPalette(speakers), [speakers]);
 
   const reload = useCallback(() => {
     api.overviewGet(recordingId).then(setPayload, (e) => setError(String(e)));
@@ -243,14 +247,18 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
           ) : mine.length === 0 ? (
             <p className="text-xs text-muted-foreground">Nothing landed on you in this meeting.</p>
           ) : (
-            mine.map((t) => <TaskRow key={t.id} task={t} speakers={speakers} onSeek={onSeek} />)
+            mine.map((t) => (
+              <TaskRow key={t.id} task={t} speakers={speakers} palette={palette} onSeek={onSeek} />
+            ))
           )}
         </section>
 
         {theirs.length > 0 && (
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium">Everyone else’s</h3>
-            {theirs.map((t) => <TaskRow key={t.id} task={t} speakers={speakers} onSeek={onSeek} />)}
+            {theirs.map((t) => (
+              <TaskRow key={t.id} task={t} speakers={speakers} palette={palette} onSeek={onSeek} />
+            ))}
           </section>
         )}
 
@@ -290,8 +298,8 @@ function Bullet({ bullet, onSeek }: { bullet: OverviewBullet; onSeek: (ms: numbe
   );
 }
 
-function TaskRow({ task, speakers, onSeek }: {
-  task: Task; speakers: Speaker[]; onSeek: (ms: number) => void;
+function TaskRow({ task, speakers, palette, onSeek }: {
+  task: Task; speakers: Speaker[]; palette: SpeakerPalette; onSeek: (ms: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task.text);
@@ -331,6 +339,9 @@ function TaskRow({ task, speakers, onSeek }: {
         <div className="min-w-0 flex-1">
           <p className={cn("text-sm leading-relaxed", (done || dismissed) && "line-through")}>{task.text}</p>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            {task.owner_speaker_id != null && (
+              <SpeakerDot color={palette.ui(task.owner_speaker_id)} className="size-1.5" />
+            )}
             <select
               value={task.owner_speaker_id ?? 0}
               onChange={(e) => api.taskUpdate(task.id, { owner_speaker_id: Number(e.target.value) || null })}
