@@ -138,17 +138,30 @@ describe("model store", () => {
     expect(existsSync(`${path}.part`)).toBe(false);
   });
 
-  it("is a no-op once the file is there", async () => {
+  it("fetches nothing once the file is there, but still reports done", async () => {
     const s = spec();
-    let called = false;
+    const seen: number[] = [];
     // a wrong url proves nothing was fetched
     await ensure({ ...s, baseUrl: "http://127.0.0.1:1" }, {
       dir,
-      onProgress: () => {
-        called = true;
-      },
+      onProgress: (p) => seen.push(p),
     });
-    expect(called).toBe(false);
+    // silence here strands a ui that only leaves its progress bar on pct 1
+    expect(seen).toEqual([1]);
+  });
+
+  it("holds progress below 1 until the file is renamed into place", async () => {
+    const freshDir = mkdtempSync(join(tmpdir(), "unottr-terminal-"));
+    const s = spec();
+    const presentAt: boolean[] = [];
+    try {
+      await ensure(s, { dir: freshDir, onProgress: (p) => presentAt.push(p >= 1 && isPresent(s, freshDir)) });
+      // every pct-1 event must have found the real filename already there
+      expect(presentAt.filter(Boolean).length).toBe(1);
+      expect(presentAt.at(-1)).toBe(true);
+    } finally {
+      rmSync(freshDir, { recursive: true, force: true });
+    }
   });
 
   it("resumes an interrupted download and still verifies", async () => {

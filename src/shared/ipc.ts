@@ -174,7 +174,10 @@ export type ExportFormat = "txt" | "json" | "srt" | "vtt";
 
 export interface ModelDownloadProgress {
   model: string; // tier name, not registry filename
-  pct: number; // 0..1
+  /** 0..1. Reaches 1 only once the file is verified and renamed into place, never mid-stream. */
+  pct: number;
+  /** Set when the download stopped early — `cancelled`, or a download_failed reason. Terminal. */
+  error?: string;
 }
 
 // Live resource meters. Polled by the renderer while the window is visible; there

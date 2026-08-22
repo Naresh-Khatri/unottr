@@ -44,12 +44,20 @@ export interface EnsureOptions {
 export async function ensure(spec: ModelSpec, o: EnsureOptions = {}): Promise<string> {
   const dir = o.dir ?? modelsDir();
   const final = modelPath(spec, dir);
-  if (isPresent(spec, dir)) return final;
+  // 1 must mean "on disk under its real name", so streaming stops short of it — hashing a
+  // 500 MB file takes seconds, and a ui that refreshes at the last byte still sees `.part`
+  const streaming = o.onProgress && ((pct: number) => o.onProgress?.(Math.min(pct, 0.999)));
+
+  if (isPresent(spec, dir)) {
+    // nothing to do, but still report done — silence here hangs a caller waiting on progress
+    o.onProgress?.(1);
+    return final;
+  }
   if (o.signal?.aborted) throw err.cancelled();
 
   await mkdir(dir, { recursive: true });
   const part = `${final}.part`;
-  await download(spec, part, o);
+  await download(spec, part, { ...o, onProgress: streaming });
 
   const digest = await sha256File(part);
   if (digest !== spec.sha256) {
@@ -59,6 +67,7 @@ export async function ensure(spec: ModelSpec, o: EnsureOptions = {}): Promise<st
   }
 
   await rename(part, final);
+  o.onProgress?.(1);
   return final;
 }
 

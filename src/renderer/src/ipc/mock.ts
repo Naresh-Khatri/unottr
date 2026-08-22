@@ -301,22 +301,32 @@ export const mockCommands = {
   download_model(tier: string) {
     const m = models.find((x) => x.tier === tier);
     if (!m) return wait(undefined);
+    // already on disk = instant done, same as the real `ensure`
+    if (m.downloaded) {
+      emit("model_download_progress", { model: tier, pct: 1 });
+      return wait(undefined);
+    }
     let pct = 0;
     clearInterval(downloads.get(tier));
     downloads.set(tier, setInterval(() => {
-      pct = Math.min(1, pct + 0.05);
-      emit("model_download_progress", { model: tier, pct });
-      if (pct >= 1) {
-        clearInterval(downloads.get(tier));
-        downloads.delete(tier);
-        m.downloaded = true;
+      pct = Math.min(0.999, pct + 0.05);
+      if (pct < 0.999) {
+        emit("model_download_progress", { model: tier, pct });
+        return;
       }
+      clearInterval(downloads.get(tier));
+      downloads.delete(tier);
+      // flipped before the terminal event — pct 1 promises the file is there
+      m.downloaded = true;
+      emit("model_download_progress", { model: tier, pct: 1 });
     }, 250));
     return wait(undefined);
   },
   cancel_model_download(tier: string) {
+    if (!downloads.has(tier)) return wait(undefined);
     clearInterval(downloads.get(tier));
     downloads.delete(tier);
+    emit("model_download_progress", { model: tier, pct: 0, error: "cancelled" });
     return wait(undefined);
   },
   clear_cache: () => wait(undefined),

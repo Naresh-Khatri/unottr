@@ -29,6 +29,9 @@ const TIERS: { tier: string; label: string }[] = [
   { tier: "small", label: "Small" },
 ];
 
+const omit = <T,>(map: Record<string, T>, key: string): Record<string, T> =>
+  Object.fromEntries(Object.entries(map).filter(([k]) => k !== key));
+
 export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boolean) => void }) {
   const [settings, setSettings] = useState<SettingsT | null>(null);
   const [folders, setFolders] = useState<WatchFolder[]>([]);
@@ -36,6 +39,7 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
   const [disk, setDisk] = useState<DiskUsage | null>(null);
   const [detected, setDetected] = useState<Resolved | null>(null);
   const [progressByTier, setProgressByTier] = useState<Record<string, number>>({});
+  const [errorByTier, setErrorByTier] = useState<Record<string, string>>({});
   const [autostartOn, setAutostartOn] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
 
@@ -57,6 +61,17 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
   useEffect(
     () =>
       onModelDownloadProgress((p) => {
+        if (p.error) {
+          // drop the progress entry or the row stays stuck offering Cancel
+          setProgressByTier((prev) => omit(prev, p.model));
+          const error = p.error;
+          setErrorByTier((prev) => ({
+            ...prev,
+            [p.model]: error === "cancelled" ? "Download cancelled." : error,
+          }));
+          return;
+        }
+        setErrorByTier((prev) => omit(prev, p.model));
         setProgressByTier((prev) => ({ ...prev, [p.model]: p.pct }));
         if (p.pct >= 1) { loadModels(); loadDisk(); }
       }),
@@ -113,6 +128,7 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
           activeTier={settings.model_tier}
           disk={disk}
           progressByTier={progressByTier}
+          errorByTier={errorByTier}
           onTierChange={(tier) => setSetting("model_tier", tier)}
           onDownload={(tier) => api.downloadModel(tier)}
           onCancel={(tier) => api.cancelModelDownload(tier)}
@@ -434,11 +450,14 @@ function FolderRow({ folder, onChange }: { folder: WatchFolder; onChange: () => 
   );
 }
 
-function ModelCard({ models, activeTier, disk, progressByTier, onTierChange, onDownload, onCancel }: {
+function ModelCard({
+  models, activeTier, disk, progressByTier, errorByTier, onTierChange, onDownload, onCancel,
+}: {
   models: ModelInfo[];
   activeTier: string;
   disk: DiskUsage | null;
   progressByTier: Record<string, number>;
+  errorByTier: Record<string, string>;
   onTierChange: (tier: string) => void;
   onDownload: (tier: string) => void;
   onCancel: (tier: string) => void;
@@ -467,6 +486,9 @@ function ModelCard({ models, activeTier, disk, progressByTier, onTierChange, onD
                 </div>
                 {info && <div className="text-xs text-muted-foreground">{bytesLabel(info.size)}</div>}
                 {downloading && <Progress value={pct * 100} className="mt-1.5" />}
+                {!downloading && errorByTier[tier] && (
+                  <div className="mt-1 text-xs text-destructive">{errorByTier[tier]}</div>
+                )}
               </div>
               {downloading ? (
                 <Button size="xs" variant="outline" onClick={() => onCancel(tier)}><StopCircle />Cancel</Button>

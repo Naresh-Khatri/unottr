@@ -21,6 +21,7 @@ import { resetForRetry, statusOf } from "../db/recordings";
 import * as settingsDb from "../db/settings";
 import * as speakersDb from "../db/speakers";
 import * as watchFoldersDb from "../db/watch-folders";
+import { isCancelled } from "../errors";
 import { events } from "../events";
 import { load as loadTranscript, parseFormat, render } from "../export";
 import * as backfill from "../ingest/backfill";
@@ -400,6 +401,7 @@ const handlers: Record<string, Handler> = {
    * Kicks off a background download and returns immediately; progress comes back over
    * `model_download_progress` events keyed by tier. One download per tier — a second call
    * abandons (does not stop) the first, harmless because `ensure` resumes the `.part` file.
+   * Always ends in a terminal event (pct 1, or `error`) — the ui blocks on it.
    */
   download_model(a) {
     const tier = str(a?.tier);
@@ -413,9 +415,18 @@ const handlers: Record<string, Handler> = {
     void ensure(spec, {
       signal: ac.signal,
       onProgress: (pct) => events.modelDownloadProgress({ model: tier, pct }),
-    }).catch((e: unknown) => {
-      console.warn(`model download did not complete (${tier}):`, e);
-    });
+    })
+      .catch((e: unknown) => {
+        console.warn(`model download did not complete (${tier}):`, e);
+        // a later call took over this tier; its progress is the one the ui is watching
+        if (downloads.get(tier) !== ac) return;
+        const error = isCancelled(e) ? "cancelled" : e instanceof Error ? e.message : String(e);
+        events.modelDownloadProgress({ model: tier, pct: 0, error });
+      })
+      .finally(() => {
+        // a later call already replaced us; leave its controller alone
+        if (downloads.get(tier) === ac) downloads.delete(tier);
+      });
   },
 
   cancel_model_download(a) {

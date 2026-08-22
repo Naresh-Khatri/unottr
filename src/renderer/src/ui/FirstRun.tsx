@@ -25,6 +25,7 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [downloading, setDownloading] = useState(false);
   const [pct, setPct] = useState(0);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [estimate, setEstimate] = useState<BackfillEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [backfillStarted, setBackfillStarted] = useState(false);
@@ -36,6 +37,11 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
     () =>
       onModelDownloadProgress((p) => {
         if (p.model !== tier) return;
+        if (p.error) {
+          setDownloading(false);
+          setDownloadError(p.error === "cancelled" ? "Download cancelled." : p.error);
+          return;
+        }
         setPct(p.pct);
         if (p.pct >= 1) {
           setDownloading(false);
@@ -54,7 +60,8 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
   }, [step, folder]);
 
   const tierInfo = models.find((m) => m.tier === tier);
-  const modelReady = tierInfo?.downloaded ?? pct >= 1;
+  // `downloaded` can lag one refetch behind the terminal event, so pct still counts
+  const modelReady = tierInfo?.downloaded === true || pct >= 1;
 
   async function pickFolder() {
     const picked = await os.pickFolder();
@@ -62,10 +69,23 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
     setFolder(await api.addWatchFolder(picked));
   }
 
+  function selectTier(t: string) {
+    setTier(t);
+    setPct(0);
+    setDownloadError(null);
+  }
+
   async function startDownload() {
     setDownloading(true);
     setPct(0);
-    await api.downloadModel(tier);
+    setDownloadError(null);
+    try {
+      // resolves as soon as the download is queued; the terminal signal is the event
+      await api.downloadModel(tier);
+    } catch (e) {
+      setDownloading(false);
+      setDownloadError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   async function confirmBackfill() {
@@ -130,7 +150,7 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
                     size="sm"
                     variant={tier === t ? "secondary" : "outline"}
                     disabled={downloading}
-                    onClick={() => setTier(t)}
+                    onClick={() => selectTier(t)}
                   >
                     {label}
                   </Button>
@@ -143,7 +163,12 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
               ) : downloading ? (
                 <Progress value={pct * 100} />
               ) : (
-                <Button onClick={startDownload}>Download</Button>
+                <Button onClick={startDownload}>
+                  {downloadError ? "Retry download" : "Download"}
+                </Button>
+              )}
+              {downloadError && !downloading && !modelReady && (
+                <p className="text-sm text-destructive">{downloadError}</p>
               )}
             </div>
           )}
