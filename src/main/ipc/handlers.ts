@@ -5,9 +5,11 @@ import type {
   ModelInfo,
   RecordingFilter,
   RecordingSort,
+  SupportModels,
   SystemStats,
   TaskStatus,
 } from "../../shared/ipc";
+import { SUPPORT_MODELS } from "../../shared/ipc";
 import * as ai from "../ai/generate";
 import * as connections from "../ai/connections";
 import { probe } from "../ai/probe";
@@ -34,8 +36,15 @@ import { ensure, isPresent } from "../models/download";
 import { logsDir, pcmCacheDir } from "../paths";
 import { sampleCpu, sampleGpu } from "../system/stats";
 
-/** Live model downloads by tier, so `cancel_model_download` has something to abort. */
+/** Live model downloads by tier (plus SUPPORT_MODELS), so cancelling has something to abort. */
 const downloads = new Map<string, AbortController>();
+
+/** Fetched together and never chosen between, so they are one unit to the ui. */
+const supportSpecs = (): catalog.ModelSpec[] => [
+  catalog.VAD,
+  catalog.SEGMENTATION,
+  catalog.defaultEmbedding(),
+];
 
 /** Overview generations in flight, so a user who changed their mind can stop paying for one. */
 const generating = new Map<number, AbortController>();
@@ -394,6 +403,52 @@ const handlers: Record<string, Handler> = {
       size: m.size,
       downloaded: isPresent(m),
     })),
+
+  support_models: (): SupportModels => {
+    const missing = supportSpecs().filter((m) => !isPresent(m));
+    return {
+      ready: missing.length === 0,
+      missing_bytes: missing.reduce((n, m) => n + m.size, 0),
+    };
+  },
+
+  /**
+   * Same fire-and-forget shape as `download_model`, under the reserved `support` key. Fetched
+   * one after another and reported as a single byte-weighted bar — there is no tier to pick
+   * between, so three bars would be three ways to say the same thing.
+   */
+  download_support_models() {
+    const specs = supportSpecs();
+    const total = specs.reduce((n, m) => n + m.size, 0);
+    const ac = new AbortController();
+    downloads.set(SUPPORT_MODELS, ac);
+
+    void (async () => {
+      let done = 0;
+      for (const spec of specs) {
+        await ensure(spec, {
+          signal: ac.signal,
+          onProgress: (pct) =>
+            events.modelDownloadProgress({
+              model: SUPPORT_MODELS,
+              // the last one's terminal 1 is the only 1 the ui may see
+              pct: Math.min((done + pct * spec.size) / total, 0.999),
+            }),
+        });
+        done += spec.size;
+      }
+      events.modelDownloadProgress({ model: SUPPORT_MODELS, pct: 1 });
+    })()
+      .catch((e: unknown) => {
+        console.warn("support model download did not complete:", e);
+        if (downloads.get(SUPPORT_MODELS) !== ac) return;
+        const error = isCancelled(e) ? "cancelled" : e instanceof Error ? e.message : String(e);
+        events.modelDownloadProgress({ model: SUPPORT_MODELS, pct: 0, error });
+      })
+      .finally(() => {
+        if (downloads.get(SUPPORT_MODELS) === ac) downloads.delete(SUPPORT_MODELS);
+      });
+  },
 
   detected_device: () => resolve("auto"),
 

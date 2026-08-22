@@ -35,6 +35,7 @@ import type {
   TaskStatus,
   WatchFolder,
 } from "./types";
+import { SUPPORT_MODELS, type SupportModels } from "./types";
 
 const speakers9001: Speaker[] = [
   { id: 9101, recording_id: 9001, label: "Speaker 1", display_name: "Priya", person_id: 1 },
@@ -298,6 +299,28 @@ export const mockCommands = {
       jobs_queued: 2,
     });
   },
+  support_models: (): Promise<SupportModels> =>
+    wait({ ready: supportReady, missing_bytes: supportReady ? 0 : 35_159_175 }),
+  download_support_models() {
+    if (supportReady) {
+      emit("model_download_progress", { model: SUPPORT_MODELS, pct: 1 });
+      return wait(undefined);
+    }
+    let pct = 0;
+    clearInterval(downloads.get(SUPPORT_MODELS));
+    downloads.set(SUPPORT_MODELS, setInterval(() => {
+      pct = Math.min(0.999, pct + 0.2);
+      if (pct < 0.999) {
+        emit("model_download_progress", { model: SUPPORT_MODELS, pct });
+        return;
+      }
+      clearInterval(downloads.get(SUPPORT_MODELS));
+      downloads.delete(SUPPORT_MODELS);
+      supportReady = true;
+      emit("model_download_progress", { model: SUPPORT_MODELS, pct: 1 });
+    }, 250));
+    return wait(undefined);
+  },
   download_model(tier: string) {
     const m = models.find((x) => x.tier === tier);
     if (!m) return wait(undefined);
@@ -548,6 +571,8 @@ const models: ModelInfo[] = [
   { tier: "medium", name: "medium", size: 1_530_000_000, downloaded: false },
   { tier: "small", name: "small", size: 488_000_000, downloaded: false },
 ];
+
+let supportReady = false;
 
 const downloads = new Map<string, ReturnType<typeof setInterval>>();
 

@@ -5,7 +5,7 @@ import type {
   AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
   ModelInfo, OverviewChanged, OverviewPayload, OverviewProgress, Person, ProbeResult, RecordingDetail,
   RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit,
-  Settings, SystemStats, TaskStatus, WatchFolder,
+  Settings, SupportModels, SystemStats, TaskStatus, WatchFolder,
 } from "./types";
 import { mockCommands, mockEvents } from "./mock";
 
@@ -66,6 +66,10 @@ export const api = {
     USE_MOCK ? mockCommands.set_setting(key, value) : invoke("set_setting", { key, value }),
   listModels: (): Promise<ModelInfo[]> =>
     USE_MOCK ? mockCommands.list_models() : invoke("list_models"),
+  supportModels: (): Promise<SupportModels> =>
+    USE_MOCK ? mockCommands.support_models() : invoke("support_models"),
+  downloadSupportModels: (): Promise<void> =>
+    USE_MOCK ? mockCommands.download_support_models() : invoke("download_support_models"),
   detectedDevice: (): Promise<Resolved> =>
     USE_MOCK ? mockCommands.detected_device() : invoke("detected_device"),
   diskUsage: (): Promise<DiskUsage> =>

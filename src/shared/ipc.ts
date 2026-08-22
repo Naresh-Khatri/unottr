@@ -158,6 +158,19 @@ export interface ModelInfo {
   downloaded: boolean;
 }
 
+/**
+ * Everything a job needs besides the whisper tier — vad, segmentation, speaker embedding.
+ * No tier to choose between, so the ui treats the set as one thing.
+ */
+export interface SupportModels {
+  ready: boolean;
+  /** Bytes still to fetch; 0 once ready. */
+  missing_bytes: number;
+}
+
+/** `ModelDownloadProgress.model` for the support set, which has no tier of its own. */
+export const SUPPORT_MODELS = "support";
+
 export interface DiskUsage {
   models_bytes: number;
   cache_bytes: number;
@@ -173,7 +186,7 @@ export interface BackfillEstimate {
 export type ExportFormat = "txt" | "json" | "srt" | "vtt";
 
 export interface ModelDownloadProgress {
-  model: string; // tier name, not registry filename
+  model: string; // tier name, or SUPPORT_MODELS — never a registry filename
   /** 0..1. Reaches 1 only once the file is verified and renamed into place, never mid-stream. */
   pct: number;
   /** Set when the download stopped early — `cancelled`, or a download_failed reason. Terminal. */

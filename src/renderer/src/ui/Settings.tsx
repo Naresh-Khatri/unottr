@@ -5,8 +5,10 @@ import {
 } from "@phosphor-icons/react";
 import { api, onModelDownloadProgress, os } from "@/ipc/client";
 import type {
-  BackfillEstimate, DiskUsage, ModelInfo, Person, Resolved, Settings as SettingsT, WatchFolder,
+  BackfillEstimate, DiskUsage, ModelInfo, Person, Resolved, Settings as SettingsT, SupportModels,
+  WatchFolder,
 } from "@/ipc/types";
+import { SUPPORT_MODELS } from "@/ipc/types";
 import { bytesLabel, durationLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,11 +44,13 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
   const [errorByTier, setErrorByTier] = useState<Record<string, string>>({});
   const [autostartOn, setAutostartOn] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
+  const [support, setSupport] = useState<SupportModels | null>(null);
 
   const loadFolders = useCallback(() => { api.listWatchFolders().then(setFolders); }, []);
   const loadModels = useCallback(() => { api.listModels().then(setModels); }, []);
   const loadDisk = useCallback(() => { api.diskUsage().then(setDisk); }, []);
   const loadPeople = useCallback(() => { api.listPeople().then(setPeople); }, []);
+  const loadSupport = useCallback(() => { api.supportModels().then(setSupport); }, []);
 
   useEffect(() => {
     api.getSettings().then((s) => { setSettings(s); onFfmpegChange?.(s.ffmpeg_ok); });
@@ -54,9 +58,10 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
     loadModels();
     loadDisk();
     loadPeople();
+    loadSupport();
     api.detectedDevice().then(setDetected);
     os.getAutostart().then(setAutostartOn).catch(() => {});
-  }, [loadFolders, loadModels, loadDisk, loadPeople]);
+  }, [loadFolders, loadModels, loadDisk, loadPeople, loadSupport]);
 
   useEffect(
     () =>
@@ -73,9 +78,9 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
         }
         setErrorByTier((prev) => omit(prev, p.model));
         setProgressByTier((prev) => ({ ...prev, [p.model]: p.pct }));
-        if (p.pct >= 1) { loadModels(); loadDisk(); }
+        if (p.pct >= 1) { loadModels(); loadDisk(); loadSupport(); }
       }),
-    [loadModels, loadDisk],
+    [loadModels, loadDisk, loadSupport],
   );
 
   async function setSetting(key: string, value: string) {
@@ -129,9 +134,11 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
           disk={disk}
           progressByTier={progressByTier}
           errorByTier={errorByTier}
+          support={support}
           onTierChange={(tier) => setSetting("model_tier", tier)}
           onDownload={(tier) => api.downloadModel(tier)}
           onCancel={(tier) => api.cancelModelDownload(tier)}
+          onDownloadSupport={() => api.downloadSupportModels()}
         />
 
         <ComputeCard device={settings.device} detected={detected} onChange={(d) => setSetting("device", d)} />
@@ -451,17 +458,22 @@ function FolderRow({ folder, onChange }: { folder: WatchFolder; onChange: () => 
 }
 
 function ModelCard({
-  models, activeTier, disk, progressByTier, errorByTier, onTierChange, onDownload, onCancel,
+  models, activeTier, disk, progressByTier, errorByTier, support, onTierChange, onDownload,
+  onCancel, onDownloadSupport,
 }: {
   models: ModelInfo[];
   activeTier: string;
   disk: DiskUsage | null;
   progressByTier: Record<string, number>;
   errorByTier: Record<string, string>;
+  support: SupportModels | null;
   onTierChange: (tier: string) => void;
   onDownload: (tier: string) => void;
   onCancel: (tier: string) => void;
+  onDownloadSupport: () => void;
 }) {
+  const supportPct = progressByTier[SUPPORT_MODELS];
+  const supportBusy = supportPct != null && supportPct < 1;
   return (
     <Card>
       <CardHeader>
@@ -503,6 +515,29 @@ function ModelCard({
             </div>
           );
         })}
+
+        <div className="flex items-center gap-3 rounded-lg border border-dashed p-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              Speaker models
+              {support?.ready && <Badge variant="outline"><CheckCircle />downloaded</Badge>}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Voice activity, segmentation and embedding — every recording needs all three.
+            </div>
+            {supportBusy && <Progress value={supportPct * 100} className="mt-1.5" />}
+            {!supportBusy && errorByTier[SUPPORT_MODELS] && (
+              <div className="mt-1 text-xs text-destructive">{errorByTier[SUPPORT_MODELS]}</div>
+            )}
+          </div>
+          <Button
+            size="xs" variant="outline" disabled={supportBusy || support?.ready}
+            onClick={onDownloadSupport}
+          >
+            <Download />
+            {support?.ready ? "Downloaded" : `Download${support ? ` (${bytesLabel(support.missing_bytes)})` : ""}`}
+          </Button>
+        </div>
       </CardContent>
       <CardFooter className="justify-start text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1">

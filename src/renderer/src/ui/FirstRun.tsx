@@ -3,8 +3,9 @@ import {
   ArrowLeft, ArrowRight, CheckCircle, FilmSlate, FolderOpen, Info,
 } from "@phosphor-icons/react";
 import { api, onModelDownloadProgress, os } from "@/ipc/client";
-import type { BackfillEstimate, ModelInfo, WatchFolder } from "@/ipc/types";
-import { durationLabel } from "@/lib/format";
+import type { BackfillEstimate, ModelInfo, SupportModels, WatchFolder } from "@/ipc/types";
+import { SUPPORT_MODELS } from "@/ipc/types";
+import { bytesLabel, durationLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,16 +27,36 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
   const [downloading, setDownloading] = useState(false);
   const [pct, setPct] = useState(0);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [support, setSupport] = useState<SupportModels | null>(null);
+  const [supportPct, setSupportPct] = useState(0);
+  const [supportBusy, setSupportBusy] = useState(false);
+  const [supportError, setSupportError] = useState<string | null>(null);
   const [estimate, setEstimate] = useState<BackfillEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [backfillStarted, setBackfillStarted] = useState(false);
   const [finishing, setFinishing] = useState(false);
 
-  useEffect(() => { api.listModels().then(setModels); }, []);
+  useEffect(() => {
+    api.listModels().then(setModels);
+    api.supportModels().then(setSupport);
+  }, []);
 
   useEffect(
     () =>
       onModelDownloadProgress((p) => {
+        if (p.model === SUPPORT_MODELS) {
+          if (p.error) {
+            setSupportBusy(false);
+            setSupportError(p.error === "cancelled" ? "Download cancelled." : p.error);
+            return;
+          }
+          setSupportPct(p.pct);
+          if (p.pct >= 1) {
+            setSupportBusy(false);
+            api.supportModels().then(setSupport);
+          }
+          return;
+        }
         if (p.model !== tier) return;
         if (p.error) {
           setDownloading(false);
@@ -59,9 +80,19 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, folder]);
 
+  // small and mandatory, so it starts itself rather than asking — the button below is the
+  // retry path, not the happy one
+  useEffect(() => {
+    if (step !== 2 || supportBusy || supportError || !support || support.ready) return;
+    startSupport();
+    // startSupport is stable enough; the guards above are what decide this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, support, supportBusy, supportError]);
+
   const tierInfo = models.find((m) => m.tier === tier);
   // `downloaded` can lag one refetch behind the terminal event, so pct still counts
   const modelReady = tierInfo?.downloaded === true || pct >= 1;
+  const supportReady = support?.ready === true || supportPct >= 1;
 
   async function pickFolder() {
     const picked = await os.pickFolder();
@@ -85,6 +116,18 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
     } catch (e) {
       setDownloading(false);
       setDownloadError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function startSupport() {
+    setSupportBusy(true);
+    setSupportPct(0);
+    setSupportError(null);
+    try {
+      await api.downloadSupportModels();
+    } catch (e) {
+      setSupportBusy(false);
+      setSupportError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -170,6 +213,27 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
               {downloadError && !downloading && !modelReady && (
                 <p className="text-sm text-destructive">{downloadError}</p>
               )}
+
+              <div className="flex flex-col gap-2 border-t pt-3">
+                <p className="text-xs text-muted-foreground">
+                  Speaker models — telling voices apart. Needed for every recording.
+                </p>
+                {supportReady ? (
+                  <p className="flex items-center gap-1.5 text-sm text-primary">
+                    <CheckCircle />Speaker models ready
+                  </p>
+                ) : supportBusy ? (
+                  <Progress value={supportPct * 100} />
+                ) : (
+                  <Button size="sm" variant="outline" onClick={startSupport}>
+                    {supportError ? "Retry" : "Download"} speaker models
+                    {support ? ` (${bytesLabel(support.missing_bytes)})` : ""}
+                  </Button>
+                )}
+                {supportError && !supportBusy && (
+                  <p className="text-sm text-destructive">{supportError}</p>
+                )}
+              </div>
             </div>
           )}
 
@@ -218,7 +282,7 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
           {step < STEPS.length - 1 ? (
             <Button
               size="sm"
-              disabled={(step === 1 && !folder) || (step === 2 && !modelReady)}
+              disabled={(step === 1 && !folder) || (step === 2 && !(modelReady && supportReady))}
               onClick={() => setStep((s) => s + 1)}
             >
               Next<ArrowRight />
