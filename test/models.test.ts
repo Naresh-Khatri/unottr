@@ -42,6 +42,17 @@ describe("catalog", () => {
     expect(catalog.defaultWhisper(false).name).toBe("small");
   });
 
+  it("ranks fallbacks behind the ideal tier, and never sends cpu to turbo early", () => {
+    for (const gpu of [true, false]) {
+      const order = catalog.whisperPreference(gpu);
+      expect(order.map((m) => m.name)).toContain("base.en");
+      expect(order).toHaveLength(catalog.WHISPER.length);
+      expect(order[0].name).toBe(catalog.defaultWhisper(gpu).name);
+    }
+    // turbo on cpu is slower than the meeting — it is the last resort, not the second choice
+    expect(catalog.whisperPreference(false).at(-1)?.name).toBe("large-v3-turbo");
+  });
+
   it("keeps every file name and hash distinct", () => {
     const all = [...catalog.WHISPER, catalog.VAD, catalog.SEGMENTATION, ...catalog.EMBEDDINGS];
     expect(new Set(all.map((m) => m.file)).size).toBe(all.length);

@@ -24,9 +24,9 @@ import {
   SEGMENTATION,
   VAD,
   defaultEmbedding,
-  defaultWhisper,
   findEmbedding,
   findWhisper,
+  whisperPreference,
 } from "../models/catalog";
 import { resolve as resolveDevice } from "../models/device";
 import { ensure, isPresent, locate } from "../models/download";
@@ -73,7 +73,7 @@ export async function processRecording(
   const device = resolveDevice(devicePref);
   const whisperSpec = cfg.whisperModel
     ? (findWhisper(cfg.whisperModel) ?? raise(cfg.whisperModel))
-    : defaultWhisper(device === "gpu");
+    : autoWhisper(ctx.modelsDir, device === "gpu");
   const embeddingSpec = cfg.embeddingModel
     ? (findEmbedding(cfg.embeddingModel) ?? raise(cfg.embeddingModel))
     : defaultEmbedding();
@@ -146,8 +146,10 @@ export async function processRecording(
   // explicit, defensive: transcribe's own status write is skipped on the zero-chunk
   // early-return path (an all-silence recording), so this is not always redundant
   setStatus(db, id, "diarizing");
-  const segmentation = await fetchModel(ctx, SEGMENTATION, cfg.downloadModels, signal);
-  const embedding = await fetchModel(ctx, embeddingSpec, cfg.downloadModels, signal);
+  // always fetched, like VAD: every job diarizes, so `downloadModels` would only ever be the
+  // difference between fetching 34 MB and failing the job over it
+  const segmentation = await fetchModel(ctx, SEGMENTATION, true, signal);
+  const embedding = await fetchModel(ctx, embeddingSpec, true, signal);
 
   report("diarizing", 0);
   const startedDiarize = Date.now();
@@ -237,8 +239,8 @@ export async function rediarizeRecording(
       ? (findEmbedding(cfg.embeddingModel) ?? raise(cfg.embeddingModel))
       : defaultEmbedding();
     const vadModel = await fetchModel(ctx, VAD, true, signal);
-    const segmentation = await fetchModel(ctx, SEGMENTATION, cfg.downloadModels, signal);
-    const embedding = await fetchModel(ctx, embeddingSpec, cfg.downloadModels, signal);
+    const segmentation = await fetchModel(ctx, SEGMENTATION, true, signal);
+    const embedding = await fetchModel(ctx, embeddingSpec, true, signal);
 
     const key = rateKey("diarizing", "cpu", embeddingSpec.name);
     const eta = new Eta({
@@ -270,6 +272,16 @@ export async function rediarizeRecording(
     setStatus(db, id, was);
     throw e;
   }
+}
+
+/**
+ * `auto` resolves by device, but the tier onboarding actually downloaded wins over one that
+ * is merely ideal — a gpu box asking for turbo it never fetched fails the job for nothing.
+ */
+function autoWhisper(dir: string, gpu: boolean): ModelSpec {
+  const order = whisperPreference(gpu);
+  // nothing on disk: keep the ideal one so the error names the model to go download
+  return order.find((m) => isPresent(m, dir)) ?? order[0];
 }
 
 /** Small models (vad) or a caller that opted into downloads: fetch if missing. Otherwise a

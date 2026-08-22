@@ -132,6 +132,18 @@ export function defaultWhisper(gpu: boolean): ModelSpec {
 }
 
 /**
+ * What `auto` settles for, best first, when the ideal tier is not on disk — a gpu box wants
+ * turbo but onboarding downloads small, and failing the job over that helps nobody. Falling
+ * *up* is the cpu path's last resort only: turbo on cpu is slower than the meeting.
+ */
+export function whisperPreference(gpu: boolean): ModelSpec[] {
+  const order = gpu
+    ? ["large-v3-turbo", "medium", "small", "base.en"]
+    : ["small", "base.en", "medium", "large-v3-turbo"];
+  return order.map(findWhisper).filter((m): m is ModelSpec => m !== undefined);
+}
+
+/**
  * `turbo`/`medium`/`small` are the three tiers the settings screen offers; `base.en` stays
  * cli-only. `undefined` (including "auto") defers to `defaultWhisper`.
  */
