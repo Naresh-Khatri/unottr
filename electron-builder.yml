@@ -23,6 +23,17 @@ files:
   # wasm is the browser path. 204 MB of addon we would ship and never dlopen.
   - "!node_modules/@fugood/node-whisper-linux-x64-cuda/**"
   - "!node_modules/@fugood/node-whisper-wasm/**"
+  # the prebuilt addon is what we load; the vendored whisper.cpp tree only feeds a source build
+  - "!node_modules/@fugood/whisper.node/whisper.cpp/**"
+  # npmRebuild is off, so deps/ + src/ (the sqlite amalgamation) never compile here.
+  # lib/binding.js picks prebuilds/<platform>-<arch>.node at runtime -- keep only ours.
+  # musl is unreachable anyway: the bundled electron is glibc-linked.
+  - "!node_modules/better-sqlite3/deps/**"
+  - "!node_modules/better-sqlite3/src/**"
+  - "!node_modules/better-sqlite3/prebuilds/darwin-*"
+  - "!node_modules/better-sqlite3/prebuilds/win32-*"
+  - "!node_modules/better-sqlite3/prebuilds/linuxmusl-*"
+  - "!node_modules/better-sqlite3/prebuilds/linux-arm64.node"
 
 # native addons cannot be dlopen'd from inside an asar, and the two prebuilt packages carry
 # the .so files those addons need next to them
@@ -54,6 +65,9 @@ extraFiles:
 linux:
   target: [AppImage]
   category: AudioVideo
+  # ui is english-only; chromium falls back to en-US for any system locale. 54 other .pak
+  # files were 12 MB of the image. revisit when we localize.
+  electronLanguages: [en-US]
   icon: resources/icons
   synopsis: Local transcription of screen recordings
   description: >-
