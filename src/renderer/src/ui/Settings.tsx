@@ -22,6 +22,7 @@ import {
   Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import { AiCard } from "./AiConnections";
+import { TerminologyCard } from "./Terminology";
 
 // mirrors diarize::engine::DEFAULT_THRESHOLD — shown when settings.diarize_threshold is null
 const DEFAULT_THRESHOLD = 0.6;
@@ -145,6 +146,8 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
         <ComputeCard device={settings.device} detected={detected} onChange={(d) => setSetting("device", d)} />
 
         <TranscriptionCard language={settings.language} onChange={(v) => setSetting("language", v)} />
+
+        <TerminologyCard />
 
         <DiarizationCard
           threshold={settings.diarize_threshold}

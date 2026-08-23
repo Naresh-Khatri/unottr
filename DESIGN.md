@@ -54,6 +54,7 @@ never audio, never video.
 | 44 | Context size is learned, not guessed | Taken from LM Studio's `loaded_context_length` (what the running instance was started with, routinely 16x smaller than the weights allow) when the model list is fetched. Failing that, it is read out of the server's own overflow 400 — the ceiling is the smaller of the two numbers every wording of that error names — stored on the connection, and the run is split and retried once. A number the user typed is never overwritten |
 | 45 | The clock is sized to the prompt | A flat two-minute ceiling cannot tell a slow server from a hung one, and on a local model it is simply wrong: reading a full 8k window at ~25 tokens a second is over two minutes before the first token of answer exists, so every run it was asked to do got cancelled mid-prompt. The ceiling is now the floor plus what the prompt itself is worth — its size over a pessimistic throughput, plus room to write, capped at twenty minutes. A cloud provider never approaches it. A timeout is also no longer filed as "aborted": nobody chose it, and the advice for it is different |
 | 51 | One colour per voice | Hue is the only chromatic thing in a greyscale ui, and it means exactly one thing: who is talking. A speaker's slot comes from their identity — the linked person if there is one, else the speaker row — never their position in a list, so a merge, a rename or a re-diarize doesn't reshuffle everyone's colour, and a voice the app already knows keeps the same colour in every recording. Eight hues at one lightness so no voice reads as louder; unattributed stays grey |
+| 52 | Terminology keeps the source | Rules rewrite displayed segment text after diarization, never the recording or word timestamps. The first correction stores Whisper's original text in `segments.raw_text`; every later apply starts there, so editing, disabling or deleting a rule is reversible. A text change bumps `recordings.transcript_version`, refreshes FTS through its existing trigger and marks an older overview stale |
 
 ## Architecture
 
@@ -123,16 +124,17 @@ Each stage is a persisted queue state, so a crash resumes at a boundary.
 ```sql
 recordings(id, path, fp_size, fp_head, fp_tail, container, duration_ms,
            recorded_at, status, error, attempts, last_chunk_idx, available,
-           title, ai_title)
-segments(id, recording_id, start_ms, end_ms, text, speaker_id)
+           title, ai_title, transcript_version)
+segments(id, recording_id, start_ms, end_ms, text, raw_text, speaker_id)
 speakers(id, recording_id, label, display_name, person_id, embedding BLOB)
 people(id, name, name_key UNIQUE, embedding BLOB, samples, is_me, role)
 segments_fts    -- FTS5 over segments.text
 watch_folders(id, path, track_rule, enabled)
 settings(key, value)
 stage_rates(key, rate, samples)   -- learned pipeline speed, see *Time remaining*
+terminology_rules(id, source, replacement, case_sensitive, whole_word, enabled)
 overviews(id, recording_id UNIQUE, status, error, error_kind, model, prompt_version,
-          role_used, title, tldr, sections JSON, decisions JSON,
+          role_used, transcript_version, title, tldr, sections JSON, decisions JSON,
           tokens_in, tokens_out)                    -- see *AI overview*
 tasks(id, recording_id, text, owner_speaker_id, start_ms,
       due_raw, due_date, status, user_edited)

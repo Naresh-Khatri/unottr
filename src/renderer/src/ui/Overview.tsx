@@ -562,6 +562,7 @@ function needsKey(conn: AiConnection, presets: AiPreset[]): boolean {
 
 const STALE_COPY: Record<NonNullable<Overview["stale_reason"]>, string> = {
   speakers: "Speakers changed since this overview.",
+  transcript: "The transcript changed since this overview.",
   role: "Your role changed since this was written.",
   prompt: "unottr writes these differently now.",
 };

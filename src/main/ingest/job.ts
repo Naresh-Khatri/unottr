@@ -12,6 +12,7 @@ import { DEFAULT_THRESHOLD } from "../../worker/cluster";
 import type { Db } from "../db/client";
 import { forceCpuOf, pathOf, setProbeResult, setStatus, statusOf } from "../db/recordings";
 import * as stageRates from "../db/stage-rates";
+import * as terminology from "../db/terminology";
 import { findByPath as folderByPath } from "../db/watch-folders";
 import { err, isCancelled } from "../errors";
 import { type FfmpegCli, extractPcm, extractThumbnails, probe } from "../media/ffmpeg";
@@ -171,6 +172,7 @@ export async function processRecording(
     (f) => report("diarizing", f),
     signal,
   );
+  terminology.applyToRecording(db, id);
   stageRates.record(db, keys.diarizing, Date.now() - startedDiarize, probed.duration_ms ?? 0);
 }
 
@@ -267,6 +269,7 @@ export async function rediarizeRecording(
       (f) => onProgress("diarizing", f, eta.tick("diarizing", f)),
       signal,
     );
+    terminology.applyToRecording(db, id);
     stageRates.record(db, key, Date.now() - started, probed.duration_ms ?? 0);
   } catch (e) {
     setStatus(db, id, was);

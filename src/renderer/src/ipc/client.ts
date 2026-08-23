@@ -6,6 +6,8 @@ import type {
   ModelInfo, OverviewChanged, OverviewPayload, OverviewProgress, Person, ProbeResult, RecordingDetail,
   RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit,
   Settings, SupportModels, SystemStats, TaskStatus, WatchFolder,
+  TerminologyApplyResult, TerminologyImportResult, TerminologyRule, TerminologyRuleInput,
+  TranscriptChanged,
 } from "./types";
 import { mockCommands, mockEvents } from "./mock";
 
@@ -40,6 +42,20 @@ export const api = {
     USE_MOCK ? mockCommands.rediarize(recording_id, speakers) : invoke("rediarize", { recording_id, speakers }),
   listPeople: (): Promise<Person[]> =>
     USE_MOCK ? mockCommands.list_people() : invoke("list_people"),
+  terminologyRules: (): Promise<TerminologyRule[]> =>
+    USE_MOCK ? mockCommands.terminology_list() : invoke("terminology_list"),
+  terminologyAdd: (input: TerminologyRuleInput): Promise<TerminologyRule> =>
+    USE_MOCK ? mockCommands.terminology_add(input) : invoke("terminology_add", { ...input }),
+  terminologyUpdate: (id: number, input: TerminologyRuleInput): Promise<TerminologyRule> =>
+    USE_MOCK ? mockCommands.terminology_update(id, input) : invoke("terminology_update", { id, ...input }),
+  terminologyDelete: (id: number): Promise<void> =>
+    USE_MOCK ? mockCommands.terminology_delete(id) : invoke("terminology_delete", { id }),
+  terminologyApplyLibrary: (): Promise<TerminologyApplyResult> =>
+    USE_MOCK ? mockCommands.terminology_apply_library() : invoke("terminology_apply_library"),
+  terminologyImport: (path: string): Promise<TerminologyImportResult> =>
+    USE_MOCK ? mockCommands.terminology_import(path) : invoke("terminology_import", { path }),
+  terminologyExport: (path: string): Promise<void> =>
+    USE_MOCK ? mockCommands.terminology_export(path) : invoke("terminology_export", { path }),
   renamePerson: (id: number, name: string): Promise<void> =>
     USE_MOCK ? mockCommands.rename_person(id, name) : invoke("rename_person", { id, name }),
   forgetPerson: (id: number): Promise<void> =>
@@ -180,6 +196,10 @@ export function onJobFailed(cb: (p: JobFailed) => void): () => void {
 export function onRecordingDiscovered(cb: (p: RecordingDiscovered) => void): () => void {
   if (USE_MOCK) return mockEvents.recording_discovered(cb);
   return listen<RecordingDiscovered>("recording_discovered", cb);
+}
+export function onTranscriptChanged(cb: (p: TranscriptChanged) => void): () => void {
+  if (USE_MOCK) return mockEvents.transcript_changed(cb);
+  return listen<TranscriptChanged>("transcript_changed", cb);
 }
 export function onModelDownloadProgress(cb: (p: ModelDownloadProgress) => void): () => void {
   if (USE_MOCK) return mockEvents.model_download_progress(cb);

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import type {
   AiConnectionInput,
@@ -8,6 +8,7 @@ import type {
   SupportModels,
   SystemStats,
   TaskStatus,
+  TerminologyRuleInput,
 } from "../../shared/ipc";
 import { SUPPORT_MODELS } from "../../shared/ipc";
 import * as ai from "../ai/generate";
@@ -22,6 +23,7 @@ import * as queries from "../db/queries";
 import { resetForRetry, statusOf } from "../db/recordings";
 import * as settingsDb from "../db/settings";
 import * as speakersDb from "../db/speakers";
+import * as terminologyDb from "../db/terminology";
 import * as watchFoldersDb from "../db/watch-folders";
 import { isCancelled } from "../errors";
 import { events } from "../events";
@@ -67,6 +69,16 @@ export const setTrayAvailable = (v: boolean): void => {
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
+
+function terminologyInput(a: Args): TerminologyRuleInput {
+  return {
+    source: str(a?.source) ?? "",
+    replacement: str(a?.replacement) ?? "",
+    case_sensitive: a?.case_sensitive === true,
+    whole_word: a?.whole_word !== false,
+    enabled: a?.enabled !== false,
+  };
+}
 
 function requireId(a: Args, key: string): number {
   const v = num(a?.[key]);
@@ -169,6 +181,38 @@ const handlers: Record<string, Handler> = {
   /** `id: null` un-says it; setting anyone clears whoever held it before. */
   person_set_me: (a) => peopleDb.setMe(db(), a?.id === null ? null : requireId(a, "id")),
   person_set_role: (a) => peopleDb.setRole(db(), requireId(a, "id"), str(a?.role) ?? ""),
+
+  // ------------------------------------------------------------- terminology memory
+
+  terminology_list: () => terminologyDb.list(db()),
+  terminology_add: (a) => terminologyDb.create(db(), terminologyInput(a)),
+  terminology_update: (a) => terminologyDb.update(db(), requireId(a, "id"), terminologyInput(a)),
+  terminology_delete: (a) => terminologyDb.remove(db(), requireId(a, "id")),
+
+  terminology_apply_library() {
+    const report = terminologyDb.applyToLibrary(db());
+    for (const recordingId of report.recordingIds) {
+      events.transcriptChanged({ recording_id: recordingId });
+      events.overviewChanged({ recording_id: recordingId });
+    }
+    return {
+      recordings_changed: report.recordingIds.length,
+      segments_changed: report.segmentsChanged,
+    };
+  },
+
+  terminology_import(a) {
+    const path = str(a?.path);
+    if (!path) throw new Error("terminology_import: no path");
+    if (statSync(path).size > 1_000_000) throw new Error("terminology file is larger than 1 MB");
+    return { rules_imported: terminologyDb.importJson(db(), readFileSync(path, "utf8")) };
+  },
+
+  terminology_export(a) {
+    const path = str(a?.path);
+    if (!path) throw new Error("terminology_export: no path");
+    writeFileSync(path, terminologyDb.serialize(db()));
+  },
 
   // -------------------------------------------------------------------- ai overview
 

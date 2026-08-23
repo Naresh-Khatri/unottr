@@ -10,6 +10,7 @@ import type {
   OverviewChanged,
   OverviewProgress,
   RecordingDiscovered,
+  TranscriptChanged,
 } from "../shared/ipc";
 
 function emit(event: string, payload: unknown): void {
@@ -24,6 +25,7 @@ export const events = {
   jobDone: (p: JobDone) => emit("job_done", p),
   jobFailed: (p: JobFailed) => emit("job_failed", p),
   recordingDiscovered: (p: RecordingDiscovered) => emit("recording_discovered", p),
+  transcriptChanged: (p: TranscriptChanged) => emit("transcript_changed", p),
   modelDownloadProgress: (p: ModelDownloadProgress) => emit("model_download_progress", p),
   overviewChanged: (p: OverviewChanged) => emit("overview_changed", p),
   overviewProgress: (p: OverviewProgress) => emit("overview_progress", p),

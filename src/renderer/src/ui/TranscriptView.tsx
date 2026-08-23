@@ -4,7 +4,7 @@ import {
   ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, Check, Copy, DotsThree, Export, MagnifyingGlass,
   PencilSimple, Sparkle, UsersThree, VideoCameraSlash,
 } from "@phosphor-icons/react";
-import { api, onJobDone, onJobFailed, os } from "@/ipc/client";
+import { api, onJobDone, onJobFailed, onTranscriptChanged, os } from "@/ipc/client";
 import type { ExportFormat, Person, RecordingDetail, Segment, Speaker } from "@/ipc/types";
 import { hms } from "@/lib/format";
 import { canPlayContainer } from "@/lib/media";
@@ -187,6 +187,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
         setRediarizing(false);
         setSpeakerError(`Re-running speakers failed (${p.error}). The old speakers are unchanged.`);
       }),
+      onTranscriptChanged((p) => { if (p.recording_id === id) void refresh(); }),
     ];
     return () => { for (const off of offs) off(); };
   }, [id, refresh]);

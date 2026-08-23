@@ -101,6 +101,34 @@ export interface WatchFolder {
   enabled: boolean;
 }
 
+export interface TerminologyRule {
+  id: number;
+  source: string;
+  replacement: string;
+  case_sensitive: boolean;
+  whole_word: boolean;
+  enabled: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface TerminologyRuleInput {
+  source: string;
+  replacement: string;
+  case_sensitive: boolean;
+  whole_word: boolean;
+  enabled: boolean;
+}
+
+export interface TerminologyApplyResult {
+  recordings_changed: number;
+  segments_changed: number;
+}
+
+export interface TerminologyImportResult {
+  rules_imported: number;
+}
+
 export interface RecordingFilter {
   status?: Status;
   available?: boolean;
@@ -128,6 +156,10 @@ export interface JobFailed {
   error: string;
 }
 export interface RecordingDiscovered {
+  recording_id: number;
+}
+
+export interface TranscriptChanged {
   recording_id: number;
 }
 
@@ -282,10 +314,10 @@ export interface Overview {
   tokens_in: number | null;
   tokens_out: number | null;
   updated_at: number;
-  /** the prompt, your role or the cast has moved on since this was written — offer a regenerate */
+  /** the prompt, transcript, role or cast has moved on since this was written; offer a regenerate */
   stale: boolean;
-  /** which of the three, so the nudge can name it; null when it is not stale */
-  stale_reason: "speakers" | "role" | "prompt" | null;
+  /** what changed, so the nudge can name it; null when it is not stale */
+  stale_reason: "speakers" | "transcript" | "role" | "prompt" | null;
 }
 
 export type TaskStatus = "open" | "done" | "dismissed";

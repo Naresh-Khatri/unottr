@@ -33,6 +33,11 @@ import type {
   SystemStats,
   Task,
   TaskStatus,
+  TerminologyApplyResult,
+  TerminologyImportResult,
+  TerminologyRule,
+  TerminologyRuleInput,
+  TranscriptChanged,
   WatchFolder,
 } from "./types";
 import { SUPPORT_MODELS, type SupportModels } from "./types";
@@ -80,6 +85,19 @@ const recordings: RecordingSummary[] = [
 
 let folders: WatchFolder[] = [
   { id: 1, path: "/home/naresh", track_rule: "auto", enabled: true },
+];
+
+let terminologyRules: TerminologyRule[] = [
+  {
+    id: 1,
+    source: "post grass",
+    replacement: "Postgres",
+    case_sensitive: false,
+    whole_word: true,
+    enabled: true,
+    created_at: 1787472000,
+    updated_at: 1787472000,
+  },
 ];
 
 const wait = <T>(v: T, ms = 120): Promise<T> =>
@@ -207,6 +225,28 @@ export const mockCommands = {
   },
 
   list_people: () => wait(people.slice()),
+  terminology_list: () => wait(terminologyRules.map((rule) => ({ ...rule }))),
+  terminology_add(input: TerminologyRuleInput): Promise<TerminologyRule> {
+    const ts = Math.floor(Date.now() / 1000);
+    const rule = { id: Math.max(0, ...terminologyRules.map((x) => x.id)) + 1, ...input, created_at: ts, updated_at: ts };
+    terminologyRules.push(rule);
+    return wait({ ...rule });
+  },
+  terminology_update(id: number, input: TerminologyRuleInput): Promise<TerminologyRule> {
+    const i = terminologyRules.findIndex((rule) => rule.id === id);
+    const rule = { ...terminologyRules[i], ...input, updated_at: Math.floor(Date.now() / 1000) };
+    terminologyRules[i] = rule;
+    return wait({ ...rule });
+  },
+  terminology_delete(id: number) {
+    terminologyRules = terminologyRules.filter((rule) => rule.id !== id);
+    return wait(undefined);
+  },
+  terminology_apply_library: (): Promise<TerminologyApplyResult> =>
+    wait({ recordings_changed: 1, segments_changed: 2 }),
+  terminology_import: (_path: string): Promise<TerminologyImportResult> =>
+    wait({ rules_imported: 1 }),
+  terminology_export: (_path: string) => wait(undefined),
   rename_person(id: number, name: string) {
     const p = people.find((x) => x.id === id);
     if (p) p.name = name;
@@ -585,6 +625,7 @@ type Payloads = {
   job_done: JobDone;
   job_failed: JobFailed;
   recording_discovered: RecordingDiscovered;
+  transcript_changed: TranscriptChanged;
   model_download_progress: ModelDownloadProgress;
   overview_changed: OverviewChanged;
   overview_progress: OverviewProgress;
@@ -595,6 +636,7 @@ const subscribers: { [K in keyof Payloads]: Set<(p: Payloads[K]) => void> } = {
   job_done: new Set(),
   job_failed: new Set(),
   recording_discovered: new Set(),
+  transcript_changed: new Set(),
   model_download_progress: new Set(),
   overview_changed: new Set(),
   overview_progress: new Set(),
@@ -621,6 +663,7 @@ export const mockEvents = {
   job_done: subscribe("job_done"),
   job_failed: subscribe("job_failed"),
   recording_discovered: subscribe("recording_discovered"),
+  transcript_changed: subscribe("transcript_changed"),
   model_download_progress: subscribe("model_download_progress"),
   overview_changed: subscribe("overview_changed"),
   overview_progress: subscribe("overview_progress"),

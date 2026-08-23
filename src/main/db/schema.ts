@@ -50,6 +50,8 @@ export const recordings = sqliteTable(
     /** bumped by every speaker fix (merge, reassign, re-diarize) — what makes an overview
      *  written against the old cast knowably stale (decision #50) */
     speakersVersion: integer("speakers_version").notNull().default(0),
+    /** bumped whenever displayed transcript text changes */
+    transcriptVersion: integer("transcript_version").notNull().default(0),
   },
   (t) => [
     index("idx_recordings_status").on(t.status),
@@ -106,6 +108,8 @@ export const segments = sqliteTable(
     startMs: integer("start_ms").notNull(),
     endMs: integer("end_ms").notNull(),
     text: text("text").notNull(),
+    /** Whisper's text before terminology rules. Set only after a rule changes this segment. */
+    rawText: text("raw_text"),
     /** json Word[] */
     words: text("words"),
     speakerId: integer("speaker_id").references(() => speakers.id, { onDelete: "set null" }),
@@ -131,6 +135,24 @@ export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+/** Literal corrections applied after diarization, when the final segment boundaries exist. */
+export const terminologyRules = sqliteTable(
+  "terminology_rules",
+  {
+    id: integer("id").primaryKey(),
+    source: text("source").notNull(),
+    /** match-semantics key: case-folded only when this rule ignores case */
+    sourceKey: text("source_key").notNull(),
+    replacement: text("replacement").notNull(),
+    caseSensitive: integer("case_sensitive").notNull().default(0),
+    wholeWord: integer("whole_word").notNull().default(1),
+    enabled: integer("enabled").notNull().default(1),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.sourceKey, t.wholeWord)],
+);
 
 /**
  * What a stage costs *on this machine*: wall ms per ms of source audio, learned from jobs
@@ -186,6 +208,8 @@ export const overviews = sqliteTable("overviews", {
   roleUsed: text("role_used"),
   /** `recordings.speakers_version` as it stood when this was generated */
   speakersVersion: integer("speakers_version").notNull().default(0),
+  /** `recordings.transcript_version` when this overview was generated */
+  transcriptVersion: integer("transcript_version").notNull().default(0),
   title: text("title"),
   tldr: text("tldr"),
   /** json OverviewSection[] */

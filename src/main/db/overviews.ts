@@ -67,7 +67,11 @@ export function get(db: Db, recordingId: number): Overview | null {
   if (!row) return null;
 
   const rec = db
-    .select({ path: recordings.path, speakersVersion: recordings.speakersVersion })
+    .select({
+      path: recordings.path,
+      speakersVersion: recordings.speakersVersion,
+      transcriptVersion: recordings.transcriptVersion,
+    })
     .from(recordings)
     .where(eq(recordings.id, recordingId))
     .get();
@@ -87,11 +91,13 @@ export function get(db: Db, recordingId: number): Overview | null {
       ? null
       : row.speakersVersion !== (rec?.speakersVersion ?? 0)
         ? "speakers"
-        : row.roleUsed !== myRole(db)
-          ? "role"
-          : row.promptVersion !== PROMPT_VERSION
-            ? "prompt"
-            : null;
+        : row.transcriptVersion !== (rec?.transcriptVersion ?? 0)
+          ? "transcript"
+          : row.roleUsed !== myRole(db)
+            ? "role"
+            : row.promptVersion !== PROMPT_VERSION
+              ? "prompt"
+              : null;
 
   return {
     recording_id: recordingId,
@@ -190,7 +196,7 @@ export function save(db: Db, recordingId: number, w: OverviewWrite): void {
         provider: w.provider,
         promptVersion: PROMPT_VERSION,
         roleUsed: w.roleUsed,
-        speakersVersion: castVersion(tx, recordingId),
+        ...sourceVersions(tx, recordingId),
         title: w.title,
         tldr: w.tldr,
         sections: JSON.stringify(w.sections),
@@ -302,12 +308,20 @@ export function sweepRunning(db: Db): number {
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-const castVersion = (tx: Tx, recordingId: number): number =>
-  tx
-    .select({ v: recordings.speakersVersion })
+const sourceVersions = (tx: Tx, recordingId: number): {
+  speakersVersion: number;
+  transcriptVersion: number;
+} => {
+  const row = tx
+    .select({
+      speakersVersion: recordings.speakersVersion,
+      transcriptVersion: recordings.transcriptVersion,
+    })
     .from(recordings)
     .where(eq(recordings.id, recordingId))
-    .get()?.v ?? 0;
+    .get();
+  return row ?? { speakersVersion: 0, transcriptVersion: 0 };
+};
 
 /** One row per recording: title plus every line of prose flattened, so a hit means "in here". */
 function indexFts(tx: Tx, recordingId: number, w: OverviewWrite): void {
