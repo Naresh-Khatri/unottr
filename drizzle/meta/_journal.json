@@ -57,6 +57,13 @@
       "when": 1787470400791,
       "tag": "0007_terminology",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787481238724,
+      "tag": "0008_cli_agents",
+      "breakpoints": true
     }
   ]
 }

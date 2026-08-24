@@ -234,6 +234,9 @@ export type Strategy = (typeof STRATEGIES)[number];
 export const WIRES = ["openai", "anthropic", "mistral"] as const;
 export type Wire = (typeof WIRES)[number];
 
+export const AI_CONNECTION_KINDS = ["http", "cli"] as const;
+export type AiConnectionKind = (typeof AI_CONNECTION_KINDS)[number];
+
 /**
  * One endpoint the user has added. The key lives here and nowhere else; `connections.ts` is
  * the only file that reads it, and it never crosses ipc. `spend_cents` is per-connection
@@ -244,8 +247,11 @@ export const aiConnections = sqliteTable("ai_connections", {
   label: text("label").notNull(),
   /** which entry of PRESETS this came from; "custom" for a hand-typed url */
   preset: text("preset").notNull(),
+  kind: text("kind").$type<AiConnectionKind>().notNull().default("http"),
   wire: text("wire").$type<Wire>().notNull(),
   baseUrl: text("base_url").notNull(),
+  /** Absolute path, never a shell fragment. Null for HTTP connections. */
+  executablePath: text("executable_path"),
   /** safeStorage ciphertext, base64 */
   keyEnc: text("key_enc"),
   /** no keyring on this box, and the user said ok */

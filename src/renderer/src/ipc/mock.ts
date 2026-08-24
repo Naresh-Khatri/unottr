@@ -453,18 +453,27 @@ export const mockCommands = {
     return wait(undefined);
   },
   ai_settings_get: () => wait({ ...aiSettings }),
-  ai_settings_set(patch: { pseudonymize?: boolean }): Promise<AiSettings> {
+  ai_settings_set(patch: { pseudonymize?: boolean; fallback_connection_id?: number | null }): Promise<AiSettings> {
     if (patch.pseudonymize !== undefined) aiSettings.pseudonymize = patch.pseudonymize;
+    if (patch.fallback_connection_id !== undefined) aiSettings.fallback_connection_id = patch.fallback_connection_id;
     return wait({ ...aiSettings });
   },
   ai_presets: () => wait(aiPresets),
+  ai_detect_agents: () => wait([
+    { preset: "claude-code", label: "Claude Code", executable_path: "/home/user/.local/bin/claude", installed: true, beta: false, supported: true, detail: "Installed and ready to test." },
+    { preset: "codex-cli", label: "Codex CLI", executable_path: null, installed: false, beta: true, supported: true, detail: "Not found" },
+  ]),
   ai_connections_list: () => wait(aiConnections.map((c) => ({ ...c }))),
   ai_connection_save(input: AiConnectionInput): Promise<AiConnection> {
     const found = aiConnections.find((c) => c.id === input.id);
     const target = found ?? { ...aiConnections[0], id: aiConnections.length + 1, active: false };
     Object.assign(target, {
       label: input.label ?? target.label,
+      preset: input.preset ?? target.preset,
+      kind: input.preset?.endsWith("-cli") || input.preset === "claude-code" ? "cli" : target.kind,
       base_url: input.base_url ?? target.base_url,
+      executable_path: input.executable_path ?? target.executable_path,
+      subscription_managed: input.preset?.endsWith("-cli") || input.preset === "claude-code" ? true : target.subscription_managed,
       active_model: input.active_model !== undefined ? input.active_model : target.active_model,
       consented: input.consented ?? target.consented,
       key_set: input.key !== undefined ? input.key.length > 0 : target.key_set,
@@ -492,12 +501,12 @@ export const mockCommands = {
   ai_normalize_url: (base_url: string) => wait(base_url.replace(/\/+$/, "")),
 };
 
-const aiSettings: AiSettings = { active_connection_id: 1, pseudonymize: false };
+const aiSettings: AiSettings = { active_connection_id: 1, fallback_connection_id: null, pseudonymize: false };
 
 const aiPresets: AiPreset[] = [
-  { id: "ollama", label: "Ollama", base_url: "http://localhost:11434/v1", wire: "openai", key_required: false, docs_url: null, local: true },
-  { id: "openai", label: "OpenAI", base_url: "https://api.openai.com/v1", wire: "openai", key_required: true, docs_url: null, local: false },
-  { id: "custom", label: "Other (OpenAI-compatible)", base_url: "", wire: "openai", key_required: false, docs_url: null, local: false },
+  { id: "ollama", label: "Ollama", kind: "http", base_url: "http://localhost:11434/v1", wire: "openai", key_required: false, docs_url: null, local: true, executable: null, beta: false },
+  { id: "openai", label: "OpenAI", kind: "http", base_url: "https://api.openai.com/v1", wire: "openai", key_required: true, docs_url: null, local: false, executable: null, beta: false },
+  { id: "custom", label: "Other (OpenAI-compatible)", kind: "http", base_url: "", wire: "openai", key_required: false, docs_url: null, local: false, executable: null, beta: false },
 ];
 
 const aiConnections: AiConnection[] = [
@@ -505,8 +514,12 @@ const aiConnections: AiConnection[] = [
     id: 1,
     label: "Ollama",
     preset: "ollama",
+    kind: "http",
     wire: "openai",
     base_url: "http://localhost:11434/v1",
+    executable_path: null,
+    subscription_managed: false,
+    beta: false,
     key_set: false,
     key_storage: "none",
     active_model: "qwen3:8b",

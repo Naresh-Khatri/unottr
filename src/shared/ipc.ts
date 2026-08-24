@@ -348,6 +348,9 @@ export interface OverviewPayload {
 /** Request shape. Comes from the preset, never sniffed: a url can't tell you its own dialect. */
 export type Wire = "openai" | "anthropic" | "mistral";
 
+/** HTTP endpoints and installed agent CLIs share selection, but not configuration. */
+export type AiConnectionKind = "http" | "cli";
+
 /** How the model is made to emit our schema, cheapest-first. Probed, not assumed. */
 export type Strategy = "native" | "json_mode" | "prompted";
 
@@ -378,8 +381,14 @@ export interface AiConnection {
   id: number;
   label: string;
   preset: string; // a PRESETS id, or "custom"
+  kind: AiConnectionKind;
   wire: Wire;
   base_url: string;
+  /** Absolute executable selected during discovery. Present only for installed CLIs. */
+  executable_path: string | null;
+  /** A CLI runs here, but the provider may still receive the transcript over the network. */
+  subscription_managed: boolean;
+  beta: boolean;
   key_set: boolean;
   /** "plain" = safeStorage had no keyring to talk to; the ui says so rather than pretending */
   key_storage: "encrypted" | "plain" | "none";
@@ -408,6 +417,7 @@ export interface AiConnectionInput {
   label?: string;
   preset?: string;
   base_url?: string;
+  executable_path?: string;
   key?: string;
   /** the answer to "there is no keyring here, store it in the clear?" */
   allow_plain?: boolean;
@@ -423,17 +433,33 @@ export interface AiConnectionInput {
 export interface AiPreset {
   id: string;
   label: string;
+  kind: AiConnectionKind;
   base_url: string;
   wire: Wire;
   key_required: boolean;
   docs_url: string | null;
   local: boolean;
+  /** Executable name for installed CLI presets. */
+  executable: string | null;
+  beta: boolean;
 }
 
 export interface AiSettings {
   active_connection_id: number | null;
+  /** Used only when the active connection is a CLI. Must name an HTTP connection. */
+  fallback_connection_id: number | null;
   /** replace names with Speaker N before the transcript leaves the machine */
   pseudonymize: boolean;
+}
+
+export interface AiAgentDiscovery {
+  preset: string;
+  label: string;
+  executable_path: string | null;
+  installed: boolean;
+  beta: boolean;
+  supported: boolean;
+  detail: string;
 }
 
 export interface OverviewChanged {

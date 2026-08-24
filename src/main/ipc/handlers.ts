@@ -12,6 +12,7 @@ import type {
 } from "../../shared/ipc";
 import { SUPPORT_MODELS } from "../../shared/ipc";
 import * as ai from "../ai/generate";
+import { detectAgents } from "../ai/cli";
 import * as connections from "../ai/connections";
 import { probe } from "../ai/probe";
 import { PRESETS, chatDefault, listModels, modelContext, normalizeBaseUrl } from "../ai/providers";
@@ -265,10 +266,15 @@ const handlers: Record<string, Handler> = {
     if ("pseudonymize" in (a ?? {})) {
       settingsDb.setRaw(db(), settingsDb.keys.AI_PSEUDONYMIZE, a?.pseudonymize ? "1" : "0");
     }
+    if ("fallback_connection_id" in (a ?? {})) {
+      connections.setFallback(db(), a?.fallback_connection_id === null ? null : requireId(a, "fallback_connection_id"));
+    }
     return connections.settings(db());
   },
 
   ai_presets: () => PRESETS,
+
+  ai_detect_agents: () => detectAgents(),
 
   /** Keys never travel back out; a connection reports that it has one, not what it is. */
   ai_connections_list: () => connections.list(db()),

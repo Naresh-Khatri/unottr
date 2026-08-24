@@ -1,13 +1,16 @@
-// The endpoints the user has added, and the only file in the app that reads an API key.
+// The inference backends the user has added, and the only file in the app that reads an API key.
 // `toWire` is deliberately the single way a row leaves here, so a key cannot escape by
 // someone forgetting to strip a field.
 
 import { eq } from "drizzle-orm";
 import { safeStorage } from "electron";
+import { accessSync, constants } from "node:fs";
+import { isAbsolute } from "node:path";
 import type { AiConnection, AiConnectionInput, AiSettings, ProbeResult, Strategy } from "../../shared/ipc";
 import type { Db } from "../db/client";
 import { aiConnections } from "../db/schema";
 import * as settingsDb from "../db/settings";
+import { discoveredPath } from "./cli";
 import { isLocal, normalizeBaseUrl, preset, priceOf } from "./providers";
 
 export type Row = typeof aiConnections.$inferSelect;
@@ -67,8 +70,17 @@ export function list(db: Db): AiConnection[] {
 export function settings(db: Db): AiSettings {
   return {
     active_connection_id: active(db)?.id ?? null,
+    fallback_connection_id: fallback(db)?.id ?? null,
     pseudonymize: settingsDb.getRaw(db, settingsDb.keys.AI_PSEUDONYMIZE) === "1",
   };
+}
+
+export function fallback(db: Db): Row | null {
+  const raw = settingsDb.getRaw(db, settingsDb.keys.AI_FALLBACK_CONNECTION_ID);
+  const id = raw ? Number(raw) : Number.NaN;
+  if (!Number.isInteger(id)) return null;
+  const found = row(db, id);
+  return found?.kind === "http" ? found : null;
 }
 
 /** The only shape a connection crosses ipc in. Note what is absent: the key. */
@@ -77,8 +89,12 @@ export function toWire(r: Row, isActive: boolean): AiConnection {
     id: r.id,
     label: r.label,
     preset: r.preset,
+    kind: r.kind,
     wire: r.wire,
     base_url: r.baseUrl,
+    executable_path: r.executablePath,
+    subscription_managed: r.kind === "cli",
+    beta: preset(r.preset)?.beta ?? false,
     key_set: Boolean(r.keyEnc || r.keyPlain),
     key_storage: r.keyPlain ? "plain" : r.keyEnc ? "encrypted" : "none",
     active_model: r.activeModel,
@@ -91,7 +107,7 @@ export function toWire(r: Row, isActive: boolean): AiConnection {
     price_out_usd: r.priceOutUsd,
     consented: r.consented === 1,
     spend_cents: r.spendCents,
-    local: isLocal(r.baseUrl),
+    local: r.kind === "http" && isLocal(r.baseUrl),
     probe: parse<ProbeResult>(r.probeJson),
     probed_at: r.probedAt,
     active: isActive,
@@ -115,23 +131,42 @@ export function save(db: Db, input: AiConnectionInput): AiConnection {
 
   const presetId = input.preset ?? existing?.preset ?? "custom";
   const spec = preset(presetId);
-  const baseUrl = normalizeBaseUrl(input.base_url ?? existing?.baseUrl ?? spec?.base_url ?? "");
-  if (!baseUrl) throw new Error("a base URL is required");
+  if (!spec && presetId !== "custom") throw new Error(`unknown AI preset ${presetId}`);
+  const kind = spec?.kind ?? existing?.kind ?? "http";
+  const baseUrl = kind === "cli" ? "" : normalizeBaseUrl(input.base_url ?? existing?.baseUrl ?? spec?.base_url ?? "");
+  if (kind === "http" && !baseUrl) throw new Error("a base URL is required");
+  const executablePath = kind === "cli"
+    ? input.executable_path ?? existing?.executablePath ?? discoveredPath(presetId)
+    : null;
+  if (kind === "cli" && !executablePath) throw new Error(`${spec?.label ?? presetId} was not found on this machine`);
+  if (executablePath) {
+    if (!isAbsolute(executablePath)) throw new Error("the agent executable path must be absolute");
+    try {
+      accessSync(executablePath, constants.X_OK);
+    } catch {
+      throw new Error("the agent executable is not runnable");
+    }
+  }
 
   const activeModel = input.active_model !== undefined ? input.active_model : (existing?.activeModel ?? null);
-  const local = isLocal(baseUrl);
+  const local = kind === "http" && isLocal(baseUrl);
   // a changed model is a changed price; only fall back to the table when the user has not
   // typed a number of their own for this connection
-  const fallback = priceOf(activeModel, local);
-  const priceIn = input.price_in_usd !== undefined ? input.price_in_usd : (existing?.priceInUsd ?? fallback?.[0] ?? null);
+  const fallbackPrice = kind === "cli" ? null : priceOf(activeModel, local);
+  const priceIn = kind === "cli" ? null
+    : input.price_in_usd !== undefined ? input.price_in_usd : (existing?.priceInUsd ?? fallbackPrice?.[0] ?? null);
   const priceOut =
-    input.price_out_usd !== undefined ? input.price_out_usd : (existing?.priceOutUsd ?? fallback?.[1] ?? null);
+    kind === "cli" ? null
+      : input.price_out_usd !== undefined ? input.price_out_usd : (existing?.priceOutUsd ?? fallbackPrice?.[1] ?? null);
 
   const values = {
     label: input.label ?? existing?.label ?? unique(db, spec?.label ?? hostOf(baseUrl), existing?.id ?? null),
     preset: presetId,
+    kind,
     wire: spec?.wire ?? existing?.wire ?? "openai",
     baseUrl,
+    executablePath,
+    ...(kind === "cli" ? { keyEnc: null, keyPlain: null } : {}),
     activeModel,
     contextTokens: input.context_tokens !== undefined ? input.context_tokens : (existing?.contextTokens ?? null),
     timeoutMs: input.timeout_ms !== undefined ? input.timeout_ms : (existing?.timeoutMs ?? null),
@@ -150,9 +185,15 @@ export function save(db: Db, input: AiConnectionInput): AiConnection {
         .returning({ id: aiConnections.id })
         .get().id;
 
-  if (input.key !== undefined) setKey(db, id, input.key, input.allow_plain === true);
+  if (kind === "http" && input.key !== undefined) setKey(db, id, input.key, input.allow_plain === true);
   // the url or the key moved, so last run's verdict is about a different endpoint
-  if (existing && (existing.baseUrl !== baseUrl || input.key !== undefined)) clearProbe(db, id);
+  if (existing && (
+    existing.kind !== kind ||
+    existing.baseUrl !== baseUrl ||
+    existing.executablePath !== executablePath ||
+    existing.activeModel !== activeModel ||
+    input.key !== undefined
+  )) clearProbe(db, id);
   if (!existing && activeId(db) === null) activate(db, id);
 
   return toWire(row(db, id) as Row, active(db)?.id === id);
@@ -160,6 +201,9 @@ export function save(db: Db, input: AiConnectionInput): AiConnection {
 
 export function remove(db: Db, id: number): void {
   db.delete(aiConnections).where(eq(aiConnections.id, id)).run();
+  if (fallback(db)?.id === id || settingsDb.getRaw(db, settingsDb.keys.AI_FALLBACK_CONNECTION_ID) === String(id)) {
+    settingsDb.setRaw(db, settingsDb.keys.AI_FALLBACK_CONNECTION_ID, "");
+  }
   if (activeId(db) === id) {
     const next = rows(db)[0];
     if (next) activate(db, next.id);
@@ -170,6 +214,16 @@ export function remove(db: Db, id: number): void {
 export function activate(db: Db, id: number): void {
   if (!row(db, id)) throw new Error(`no AI connection with id ${id}`);
   settingsDb.setRaw(db, settingsDb.keys.AI_ACTIVE_CONNECTION_ID, String(id));
+}
+
+export function setFallback(db: Db, id: number | null): void {
+  if (id === null) {
+    settingsDb.setRaw(db, settingsDb.keys.AI_FALLBACK_CONNECTION_ID, "");
+    return;
+  }
+  const found = row(db, id);
+  if (!found || found.kind !== "http") throw new Error("the fallback must be an HTTP API connection");
+  settingsDb.setRaw(db, settingsDb.keys.AI_FALLBACK_CONNECTION_ID, String(id));
 }
 
 /**
@@ -223,6 +277,7 @@ function clearProbe(db: Db, id: number): void {
 
 /** Fold one call's usage into this connection's total. Priceless models keep a total of 0. */
 export function addSpend(db: Db, r: Row, tokensIn: number, tokensOut: number): void {
+  if (r.kind === "cli") return;
   if (r.priceInUsd == null && r.priceOutUsd == null) return;
   const cents = ((tokensIn * (r.priceInUsd ?? 0) + tokensOut * (r.priceOutUsd ?? 0)) / 1_000_000) * 100;
   db.update(aiConnections)

@@ -9,13 +9,14 @@ import * as overviewsDb from "../db/overviews";
 import { cast, myRole } from "../db/people";
 import { recordings, segments } from "../db/schema";
 import { events } from "../events";
+import { askBackend } from "./backend";
+import { CliProcessError } from "./cli";
 import * as connections from "./connections";
 import { ground } from "./ground";
 import * as prompt from "./prompt";
-import { languageModel } from "./providers";
 import { type OverviewOutput, overviewExample, overviewHeadSchema, overviewSchema } from "./schema";
 import { merge, windows } from "./split";
-import { ask, isShapeError } from "./structured";
+import { isShapeError } from "./structured";
 
 /** The floor under any one call: below this, a provider that is merely busy looks broken. */
 const MIN_TIMEOUT_MS = 120_000;
@@ -70,12 +71,10 @@ export class ContextError extends Error {
 export async function generate(db: Db, recordingId: number, signal?: AbortSignal): Promise<void> {
   if (inFlight.has(recordingId)) return;
 
-  const conn = connections.active(db);
-  if (!conn) throw new connections.MissingConnectionError();
-  if (connections.needsKey(conn)) throw new connections.MissingKeyError(conn.label);
-  if (conn.consented !== 1) throw new ConsentError();
-  const modelId = conn.activeModel;
-  if (!modelId) throw new Error(`${conn.label} has no model selected`);
+  const primary = connections.active(db);
+  if (!primary) throw new connections.MissingConnectionError();
+  validateConnection(primary);
+  const fallback = primary.kind === "cli" ? connections.fallback(db) : null;
 
   const recording = db
     .select({ recordedAt: recordings.recordedAt, status: recordings.status })
@@ -103,35 +102,25 @@ export async function generate(db: Db, recordingId: number, signal?: AbortSignal
   };
   const built = prompt.build({ ...base, segments: lines });
 
-  // planned before anything is sent: whether an hour of meeting fits in one request is
-  // knowable now, and finding out from a 400 after two minutes of cpu is not better
-  const plan = conn.contextTokens ? planWindows(lines, built, conn.contextTokens) : [];
-  if (conn.contextTokens && !plan.length) throw new ContextError(conn.contextTokens, modelId);
-
   inFlight.add(recordingId);
-  overviewsDb.markRunning(db, recordingId, modelId, conn.label, role);
+  overviewsDb.markRunning(db, recordingId, displayModel(primary), primary.label, role);
   events.overviewChanged({ recording_id: recordingId });
 
-  const attempt = (chunks: prompt.PromptSegment[][]) =>
-    chunks.length > 1
-      ? inParts(conn, modelId, chunks, base, recordingId, signal)
-      : call(conn, modelId, built, signal);
-
   try {
-    const { object, usage } = await attempt(plan).catch((err: unknown) => {
-      // the server knows its own window and says so in the 400. Believe it, remember it, and
-      // split — this is the one error worth a second attempt, because the second one differs
-      const limit = contextLimitFrom(err);
-      if (!limit) throw err;
-      connections.setContextTokens(db, conn.id, limit);
-      const halved = Math.min(
-        budgetChars(built, limit, PART_RESERVE_TOKENS),
-        Math.ceil(built.transcriptChars / 2),
-      );
-      const replan = windows(lines, halved);
-      if (replan.length < 2) throw new ContextError(limit, modelId);
-      return attempt(replan);
-    });
+    let used = primary;
+    let answer;
+    try {
+      answer = await runConnection(db, primary, lines, built, base, recordingId, signal);
+    } catch (primaryError) {
+      if (!fallback || signal?.aborted) throw primaryError;
+      validateConnection(fallback);
+      used = fallback;
+      overviewsDb.markRunning(db, recordingId, displayModel(fallback), fallback.label, role);
+      events.overviewChanged({ recording_id: recordingId });
+      answer = await runConnection(db, fallback, lines, built, base, recordingId, signal);
+    }
+
+    const { object, usage } = answer;
 
     const grounded = ground(object, {
       starts: new Map(rows.map((r) => [r.id, r.startMs])),
@@ -145,13 +134,13 @@ export async function generate(db: Db, recordingId: number, signal?: AbortSignal
     const tokensOut = usage.outputTokens ?? null;
     overviewsDb.save(db, recordingId, {
       ...grounded,
-      model: modelId,
-      provider: conn.label,
+      model: answer.model ?? displayModel(used),
+      provider: used.label,
       roleUsed: role,
       tokensIn,
       tokensOut,
     });
-    connections.addSpend(db, conn, tokensIn ?? 0, tokensOut ?? 0);
+    connections.addSpend(db, used, tokensIn ?? 0, tokensOut ?? 0);
   } catch (err) {
     overviewsDb.markFailed(db, recordingId, message(err), classify(err));
   } finally {
@@ -160,16 +149,56 @@ export async function generate(db: Db, recordingId: number, signal?: AbortSignal
   }
 }
 
+function validateConnection(conn: connections.Row): void {
+  if (connections.needsKey(conn)) throw new connections.MissingKeyError(conn.label);
+  if (conn.consented !== 1) throw new ConsentError();
+  if (conn.kind === "http" && !conn.activeModel) throw new Error(`${conn.label} has no model selected`);
+  if (conn.kind === "cli" && !conn.executablePath) throw new Error(`${conn.label} has no executable selected`);
+}
+
+function displayModel(conn: connections.Row): string {
+  return conn.activeModel ?? `${conn.label} default`;
+}
+
+async function runConnection(
+  db: Db,
+  conn: connections.Row,
+  lines: prompt.PromptSegment[],
+  built: prompt.BuiltPrompt,
+  base: Omit<prompt.PromptInput, "segments" | "part">,
+  recordingId: number,
+  signal?: AbortSignal,
+) {
+  const plan = conn.contextTokens ? planWindows(lines, built, conn.contextTokens) : [];
+  if (conn.contextTokens && !plan.length) throw new ContextError(conn.contextTokens, displayModel(conn));
+  const attempt = (chunks: prompt.PromptSegment[][]) =>
+    chunks.length > 1
+      ? inParts(conn, chunks, base, recordingId, signal)
+      : call(conn, built, signal);
+
+  return attempt(plan).catch((err: unknown) => {
+    const limit = contextLimitFrom(err);
+    if (!limit) throw err;
+    connections.setContextTokens(db, conn.id, limit);
+    const halved = Math.min(
+      budgetChars(built, limit, PART_RESERVE_TOKENS),
+      Math.ceil(built.transcriptChars / 2),
+    );
+    const replan = windows(lines, halved);
+    if (replan.length < 2) throw new ContextError(limit, displayModel(conn));
+    return attempt(replan);
+  });
+}
+
 /**
  * One retry, and only for a malformed answer — the model is told what it got wrong. Anything
  * else (auth, rate limit, a dropped socket) is the sdk's own `maxRetries` business, and
  * retrying a 401 in a loop just burns time.
  */
-async function call(conn: connections.Row, modelId: string, built: prompt.BuiltPrompt, signal?: AbortSignal) {
+async function call(conn: connections.Row, built: prompt.BuiltPrompt, signal?: AbortSignal) {
   const run = (extra: string) =>
-    ask({
-      model: model(conn, modelId),
-      strategy: conn.strategy,
+    askBackend({
+      connection: conn,
       schema: overviewSchema,
       example: overviewExample,
       system: built.system,
@@ -194,13 +223,13 @@ async function call(conn: connections.Row, modelId: string, built: prompt.BuiltP
  */
 async function inParts(
   conn: connections.Row,
-  modelId: string,
   plan: prompt.PromptSegment[][],
   base: Omit<prompt.PromptInput, "segments" | "part">,
   recordingId: number,
   signal?: AbortSignal,
 ) {
   const usage = { inputTokens: 0, outputTokens: 0 };
+  let actualModel: string | null = null;
   const add = (u: { inputTokens?: number; outputTokens?: number }) => {
     usage.inputTokens += u.inputTokens ?? 0;
     usage.outputTokens += u.outputTokens ?? 0;
@@ -212,22 +241,26 @@ async function inParts(
     // is indistinguishable from a hang, and cancelling a working run is the cost of that
     events.overviewProgress({ recording_id: recordingId, part: i + 1, total: plan.length });
     const built = prompt.build({ ...base, segments, part: { index: i + 1, total: plan.length } });
-    const part = await call(conn, modelId, built, signal);
+    const part = await call(conn, built, signal);
     parts.push(part.object);
     add(part.usage);
+    actualModel = part.model ?? actualModel;
   }
 
   const headPrompt = prompt.buildHead(parts.map((p) => p.tldr), base.role);
-  const head = await ask({
-    model: model(conn, modelId),
-    strategy: conn.strategy,
+  const head = await askBackend({
+    connection: conn,
     schema: overviewHeadSchema,
     ...headPrompt,
     abortSignal: deadline(conn, headPrompt, signal),
   });
   add(head.usage);
 
-  return { object: { ...merge(parts), title: head.object.title, tldr: head.object.tldr }, usage };
+  return {
+    object: { ...merge(parts), title: head.object.title, tldr: head.object.tldr },
+    usage,
+    model: head.model ?? actualModel,
+  };
 }
 
 /**
@@ -255,16 +288,6 @@ function planWindows(
   // a single window on the smaller reserve is a single-pass call that was never sized for one
   return split.length > 1 ? split : whole;
 }
-
-const model = (conn: connections.Row, modelId: string) =>
-  languageModel({
-    wire: conn.wire,
-    preset: conn.preset,
-    baseUrl: conn.baseUrl,
-    modelId,
-    key: connections.keyOf(conn),
-    strategy: conn.strategy,
-  });
 
 /** The caller's cancel and the hard ceiling are both aborts; the call only knows about one. */
 function deadline(conn: connections.Row, built: prompt.BuiltPrompt, signal?: AbortSignal): AbortSignal {
@@ -298,6 +321,13 @@ function classify(err: unknown): ErrorKind {
   if (err instanceof Error && err.name === "TimeoutError") return "timeout";
   if (err instanceof Error && err.name === "AbortError") return "aborted";
   if (isShapeError(err)) return "validation";
+  if (err instanceof CliProcessError) {
+    if (/auth|log[ -]?in|credential|api key|unauthori[sz]ed|\b401\b|\b403\b/i.test(`${err.message} ${err.stderr}`)) {
+      return "auth";
+    }
+    if (/could not start|not found|ENOENT/i.test(err.message)) return "unreachable";
+    return "unknown";
+  }
   if (APICallError.isInstance(err)) {
     if (err.statusCode === 401 || err.statusCode === 403) return "auth";
     if (err.statusCode === 429) return "rate_limit";

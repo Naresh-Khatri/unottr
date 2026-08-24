@@ -4,8 +4,12 @@
 // rung it stopped on is what the ui shows.
 
 import { z } from "zod";
+import { access } from "node:fs/promises";
+import { constants } from "node:fs";
 import type { ProbeResult, ProbeRung, Strategy } from "../../shared/ipc";
 import type { Db } from "../db/client";
+import { askBackend } from "./backend";
+import { CliProcessError } from "./cli";
 import { type Row, keyOf, setActiveModel, setModels, setProbe } from "./connections";
 import { HttpError, chatDefault, languageModel, listModels, preset } from "./providers";
 import { ask } from "./structured";
@@ -27,6 +31,7 @@ const PING_PROMPT = "Set ok to true and city to the capital of France.";
 const LADDER: Strategy[] = ["native", "json_mode", "prompted"];
 
 export async function probe(db: Db, r: Row, signal?: AbortSignal): Promise<ProbeResult> {
+  if (r.kind === "cli") return probeCli(db, r, signal);
   const rungs: ProbeRung[] = [];
   const key = keyOf(r);
   const spec = preset(r.preset);
@@ -109,6 +114,54 @@ export async function probe(db: Db, r: Row, signal?: AbortSignal): Promise<Probe
   return stop();
 }
 
+async function probeCli(db: Db, r: Row, signal?: AbortSignal): Promise<ProbeResult> {
+  const rungs: ProbeRung[] = [];
+  const stop = (strategy: Strategy | null, model: string | null): ProbeResult => {
+    const result = { ok: rungs.every((g) => g.ok), rungs, strategy, models: [], model };
+    setProbe(db, r.id, result, strategy);
+    return result;
+  };
+
+  if (!r.executablePath) {
+    rungs.push({ step: "reachable", ok: false, detail: "the executable is no longer configured" });
+    return stop(null, null);
+  }
+  try {
+    await access(r.executablePath, constants.X_OK);
+    rungs.push({ step: "reachable", ok: true, detail: r.executablePath });
+  } catch {
+    rungs.push({ step: "reachable", ok: false, detail: "the executable was moved or removed" });
+    return stop(null, null);
+  }
+
+  try {
+    const answer = await askBackend({
+      connection: { ...r, strategy: "native" },
+      schema: pingSchema,
+      system: PING_SYSTEM,
+      prompt: PING_PROMPT,
+      abortSignal: timeout(r.timeoutMs ?? GENERATE_MS, signal),
+    });
+    rungs.push({ step: "authorized", ok: true, detail: "existing CLI login" });
+    rungs.push({ step: "responds", ok: true, detail: answer.model ?? "CLI default model" });
+    if (!answer.object.ok) {
+      rungs.push({ step: "structured", ok: false, detail: "the agent answered, but not what it was asked" });
+      return stop(null, answer.model);
+    }
+    rungs.push({ step: "structured", ok: true, detail: "schema enforced by the CLI" });
+    return stop("native", answer.model);
+  } catch (err) {
+    const detail = message(err);
+    if (isAuthError(err)) {
+      rungs.push({ step: "authorized", ok: false, detail: "open the CLI and sign in first" });
+      return stop(null, null);
+    }
+    rungs.push({ step: "authorized", ok: true, detail: "CLI started" });
+    rungs.push({ step: "responds", ok: false, detail });
+    return stop(null, null);
+  }
+}
+
 const LABELS: Record<Strategy, string> = {
   native: "schema enforced by the server",
   json_mode: "JSON mode",
@@ -139,3 +192,7 @@ const hostOf = (url: string): string => {
 };
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+const isAuthError = (err: unknown): boolean =>
+  err instanceof CliProcessError &&
+  /auth|log[ -]?in|credential|api key|unauthori[sz]ed|\b401\b|\b403\b/i.test(`${err.message} ${err.stderr}`);

@@ -18,6 +18,7 @@ import { APICallError } from "ai";
 import { type OverviewOutput, overviewExample, overviewSchema } from "../src/main/ai/schema";
 import { z } from "zod";
 import * as connections from "../src/main/ai/connections";
+import { parseClaude, parseCodex } from "../src/main/ai/cli";
 
 // nothing here touches a key, so the only thing electron is asked for is its absence
 vi.mock("electron", () => ({ safeStorage: { isEncryptionAvailable: () => false, encryptString: () => Buffer.alloc(0), decryptString: () => "" } }));
@@ -215,6 +216,33 @@ describe("loosely", () => {
   });
 });
 
+describe("installed agent output", () => {
+  it("reads Claude's schema result, actual model, and usage", () => {
+    const answer = parseClaude(JSON.stringify({
+      structured_output: { ok: true },
+      usage: { input_tokens: 42, output_tokens: 7 },
+      modelUsage: { "claude-sonnet-4-6": { inputTokens: 42, outputTokens: 7 } },
+    }), pingSchema);
+    expect(answer).toEqual({
+      object: { ok: true },
+      usage: { inputTokens: 42, outputTokens: 7 },
+      model: "claude-sonnet-4-6",
+    });
+  });
+
+  it("reads Codex's final JSONL answer and turn usage", () => {
+    const answer = parseCodex([
+      JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: '{"ok":true}' } }),
+      JSON.stringify({ type: "turn.completed", usage: { input_tokens: 30, output_tokens: 4 } }),
+    ].join("\n"), pingSchema, null);
+    expect(answer).toEqual({
+      object: { ok: true },
+      usage: { inputTokens: 30, outputTokens: 4 },
+      model: null,
+    });
+  });
+});
+
 // ---------------------------------------------------------------------------- the migration
 
 const MIGRATIONS = resolve(import.meta.dirname, "../drizzle");
@@ -307,6 +335,22 @@ describe("connection labels", () => {
     connections.save(db, { preset: "lm-studio", base_url: "http://localhost:1234/v1" });
     const mine = connections.save(db, { preset: "lm-studio", base_url: "http://localhost:4321/v1", label: "LM Studio" });
     expect(mine.label).toBe("LM Studio");
+  });
+
+  it("stores installed agents separately from HTTP endpoints and accepts only an HTTP fallback", () => {
+    const db = fresh();
+    const claude = connections.save(db, { preset: "claude-code", executable_path: "/bin/true" });
+    const api = connections.save(db, { preset: "anthropic", base_url: "https://api.anthropic.com/v1" });
+
+    expect(claude).toMatchObject({
+      kind: "cli",
+      executable_path: "/bin/true",
+      base_url: "",
+      subscription_managed: true,
+    });
+    connections.setFallback(db, api.id);
+    expect(connections.settings(db).fallback_connection_id).toBe(api.id);
+    expect(() => connections.setFallback(db, claude.id)).toThrow(/HTTP API connection/);
   });
 });
 

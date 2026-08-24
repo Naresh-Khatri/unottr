@@ -22,6 +22,7 @@ export const keys = {
   // "" = none. Everything else about a connection — key, model, consent, spend — is a
   // column on `ai_connections`, not a setting.
   AI_ACTIVE_CONNECTION_ID: "ai_active_connection_id",
+  AI_FALLBACK_CONNECTION_ID: "ai_fallback_connection_id",
 } as const;
 
 /** `base.en` stays cli-only, so it is not one of the three tiers settings offers. */
@@ -126,6 +127,7 @@ export function validate(key: string, value: string): string | null {
       return ok(value === "0" || value === "1");
     // "" clears it; ai_connection_activate is the normal path
     case keys.AI_ACTIVE_CONNECTION_ID:
+    case keys.AI_FALLBACK_CONNECTION_ID:
       return ok(value === "" || (Number.isInteger(num) && num > 0));
     default:
       return `unknown setting key ${key}`;

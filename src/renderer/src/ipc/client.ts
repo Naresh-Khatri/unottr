@@ -2,7 +2,7 @@
 // cheap writes are real. The pipeline commands (retry, backfill, models, cache) reach the
 // main process and get a "not implemented until 08.x" error until their sub-phase lands.
 import type {
-  AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
+  AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
   ModelInfo, OverviewChanged, OverviewPayload, OverviewProgress, Person, ProbeResult, RecordingDetail,
   RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit,
   Settings, SupportModels, SystemStats, TaskStatus, WatchFolder,
@@ -126,10 +126,12 @@ export const api = {
     USE_MOCK ? mockCommands.task_update(id, patch) : invoke("task_update", { id, ...patch }),
   aiSettings: (): Promise<AiSettings> =>
     USE_MOCK ? mockCommands.ai_settings_get() : invoke("ai_settings_get"),
-  aiSettingsSet: (patch: { pseudonymize?: boolean }): Promise<AiSettings> =>
+  aiSettingsSet: (patch: { pseudonymize?: boolean; fallback_connection_id?: number | null }): Promise<AiSettings> =>
     USE_MOCK ? mockCommands.ai_settings_set(patch) : invoke("ai_settings_set", patch),
   aiPresets: (): Promise<AiPreset[]> =>
     USE_MOCK ? mockCommands.ai_presets() : invoke("ai_presets"),
+  aiDetectAgents: (): Promise<AiAgentDiscovery[]> =>
+    USE_MOCK ? mockCommands.ai_detect_agents() : invoke("ai_detect_agents"),
   aiConnections: (): Promise<AiConnection[]> =>
     USE_MOCK ? mockCommands.ai_connections_list() : invoke("ai_connections_list"),
   /** `key` absent leaves the stored one alone; `allow_plain` answers "no keyring — store it in the clear?". */
