@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 
 const MARKS: Record<string, string> = {
   anthropic,
+  "claude-code": anthropic,
+  "codex-cli": openai,
   "lm-studio": lmStudio,
   mistral,
   ollama,

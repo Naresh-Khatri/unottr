@@ -2,9 +2,9 @@
 // not something you want to look at every day — and everything else lives behind Manage.
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowClockwise, CheckCircle, Circle, Plus, Trash, Warning, XCircle } from "@phosphor-icons/react";
-import { api } from "@/ipc/client";
-import type { AiConnection, AiConnectionInput, AiPreset, AiSettings, ProbeResult } from "@/ipc/types";
+import { ArrowClockwise, CheckCircle, Circle, Plus, TerminalWindow, Trash, Warning, XCircle } from "@phosphor-icons/react";
+import { api, os } from "@/ipc/client";
+import type { AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, ProbeResult } from "@/ipc/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,7 +43,7 @@ export function AiCard() {
         <CardTitle>AI overview</CardTitle>
         <CardDescription>
           Transcription and diarization never touch a network. This step sends the transcript
-          text — never the audio or video — to whichever model you point it at, and only when
+          text — never the audio or video — to the model or installed CLI you select, and only when
           you press Generate.
         </CardDescription>
       </CardHeader>
@@ -53,8 +53,8 @@ export function AiCard() {
             <>
               <ProviderIcon preset={active.preset} />
               <span className="truncate text-sm font-medium">{active.label}</span>
-              <span className={cn("truncate text-sm", active.active_model ? "text-muted-foreground" : "text-amber-600")}>
-                {active.active_model ?? "no model picked"}
+              <span className={cn("truncate text-sm", active.active_model || active.kind === "cli" ? "text-muted-foreground" : "text-amber-600")}>
+                {active.active_model ?? (active.kind === "cli" ? "CLI default" : "no model picked")}
               </span>
               <StatusDot conn={active} />
             </>
@@ -65,6 +65,29 @@ export function AiCard() {
             {active ? "Manage" : <><Plus />Add a model</>}
           </Button>
         </div>
+
+        {active?.kind === "cli" && (
+          <div className="flex items-center gap-3 rounded-lg border border-dashed px-3 py-2">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <Label htmlFor="ai-fallback">API fallback</Label>
+              <span className="text-xs text-muted-foreground">Used only when the installed agent fails.</span>
+            </div>
+            <select
+              id="ai-fallback"
+              className={cn(SELECT, "max-w-52")}
+              value={ai.fallback_connection_id ?? ""}
+              onChange={async (e) => {
+                const id = e.target.value ? Number(e.target.value) : null;
+                setAi(await api.aiSettingsSet({ fallback_connection_id: id }));
+              }}
+            >
+              <option value="">No fallback</option>
+              {conns.filter((c) => c.kind === "http").map((c) => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
@@ -106,6 +129,7 @@ function ManageDialog({ open, onOpenChange, conns, onChanged }: {
   onChanged: () => Promise<void>;
 }) {
   const [presets, setPresets] = useState<AiPreset[]>([]);
+  const [agents, setAgents] = useState<AiAgentDiscovery[]>([]);
   const [editing, setEditing] = useState<AiConnection | "new" | null>(null);
   // Test cannot probe a connection that does not exist yet, so it saves one first. Held here
   // rather than in the form: the row has to go back whichever way the form is left.
@@ -119,34 +143,35 @@ function ManageDialog({ open, onOpenChange, conns, onChanged }: {
   }
 
   useEffect(() => {
-    if (open) api.aiPresets().then(setPresets, () => {});
+    if (open) {
+      api.aiPresets().then((all) => setPresets(all.filter((p) => p.kind === "http")), () => {});
+      api.aiDetectAgents().then(setAgents, () => {});
+    }
   }, [open]);
 
   // a row with no model can only say so in amber, which is a warning the user cannot act on.
   // one list call per broken row fills it in, and rows that are fine cost nothing.
   useEffect(() => {
     if (!open) return;
-    const unset = conns.filter((c) => !c.active_model);
+    const unset = conns.filter((c) => c.kind === "http" && !c.active_model);
     if (!unset.length) return;
     void Promise.all(unset.map((c) => api.aiModelsFetch({ id: c.id }).catch(() => []))).then(onChanged);
     // on open only: onChanged refreshes conns, and depending on those would loop
   }, [open]);
 
-  // opening onto an empty list should land on the add form, not an empty box with a button
   useEffect(() => {
-    if (open && !conns.length) setEditing("new");
     if (!open) setEditing(null);
-  }, [open, conns.length]);
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) void discard(); onOpenChange(v); }}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{editing ? "Connection" : "Models"}</DialogTitle>
+          <DialogTitle>{editing ? "API connection" : "Models and agents"}</DialogTitle>
           <DialogDescription>
             {editing
-              ? "Point unottr at any OpenAI-compatible endpoint — a local server or a hosted API."
-              : "Pick the one Generate should use. Everything else stays configured."}
+              ? "Point unottr at a local server or hosted API."
+              : "Pick one active model or installed agent. Other connections stay configured."}
           </DialogDescription>
         </DialogHeader>
 
@@ -170,6 +195,7 @@ function ManageDialog({ open, onOpenChange, conns, onChanged }: {
           />
         ) : (
           <div className="flex flex-col gap-2">
+            <InstalledAgentSetup agents={agents} conns={conns} onChanged={onChanged} showMissing />
             {/* the list is the only part that grows without bound; -mx/px so focus rings clear */}
             <div className="-mx-1 flex max-h-[45dvh] flex-col gap-2 overflow-y-auto px-1">
               {conns.map((c) => (
@@ -202,11 +228,17 @@ function ManageDialog({ open, onOpenChange, conns, onChanged }: {
                       {c.active && <Badge variant="outline" className="shrink-0">active</Badge>}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {c.active_model ?? <span className="text-amber-600">no model picked</span>} · {c.base_url}
+                      {c.kind === "cli" ? (
+                        <>{c.active_model ?? "CLI default"} · subscription-managed</>
+                      ) : (
+                        <>{c.active_model ?? <span className="text-amber-600">no model picked</span>} · {c.base_url}</>
+                      )}
                     </span>
                   </div>
                   <StatusDot conn={c} />
-                  <Button size="xs" variant="ghost" className="shrink-0" onClick={(e) => { e.stopPropagation(); setEditing(c); }}>Edit</Button>
+                  {c.kind === "http" && (
+                    <Button size="xs" variant="ghost" className="shrink-0" onClick={(e) => { e.stopPropagation(); setEditing(c); }}>Edit</Button>
+                  )}
                   <Button
                     size="xs"
                     variant="ghost"
@@ -224,12 +256,106 @@ function ManageDialog({ open, onOpenChange, conns, onChanged }: {
               ))}
             </div>
             <Button size="xs" variant="outline" className="self-start" onClick={() => setEditing("new")}>
-              <Plus />Add another
+              <Plus />Add API connection
             </Button>
           </div>
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function InstalledAgentSetup({ agents, conns, onChanged, showMissing = false }: {
+  agents: AiAgentDiscovery[];
+  conns: AiConnection[];
+  onChanged: () => Promise<void>;
+  showMissing?: boolean;
+}) {
+  const installed = agents.filter((a) => a.installed || (showMissing && a.supported));
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<Record<string, string>>({});
+  if (!installed.length) return null;
+
+  async function choose(agent: AiAgentDiscovery, selectedPath?: string): Promise<void> {
+    const executablePath = selectedPath ?? agent.executable_path;
+    if (!agent.supported || !executablePath) return;
+    setBusy(agent.preset);
+    setError((all) => ({ ...all, [agent.preset]: "" }));
+    let createdId: number | null = null;
+    try {
+      let conn = conns.find((c) => c.kind === "cli" && c.preset === agent.preset);
+      if (!conn) {
+        conn = await api.aiConnectionSave({
+          preset: agent.preset,
+          executable_path: executablePath,
+        });
+        createdId = conn.id;
+      } else if (conn.executable_path !== executablePath) {
+        conn = await api.aiConnectionSave({ id: conn.id, executable_path: executablePath });
+      }
+      const result = await api.aiConnectionTest(conn.id);
+      if (!result.ok) {
+        const failed = result.rungs.find((r) => !r.ok);
+        throw new Error(failed?.detail ?? "The agent did not pass its setup test.");
+      }
+      await api.aiConnectionActivate(conn.id);
+      await onChanged();
+    } catch (e) {
+      if (createdId !== null) await api.aiConnectionDelete(createdId).catch(() => {});
+      setError((all) => ({ ...all, [agent.preset]: String(e).replace(/^Error:\s*/, "") }));
+      await onChanged();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="mb-2 flex flex-col gap-2 rounded-xl border bg-muted/20 p-3">
+      <div className="flex items-start gap-2">
+        <TerminalWindow className="mt-0.5 size-4 shrink-0" weight="duotone" />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Installed agent CLIs</p>
+          <p className="text-xs text-muted-foreground">
+            Uses your existing CLI login. Transcript text still goes to that agent's provider.
+          </p>
+        </div>
+      </div>
+      {installed.map((agent) => {
+        const conn = conns.find((c) => c.kind === "cli" && c.preset === agent.preset);
+        const pending = busy === agent.preset;
+        return (
+          <div key={agent.preset} className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
+            <ProviderIcon preset={agent.preset} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                {agent.label}
+                {agent.beta && <Badge variant="outline">beta</Badge>}
+              </span>
+              <span className="truncate text-xs text-muted-foreground">
+                {error[agent.preset] || agent.detail}
+              </span>
+            </div>
+            {agent.supported ? (
+              <Button
+                size="xs"
+                variant={conn?.active ? "secondary" : "default"}
+                disabled={pending || conn?.active}
+                onClick={async () => {
+                  if (agent.installed) return choose(agent);
+                  const path = await os.pickFile();
+                  if (path) await choose(agent, path);
+                }}
+              >
+                {pending && <Spinner />}
+                {conn?.active ? "Selected" : !agent.installed ? "Locate" : conn?.probe?.ok ? "Use" : conn ? "Retry test" : "Test and use"}
+              </Button>
+            ) : (
+              <Badge variant="ghost" className="shrink-0 text-muted-foreground">not supported yet</Badge>
+            )}
+          </div>
+        );
+      })}
+    </section>
   );
 }
 

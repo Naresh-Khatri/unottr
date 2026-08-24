@@ -3,20 +3,19 @@ import {
   ArrowLeft, ArrowRight, CheckCircle, FilmSlate, FolderOpen, Info,
 } from "@phosphor-icons/react";
 import { api, onModelDownloadProgress, os } from "@/ipc/client";
-import type { BackfillEstimate, ModelInfo, SupportModels, WatchFolder } from "@/ipc/types";
+import type { AiAgentDiscovery, AiConnection, BackfillEstimate, ModelInfo, SupportModels, WatchFolder } from "@/ipc/types";
 import { SUPPORT_MODELS } from "@/ipc/types";
 import { bytesLabel, durationLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { InstalledAgentSetup } from "./AiConnections";
 
 const TIERS: { tier: string; label: string }[] = [
   { tier: "small", label: "Small" },
   { tier: "medium", label: "Medium" },
   { tier: "turbo", label: "Turbo" },
 ];
-
-const STEPS = ["Welcome", "Folder", "Model", "Backfill", "Tip"];
 
 // gates the app behind this once — flips first_run_complete via onDone -> App.tsx
 export function FirstRun({ onDone }: { onDone: () => void }) {
@@ -35,11 +34,19 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
   const [estimating, setEstimating] = useState(false);
   const [backfillStarted, setBackfillStarted] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [agents, setAgents] = useState<AiAgentDiscovery[] | null>(null);
+  const [connections, setConnections] = useState<AiConnection[]>([]);
 
   useEffect(() => {
     api.listModels().then(setModels);
     api.supportModels().then(setSupport);
+    api.aiDetectAgents().then(setAgents, () => setAgents([]));
+    api.aiConnections().then(setConnections, () => {});
   }, []);
+
+  const showAgents = agents === null || agents.some((a) => a.installed);
+  const steps = ["Welcome", "Folder", "Model", ...(showAgents ? ["AI"] : []), "Backfill", "Tip"];
+  const current = steps[step] ?? "Tip";
 
   useEffect(
     () =>
@@ -73,21 +80,21 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
   );
 
   useEffect(() => {
-    if (step !== 3 || !folder || estimate || estimating) return;
+    if (current !== "Backfill" || !folder || estimate || estimating) return;
     setEstimating(true);
     api.backfillEstimate(folder.id).then(setEstimate).finally(() => setEstimating(false));
     // only fires once per folder, guarded by estimate/estimating above
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, folder]);
+  }, [current, folder]);
 
   // small and mandatory, so it starts itself rather than asking — the button below is the
   // retry path, not the happy one
   useEffect(() => {
-    if (step !== 2 || supportBusy || supportError || !support || support.ready) return;
+    if (current !== "Model" || supportBusy || supportError || !support || support.ready) return;
     startSupport();
     // startSupport is stable enough; the guards above are what decide this
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, support, supportBusy, supportError]);
+  }, [current, support, supportBusy, supportError]);
 
   const tierInfo = models.find((m) => m.tier === tier);
   // `downloaded` can lag one refetch behind the terminal event, so pct still counts
@@ -153,25 +160,26 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
       <Card className="w-full max-w-md">
         <CardHeader>
           <div className="mb-1 flex gap-1">
-            {STEPS.map((s, i) => (
+            {steps.map((s, i) => (
               <div key={s} className={`h-1 flex-1 rounded-full ${i <= step ? "bg-primary" : "bg-muted"}`} />
             ))}
           </div>
-          <CardTitle>{STEPS[step]}</CardTitle>
+          <CardTitle>{current}</CardTitle>
         </CardHeader>
 
         <CardContent className="flex flex-col gap-4">
-          {step === 0 && (
+          {current === "Welcome" && (
             <div className="flex flex-col items-center gap-3 py-4 text-center">
               <FilmSlate className="size-8 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
                 unottr watches folders for recordings, transcribes and diarizes them locally,
-                and keeps everything searchable — no cloud, nothing leaves this machine.
+                and keeps everything searchable on this machine. AI overview is optional and
+                always shows what will be sent before the first request.
               </p>
             </div>
           )}
 
-          {step === 1 && (
+          {current === "Folder" && (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
                 Pick a folder to watch for new recordings.
@@ -183,7 +191,7 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
             </div>
           )}
 
-          {step === 2 && (
+          {current === "Model" && (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">Download a transcription model.</p>
               <div className="flex gap-2">
@@ -237,7 +245,24 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
             </div>
           )}
 
-          {step === 3 && (
+          {current === "AI" && (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Use an agent CLI you already signed into. This is optional and can be changed in Settings.
+              </p>
+              {agents === null ? (
+                <p className="text-sm text-muted-foreground">Looking for installed agents…</p>
+              ) : (
+                <InstalledAgentSetup
+                  agents={agents}
+                  conns={connections}
+                  onChanged={async () => setConnections(await api.aiConnections())}
+                />
+              )}
+            </div>
+          )}
+
+          {current === "Backfill" && (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
                 Found existing recordings in this folder. Transcribe them now?
@@ -261,7 +286,7 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
             </div>
           )}
 
-          {step === 4 && (
+          {current === "Tip" && (
             <div className="flex flex-col gap-3 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
               <p className="flex items-start gap-2">
                 <Info className="mt-0.5 size-4 shrink-0" />
@@ -279,10 +304,10 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
           <Button variant="ghost" size="sm" disabled={step === 0} onClick={() => setStep((s) => s - 1)}>
             <ArrowLeft />Back
           </Button>
-          {step < STEPS.length - 1 ? (
+          {step < steps.length - 1 ? (
             <Button
               size="sm"
-              disabled={(step === 1 && !folder) || (step === 2 && !(modelReady && supportReady))}
+              disabled={(current === "Folder" && !folder) || (current === "Model" && !(modelReady && supportReady))}
               onClick={() => setStep((s) => s + 1)}
             >
               Next<ArrowRight />

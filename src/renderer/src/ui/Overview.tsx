@@ -33,6 +33,7 @@ interface Props {
 export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, onOpenSettings }: Props) {
   const [payload, setPayload] = useState<OverviewPayload | null>(null);
   const [conn, setConn] = useState<AiConnection | null>(null);
+  const [fallbackConn, setFallbackConn] = useState<AiConnection | null>(null);
   const [presets, setPresets] = useState<AiPreset[]>([]);
   const [connLoaded, setConnLoaded] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
@@ -54,8 +55,9 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
   }, [reload]);
 
   const reloadConnection = useCallback(async () => {
-    const list = await api.aiConnections();
+    const [list, settings] = await Promise.all([api.aiConnections(), api.aiSettings()]);
     setConn(list.find((c) => c.active) ?? null);
+    setFallbackConn(list.find((c) => c.id === settings.fallback_connection_id) ?? null);
     setConnLoaded(true);
   }, []);
 
@@ -84,7 +86,14 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
   useEffect(() => { if (!running) setPart(null); }, [running]);
 
   async function generate() {
-    if (conn && !conn.consented) { setConsenting(true); return; }
+    if (conn && (!conn.consented || (fallbackConn && !fallbackConn.consented))) {
+      setConsenting(true);
+      return;
+    }
+    await runGeneration();
+  }
+
+  async function runGeneration() {
     setError(null);
     setBusy(true);
     try {
@@ -97,13 +106,15 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
     }
   }
 
-  /** Consent is per connection: saying yes to your own laptop is not saying yes to a cloud. */
   async function accept() {
     if (!conn) return;
     await api.aiConnectionSave({ id: conn.id, consented: true });
+    if (fallbackConn && !fallbackConn.consented) {
+      await api.aiConnectionSave({ id: fallbackConn.id, consented: true });
+    }
     await reloadConnection();
     setConsenting(false);
-    void generate();
+    void runGeneration();
   }
 
   async function copyMarkdown() {
@@ -123,13 +134,13 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
   if (connLoaded && !conn)
     return (
       <Empty>
-        <p>No model is connected yet. Point unottr at a local server or a hosted API and this tab
+        <p>No model is connected yet. Choose an installed agent, local server, or hosted API and this tab
           starts working.</p>
         <Button size="sm" variant="outline" onClick={onOpenSettings}>Connect a model</Button>
       </Empty>
     );
 
-  if (conn && !conn.active_model)
+  if (conn && conn.kind === "http" && !conn.active_model)
     return (
       <Empty>
         <p>{conn.label} is connected, but no model is picked.</p>
@@ -149,6 +160,7 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
     return (
       <Consent
         conn={conn}
+        fallback={fallbackConn}
         excerpt={excerpt(segments, speakers)}
         onAccept={accept}
         onCancel={() => setConsenting(false)}
@@ -397,10 +409,15 @@ function TaskRow({ task, speakers, palette, onSeek }: {
  * The first generate shows what actually leaves the machine, in the format it leaves in.
  * A paragraph describing the payload is not the payload.
  */
-function Consent({ conn, excerpt, onAccept, onCancel }: {
-  conn: AiConnection | null; excerpt: string; onAccept: () => void; onCancel: () => void;
+function Consent({ conn, fallback, excerpt, onAccept, onCancel }: {
+  conn: AiConnection | null;
+  fallback: AiConnection | null;
+  excerpt: string;
+  onAccept: () => void;
+  onCancel: () => void;
 }) {
-  const where = conn ? `${conn.active_model} on ${conn.label}` : "the model";
+  const model = conn?.active_model ?? (conn?.kind === "cli" ? "its default model" : "the model");
+  const where = conn ? `${model} on ${conn.label}` : "the model";
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto p-4 text-sm">
       <h3 className="font-medium">
@@ -409,8 +426,15 @@ function Consent({ conn, excerpt, onAccept, onCancel }: {
       <p className="text-muted-foreground">
         {conn?.local
           ? "It goes to a server running on this computer — nothing leaves it. Text only, never the audio or the video. This is what goes, verbatim:"
-          : "Text only — never the audio or the video. Nothing else in unottr talks to a network. This is what goes, verbatim:"}
+          : conn?.kind === "cli"
+            ? `Unottr starts the installed CLI on this computer. The CLI sends this text to ${conn.label}'s provider. Audio, video, and project files stay out of the request.`
+            : "Text only — never the audio or the video. Nothing else in unottr talks to a network. This is what goes, verbatim:"}
       </p>
+      {fallback && (
+        <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+          If {conn?.label} fails, Unottr may send the same text to {fallback.label}. It will not try another installed agent.
+        </p>
+      )}
       <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/50 p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
         {excerpt}
       </pre>
