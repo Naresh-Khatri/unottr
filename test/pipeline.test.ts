@@ -148,7 +148,8 @@ describe("transcribe", () => {
       segments: 3,
       speechMs: 25_000,
     });
-    expect(seen).toEqual([1 / 3, 2 / 3, 1]);
+    // Progress follows audio sent to Whisper, not checkpoint count: 10 s + 10 s + 5 s.
+    expect(seen).toEqual([0.4, 0.8, 1]);
     expect(rows().map((r) => r.text)).toEqual(["chunk 0.", "chunk 1.", "chunk 2."]);
     expect(recording()).toMatchObject({ status: "diarizing", stageDetail: null, lastChunkIdx: 2 });
   });
@@ -201,6 +202,16 @@ describe("transcribe", () => {
     expect(report.resumedFrom).toBe(2);
     expect((Fake.forks.at(-1)!.requests[0] as { job: TranscribeJob }).job.from).toBe(2);
     expect(rows().map((r) => r.text)).toEqual(["chunk 0.", "chunk 1.", "chunk 2."]);
+  });
+
+  it("reports a resumed checkpoint using completed audio duration", async () => {
+    scriptedRun(2, true);
+    await expect(transcribe(db, spec, () => {})).rejects.toThrow();
+
+    scriptedRun(CHUNKS.length);
+    const seen: number[] = [];
+    await transcribe(db, spec, (f) => seen.push(f));
+    expect(seen).toEqual([0.8, 1]);
   });
 
   it("drops segments past the checkpoint before restarting", async () => {

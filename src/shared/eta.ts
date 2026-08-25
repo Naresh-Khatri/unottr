@@ -10,3 +10,17 @@ export function etaLabel(ms: number | null): string {
   if (min < 60) return `~${min}m left`;
   return `~${Math.floor(min / 60)}h ${min % 60}m left`;
 }
+
+/**
+ * Turn an estimate received at `receivedAt` into a live countdown. The backend replaces the
+ * estimate whenever measured progress changes; between those events, work is still moving.
+ */
+export function countdownEta(
+  estimateMs: number | null,
+  receivedAt: number,
+  now = Date.now(),
+): number | null {
+  if (estimateMs === null || estimateMs < 0) return null;
+  const elapsed = Math.max(0, now - receivedAt);
+  return Math.max(0, estimateMs - elapsed);
+}

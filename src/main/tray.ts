@@ -5,7 +5,7 @@
 
 import { join } from "node:path";
 import { Menu, Tray as ElectronTray, app, nativeImage } from "electron";
-import { etaLabel } from "../shared/eta";
+import { countdownEta, etaLabel } from "../shared/eta";
 import { showMainWindow } from "./window";
 
 /** "Idle" when nothing is running, else "Transcribing N of M" plus the estimate when there is
@@ -20,9 +20,15 @@ export class Tray {
   private active = 0;
   private total = 0;
   private eta: number | null = null;
+  private etaReceivedAt = Date.now();
+  private renderedStatus = "";
   private explained = false;
+  private readonly countdown: ReturnType<typeof setInterval>;
 
-  private constructor(private readonly icon: ElectronTray) {}
+  private constructor(private readonly icon: ElectronTray) {
+    this.countdown = setInterval(() => this.render(), 1_000);
+    this.countdown.unref();
+  }
 
   static build(): Tray | null {
     const image = nativeImage.createFromPath(iconPath());
@@ -43,12 +49,10 @@ export class Tray {
   /** Cheap to call on every job event — electron rebuilds the menu, nothing repaints unless
    *  the text moved. */
   setStatus(active: number, total: number, etaMs: number | null = null): void {
-    // the label is minute-grained, so only redraw when it would actually read differently
-    if (active === this.active && total === this.total && etaLabel(etaMs) === etaLabel(this.eta))
-      return;
     this.active = active;
     this.total = total;
     this.eta = etaMs;
+    this.etaReceivedAt = Date.now();
     this.render();
   }
 
@@ -61,14 +65,20 @@ export class Tray {
   }
 
   destroy(): void {
+    clearInterval(this.countdown);
     this.icon.destroy();
   }
 
   private render(): void {
+    const liveEta = countdownEta(this.eta, this.etaReceivedAt);
+    const line = statusLine(this.active, this.total, liveEta);
+    // The timer runs every second, but the label is deliberately minute-grained.
+    if (line === this.renderedStatus) return;
+    this.renderedStatus = line;
     this.icon.setContextMenu(
       Menu.buildFromTemplate([
         { label: "Show unottr", click: () => showMainWindow() },
-        { label: statusLine(this.active, this.total, this.eta), enabled: false },
+        { label: line, enabled: false },
         { type: "separator" },
         { label: "Quit", click: () => app.quit() },
       ]),

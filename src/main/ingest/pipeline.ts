@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { and, eq, gt, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { utilityProcess } from "electron";
 import type { Resolved } from "../../shared/ipc";
-import type { Chunk } from "../../worker/chunk";
+import { type Chunk, durationMs as chunkDurationMs } from "../../worker/chunk";
 import type { Config } from "../../worker/diarize";
 import { isEmbedded } from "../../worker/cluster";
 import { type Assigned, type Segment, isSplit } from "../../worker/merge";
@@ -90,6 +90,13 @@ export async function transcribe(
 ): Promise<TranscribeReport> {
   const from = rewind(db, spec.recordingId);
   let chunks: Chunk[] = [];
+  let completedWork: number[] = [];
+
+  const workAt = (count: number): number => {
+    const total = completedWork.at(-1) ?? 0;
+    if (total <= 0) return chunks.length === 0 ? 0 : clamp01(count / chunks.length);
+    return clamp01((completedWork[Math.min(count, chunks.length)] ?? total) / total);
+  };
 
   const job: TranscribeJob = {
     pcm: spec.pcm,
@@ -104,13 +111,19 @@ export async function transcribe(
     switch (reply.type) {
       case "plan":
         chunks = reply.chunks;
+        completedWork = [0];
+        for (const chunk of chunks) {
+          completedWork.push(completedWork.at(-1)! + chunkDurationMs(chunk));
+        }
         // a resume starts partway in; say so before the first chunk lands, or the eta reads
         // the whole backlog as work still to do
-        if (from > 0) progress(clamp01(from / chunks.length));
+        if (from > 0) progress(workAt(from));
         return undefined;
       case "chunk":
         checkpoint(db, spec.recordingId, reply.idx, reply.utterances);
-        progress(clamp01((reply.idx + 1) / chunks.length));
+        // Whisper cost follows audio sent to the model. A five-second tail is not the same
+        // amount of work as a full thirty-second chunk, even though each is one checkpoint.
+        progress(workAt(reply.idx + 1));
         return undefined;
       case "transcribed":
         return true;

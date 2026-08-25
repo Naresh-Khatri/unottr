@@ -1,4 +1,4 @@
-export { etaLabel } from "../../../shared/eta";
+export { countdownEta, etaLabel } from "../../../shared/eta";
 
 export function hms(ms: number): string {
   const s = Math.floor(ms / 1000);

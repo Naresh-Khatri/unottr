@@ -6,9 +6,9 @@ import {
   api, onJobDone, onJobFailed, onJobProgress, onOverviewChanged, onRecordingDiscovered,
   PREVIEW_COUNT, previewUrl, thumbUrl,
 } from "@/ipc/client";
-import type { RecordingSummary, WatchFolder } from "@/ipc/types";
+import type { RecordingSummary, Status, WatchFolder } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
-import { dateLabel, durationLabel, etaLabel, hms, timeLabel } from "@/lib/format";
+import { countdownEta, dateLabel, durationLabel, etaLabel, hms, timeLabel } from "@/lib/format";
 import { errorInfo } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useVirtual } from "@/lib/virtual";
@@ -25,6 +25,51 @@ const ROW_ESTIMATE = 72; // measured hook corrects this once rows with progress/
 const COLS = 7;
 
 const TILE = "relative aspect-video w-24 shrink-0 overflow-hidden rounded-md border bg-muted";
+
+interface LiveProgress {
+  pct: number;
+  eta: number | null;
+  receivedAt: number;
+}
+
+function PipelineProgress({ status, pct }: { status: Status; pct: number }) {
+  if (status !== "transcribing" && status !== "diarizing") {
+    return <Progress value={pct * 100} className="mt-2" />;
+  }
+
+  const transcript = status === "diarizing" ? 1 : pct;
+  const speakers = status === "diarizing" ? pct : 0;
+  const stage = status === "transcribing"
+    ? "Transcribing, step 1 of 2"
+    : "Identifying speakers, step 2 of 2";
+
+  return (
+    <div
+      className="mt-2 flex gap-1"
+      role="progressbar"
+      aria-label={stage}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(pct * 100)}
+      aria-valuetext={`${stage}, ${Math.round(pct * 100)}%`}
+    >
+      <StageTrack value={transcript} />
+      <StageTrack value={speakers} />
+    </div>
+  );
+}
+
+function StageTrack({ value }: { value: number }) {
+  const scale = Math.min(1, Math.max(0, value));
+  return (
+    <span className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+      <span
+        className="block size-full origin-left bg-primary transition-transform duration-200 ease-out motion-reduce:transition-none"
+        style={{ transform: `scaleX(${scale})` }}
+      />
+    </span>
+  );
+}
 
 /** Preview i sits at (i+1)/(PREVIEW_COUNT+1) of the file — mirrors extractThumbnails' spacing. */
 const frameMs = (durationMs: number, i: number): number =>
@@ -157,7 +202,8 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
   onOpenSettings: () => void;
 }) {
   const [rows, setRows] = useState<RecordingSummary[]>([]);
-  const [progress, setProgress] = useState<Record<number, { pct: number; eta: number | null }>>({});
+  const [progress, setProgress] = useState<Record<number, LiveProgress>>({});
+  const [etaClock, setEtaClock] = useState(() => Date.now());
   const [folders, setFolders] = useState<WatchFolder[]>([]);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [refreshing, setRefreshing] = useState(false);
@@ -184,7 +230,10 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
     const offs = [
       // progress ticks are frequent — patch in place instead of refetching the list
       onJobProgress((p) => {
-        setProgress((prev) => ({ ...prev, [p.recording_id]: { pct: p.pct, eta: p.eta_ms } }));
+        setProgress((prev) => ({
+          ...prev,
+          [p.recording_id]: { pct: p.pct, eta: p.eta_ms, receivedAt: Date.now() },
+        }));
         setRows((prev) => prev.map((r) => (r.id === p.recording_id ? { ...r, status: p.stage } : r)));
       }),
       // terminal/new-row events are rare — a full refetch keeps duration/speaker_count/error correct
@@ -196,6 +245,13 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
     ];
     return () => offs.forEach((off) => off());
   }, [load]);
+
+  const hasLiveEta = rows.some((r) => IN_FLIGHT.includes(r.status) && progress[r.id]?.eta != null);
+  useEffect(() => {
+    if (!hasLiveEta) return undefined;
+    const timer = window.setInterval(() => setEtaClock(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [hasLiveEta]);
 
   const virtual = useVirtual({ count: rows.length, estimateSize: () => ROW_ESTIMATE, overscan: 8 });
 
@@ -292,7 +348,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                             <span className="inline-flex items-center gap-1"><Users />{r.speaker_count}</span>
                           )}
                         </div>
-                        {live && <Progress value={(progress[r.id]?.pct ?? 0) * 100} className="mt-2" />}
+                        {live && <PipelineProgress status={r.status} pct={progress[r.id]?.pct ?? 0} />}
                         {r.status === "failed" && (() => {
                           const info = errorInfo(r.error);
                           return (
@@ -331,7 +387,11 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                         <div className="flex justify-end"><StatusChip status={r.status} /></div>
                         {live && progress[r.id]?.eta != null && (
                           <div className="mt-1 text-xs text-muted-foreground tabular-nums">
-                            {etaLabel(progress[r.id].eta)}
+                            {etaLabel(countdownEta(
+                              progress[r.id].eta,
+                              progress[r.id].receivedAt,
+                              etaClock,
+                            ))}
                           </div>
                         )}
                       </TableCell>

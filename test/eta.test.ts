@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { type Db, openDatabase } from "../src/main/db/client";
 import { runMigrations } from "../src/main/db/migrate";
 import * as rates from "../src/main/db/stage-rates";
-import { etaLabel } from "../src/shared/eta";
+import { countdownEta, etaLabel } from "../src/shared/eta";
 import { Eta, type Rates, prior, rateKey } from "../src/main/ingest/eta";
 
 const MIN = 60_000;
@@ -122,5 +122,17 @@ describe("etaLabel", () => {
     expect(etaLabel(20_000)).toBe("<1m left");
     expect(etaLabel(4 * MIN + 20_000)).toBe("~4m left");
     expect(etaLabel(72 * MIN)).toBe("~1h 12m left");
+  });
+});
+
+describe("countdownEta", () => {
+  it("keeps counting between measured progress events", () => {
+    expect(countdownEta(90_000, 1_000, 31_000)).toBe(60_000);
+    expect(countdownEta(20_000, 1_000, 31_000)).toBe(0);
+  });
+
+  it("does not count backwards when clocks disagree", () => {
+    expect(countdownEta(90_000, 2_000, 1_000)).toBe(90_000);
+    expect(countdownEta(null, 1_000, 2_000)).toBeNull();
   });
 });
