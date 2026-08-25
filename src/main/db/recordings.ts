@@ -3,7 +3,7 @@
 
 import { and, eq, notInArray, sql } from "drizzle-orm";
 import type { Db } from "./client";
-import { type Status, TERMINAL, recordings } from "./schema";
+import { type Status, TERMINAL, recordings, segments } from "./schema";
 
 /** Seconds since the epoch. Everything in the schema stores integer unix time. */
 export const now = (): number => Math.floor(Date.now() / 1000);
@@ -81,6 +81,61 @@ export function fingerprintOf(db: Db, id: number): FingerprintRow | null {
     .where(eq(recordings.id, id))
     .get();
   return row ?? null;
+}
+
+export function setFingerprint(db: Db, id: number, fp: FingerprintRow): void {
+  db.update(recordings)
+    .set({ fpSize: fp.size, fpHead: fp.head, fpTail: fp.tail, updatedAt: now() })
+    .where(eq(recordings.id, id))
+    .run();
+}
+
+/** A known path changed after discovery. Terminal rows restart against the new bytes. */
+export function refreshChangedSource(db: Db, id: number, fp: FingerprintRow): boolean {
+  return db.transaction((tx) => {
+    const status = tx
+      .select({ status: recordings.status })
+      .from(recordings)
+      .where(eq(recordings.id, id))
+      .get()?.status;
+    if (!status || !TERMINAL.includes(status)) return false;
+
+    tx.delete(segments).where(eq(segments.recordingId, id)).run();
+    tx.update(recordings)
+      .set({
+        fpSize: fp.size,
+        fpHead: fp.head,
+        fpTail: fp.tail,
+        durationMs: null,
+        status: "discovered",
+        error: null,
+        attempts: 0,
+        lastChunkIdx: null,
+        stageDetail: null,
+        updatedAt: now(),
+      })
+      .where(eq(recordings.id, id))
+      .run();
+    return true;
+  });
+}
+
+/** Drop checkpoints made from an earlier snapshot before retrying a growing source. */
+export function resetForSourceChange(db: Db, id: number): void {
+  db.transaction((tx) => {
+    tx.delete(segments).where(eq(segments.recordingId, id)).run();
+    tx.update(recordings)
+      .set({
+        status: "discovered",
+        error: null,
+        attempts: 0,
+        lastChunkIdx: null,
+        stageDetail: null,
+        updatedAt: now(),
+      })
+      .where(eq(recordings.id, id))
+      .run();
+  });
 }
 
 /** A fingerprint match at a new path: the file moved. Never touches status or attempts. */

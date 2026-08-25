@@ -4,13 +4,19 @@
 // Always runs the full sequence regardless of which non-terminal status it entered at — see
 // reconcile.ts for why that is simpler and just as correct as resuming at the failed stage.
 
-import { existsSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { dirname, join, parse } from "node:path";
 import type { Status } from "../../shared/ipc";
 import { DEFAULT_THRESHOLD } from "../../worker/cluster";
 import type { Db } from "../db/client";
-import { forceCpuOf, pathOf, setProbeResult, setStatus, statusOf } from "../db/recordings";
+import {
+  forceCpuOf,
+  pathOf,
+  setFingerprint,
+  setProbeResult,
+  setStatus,
+  statusOf,
+} from "../db/recordings";
 import * as stageRates from "../db/stage-rates";
 import * as terminology from "../db/terminology";
 import { findByPath as folderByPath } from "../db/watch-folders";
@@ -33,7 +39,16 @@ import { resolve as resolveDevice } from "../models/device";
 import { ensure, isPresent, locate } from "../models/download";
 import type { PipelineConfig } from "./config";
 import { Eta, type Rates, type Timed, prior, rateKey } from "./eta";
+import { compute } from "./fingerprint";
 import { diarize, transcribe } from "./pipeline";
+import {
+  type SourceVersion,
+  assertSourceVersion,
+  cacheMatchesSource,
+  discardCachedPcm,
+  markCacheSource,
+  sourceVersion,
+} from "./source";
 
 export interface JobCtx {
   db: Db;
@@ -61,11 +76,13 @@ export async function processRecording(
   check(signal);
   const path = pathOf(db, id);
   if (path === null) throw err.probe("", `recording ${id} vanished from the database`);
+  const source = sourceVersion(path);
 
   // --- probing ---
   setStatus(db, id, "probing");
   onProgress("probing", 0, null);
   const probed = await probe(cli, path);
+  assertSourceVersion(path, source);
   setProbeResult(db, id, probed.container, probed.duration_ms);
 
   // a prior run may have gpu-oom'd (the queue's fallback persists this) — read it back so
@@ -112,7 +129,14 @@ export async function processRecording(
   // --- extracting ---
   setStatus(db, id, "extracting");
   report("extracting", 0);
-  const { mainPcm, micPcm } = await prepareAudio(ctx, path, probed, (f) => report("extracting", f), signal);
+  const { mainPcm, micPcm } = await prepareAudio(
+    ctx,
+    path,
+    source,
+    probed,
+    (f) => report("extracting", f),
+    signal,
+  );
   report("extracting", 1);
 
   // --- transcribing (checkpointed inside transcribe) ---
@@ -138,6 +162,7 @@ export async function processRecording(
     (f) => report("transcribing", f),
     signal,
   );
+  assertSourceVersion(path, source);
   // a resumed run's wall covers only the chunks it actually ran, so it is not a measurement
   if (transcribed.resumedFrom === 0) {
     stageRates.record(db, keys.transcribing, Date.now() - startedTranscribe, probed.duration_ms ?? 0);
@@ -154,6 +179,7 @@ export async function processRecording(
 
   report("diarizing", 0);
   const startedDiarize = Date.now();
+  let finalFingerprint: Awaited<ReturnType<typeof compute>> | null = null;
   // diarize's persist() writes status = 'done' in the same transaction as the merge
   await diarize(
     db,
@@ -168,10 +194,16 @@ export async function processRecording(
         threshold: cfg.diarizeThreshold ?? DEFAULT_THRESHOLD,
         speakers: cfg.diarizeSpeakers,
       },
+      validate: async () => {
+        assertSourceVersion(path, source);
+        finalFingerprint = await compute(path);
+        assertSourceVersion(path, source);
+      },
     },
     (f) => report("diarizing", f),
     signal,
   );
+  if (finalFingerprint) setFingerprint(db, id, finalFingerprint);
   terminology.applyToRecording(db, id);
   stageRates.record(db, keys.diarizing, Date.now() - startedDiarize, probed.duration_ms ?? 0);
 }
@@ -186,6 +218,7 @@ interface Audio {
 async function prepareAudio(
   ctx: JobCtx,
   path: string,
+  source: SourceVersion,
   probed: Probe,
   onFraction: (f: number) => void,
   signal?: AbortSignal,
@@ -195,10 +228,16 @@ async function prepareAudio(
 
   const extractTrack = async (audioIndex: number): Promise<string> => {
     const out = pcmPathFor(cacheDir, path, audioIndex);
-    // an existing file is a finished one (extractPcm discards its output on failure), which
-    // makes a retry's extract stage a no-op
-    if (existsSync(out)) return out;
-    await extractPcm(cli, path, { audioIndex, out, onProgress: onFraction, signal });
+    if (cacheMatchesSource(out, source)) return out;
+    discardCachedPcm(out);
+    try {
+      await extractPcm(cli, path, { audioIndex, out, onProgress: onFraction, signal });
+      assertSourceVersion(path, source);
+      markCacheSource(out, source);
+    } catch (e) {
+      discardCachedPcm(out);
+      throw e;
+    }
     return out;
   };
 
@@ -208,7 +247,17 @@ async function prepareAudio(
   const mic = await extractTrack(choice.selection.mic);
   const desktop = await extractTrack(choice.selection.desktop);
   const mix = join(cacheDir, `${parse(path).name}.mix.pcm`);
-  if (!existsSync(mix)) mixPcm([mic, desktop], mix);
+  if (!cacheMatchesSource(mix, source)) {
+    discardCachedPcm(mix);
+    try {
+      mixPcm([mic, desktop], mix);
+      assertSourceVersion(path, source);
+      markCacheSource(mix, source);
+    } catch (e) {
+      discardCachedPcm(mix);
+      throw e;
+    }
+  }
   return { mainPcm: mix, micPcm: mic };
 }
 
@@ -229,13 +278,15 @@ export async function rediarizeRecording(
   check(signal);
   const path = pathOf(db, id);
   if (path === null) throw err.probe("", `recording ${id} vanished from the database`);
+  const source = sourceVersion(path);
   // the transcript is already there; a failure has to put the row back exactly as it was
   const was = statusOf(db, id) ?? "done";
 
   setStatus(db, id, "diarizing");
   try {
     const probed = await probe(cli, path);
-    const { mainPcm, micPcm } = await prepareAudio(ctx, path, probed, () => {}, signal);
+    assertSourceVersion(path, source);
+    const { mainPcm, micPcm } = await prepareAudio(ctx, path, source, probed, () => {}, signal);
 
     const embeddingSpec = cfg.embeddingModel
       ? (findEmbedding(cfg.embeddingModel) ?? raise(cfg.embeddingModel))

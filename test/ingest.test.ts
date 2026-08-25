@@ -26,6 +26,13 @@ import { compute } from "../src/main/ingest/fingerprint";
 import { type IngestEvent, type RunJob, Queue } from "../src/main/ingest/queue";
 import { clearStalePcmCache, stemOfCacheFile } from "../src/main/ingest/reconcile";
 import {
+  SourceChangedError,
+  cacheMatchesSource,
+  discardCachedPcm,
+  markCacheSource,
+  sourceVersion,
+} from "../src/main/ingest/source";
+import {
   type Candidates,
   promote,
   relist,
@@ -148,22 +155,48 @@ describe("pcm cache names", () => {
     expect(stemOfCacheFile("meeting.pcm")).toBeNull();
     expect(stemOfCacheFile("meeting.tx.pcm")).toBeNull();
     expect(stemOfCacheFile("meeting.t0.wav")).toBeNull();
+    expect(stemOfCacheFile("meeting.t0.pcm.source.json")).toBe("meeting");
   });
 
   it("keeps cache belonging to a non-terminal row and drops the rest", () => {
     const cache = join(dir, "pcm");
     mkdirSync(cache);
     rec.stub(db, join(dir, "live.mkv")); // stub rows land in a non-terminal status
-    for (const name of ["live.t0.pcm", "live.mix.pcm", "gone.t0.pcm", "notes.txt"]) {
+    for (const name of [
+      "live.t0.pcm",
+      "live.t0.pcm.source.json",
+      "live.mix.pcm",
+      "gone.t0.pcm",
+      "gone.t0.pcm.source.json",
+      "notes.txt",
+    ]) {
       writeFileSync(join(cache, name), "x");
     }
 
     clearStalePcmCache(db, cache);
 
     expect(existsSync(join(cache, "live.t0.pcm"))).toBe(true);
+    expect(existsSync(join(cache, "live.t0.pcm.source.json"))).toBe(true);
     expect(existsSync(join(cache, "live.mix.pcm"))).toBe(true);
     expect(existsSync(join(cache, "gone.t0.pcm"))).toBe(false);
+    expect(existsSync(join(cache, "gone.t0.pcm.source.json"))).toBe(false);
     expect(existsSync(join(cache, "notes.txt"))).toBe(true); // not ours to delete
+  });
+
+  it("reuses pcm only while the source version matches", () => {
+    const source = join(dir, "source.mp4");
+    const pcm = join(dir, "source.t0.pcm");
+    writeFileSync(source, "first");
+    writeFileSync(pcm, "audio");
+    const version = sourceVersion(source);
+    markCacheSource(pcm, version);
+    expect(cacheMatchesSource(pcm, version)).toBe(true);
+
+    appendFileSync(source, "more");
+    expect(cacheMatchesSource(pcm, sourceVersion(source))).toBe(false);
+    discardCachedPcm(pcm);
+    expect(existsSync(pcm)).toBe(false);
+    expect(existsSync(`${pcm}.source.json`)).toBe(false);
   });
 });
 
@@ -287,6 +320,26 @@ describe("identity", () => {
     rec.markUnavailable(db, id);
     relist(db, dir, defaultIngestConfig(), new Map());
     expect(rec.availablePaths(db).map((r) => r.id)).toEqual([id]);
+  });
+
+  it.skipIf(!haveFfmpeg)("requeues a terminal row when its source grows", async () => {
+    const path = join(dir, "continued.mp4");
+    fixture(path, 1);
+    const discovered: number[] = [];
+    await promote(db, path, (id) => discovered.push(id));
+    const id = discovered[0];
+    rec.setStatus(db, id, "done");
+    db.insert(segments)
+      .values({ recordingId: id, chunkIdx: 0, startMs: 0, endMs: 500, text: "partial" })
+      .run();
+
+    fixture(path, 2);
+    await promote(db, path, (changed) => discovered.push(changed));
+
+    expect(discovered).toEqual([id, id]);
+    expect(rec.statusOf(db, id)).toBe("discovered");
+    expect(rec.fingerprintOf(db, id)?.size).toBe(statSize(path));
+    expect(db.select().from(segments).all()).toEqual([]);
   });
 });
 
@@ -449,4 +502,33 @@ describe("queue", () => {
     expect(events).toEqual([]);
     expect(rec.statusOf(db, id)).toBe("transcribing"); // reconciliation picks it back up
   });
+
+  it("waits for a changed source without consuming an attempt", async () => {
+    const path = join(dir, "growing.mp4");
+    writeFileSync(path, "complete");
+    const id = rec.stub(db, path);
+    const events: IngestEvent[] = [];
+    let runs = 0;
+    const q = new Queue({
+      db,
+      maxAttempts: 3,
+      sourcePollIntervalMs: 1,
+      sourceStableCount: 1,
+      onEvent: collect(events),
+      run: async () => {
+        runs += 1;
+        if (runs === 1) throw new SourceChangedError(path);
+      },
+    });
+    q.enqueue(id);
+    await q.idle();
+
+    expect(runs).toBe(2);
+    expect(events).toEqual([{ kind: "done", recording_id: id }]);
+    expect(db.select().from(recordings).where(eq(recordings.id, id)).get()?.attempts).toBe(0);
+  });
 });
+
+function statSize(path: string): number {
+  return readFileSync(path).byteLength;
+}

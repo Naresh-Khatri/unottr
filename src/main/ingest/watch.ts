@@ -3,9 +3,8 @@
 //
 // Rust staged completion as inotify CLOSE_WRITE -> size-stable -> ffprobe. chokidar exposes no
 // CLOSE_WRITE, so `awaitWriteFinish` collapses the first two for files it sees, and files found
-// by the periodic rescan still serve the size-stability ticks. The ffprobe gate is the real
-// safety net either way and is never skipped: an in-progress mp4 has no readable duration, so
-// it cannot pass.
+// by the periodic rescan still serve the size-stability ticks. Fragmented mp4 stays probeable
+// while a recorder appends to it, so the pipeline also validates the source snapshot.
 
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -18,6 +17,7 @@ import {
   fingerprintOf,
   insertDiscovered,
   markUnavailable,
+  refreshChangedSource,
   relink,
   restoreIfUnavailable,
 } from "../db/recordings";
@@ -72,8 +72,8 @@ export class Watcher {
       awaitWriteFinish: awaitWriteFinish(this.o.cfg),
       alwaysStat: true,
     });
-    this.watcher.on("add", (path, stats) => this.sighted(path, stats?.size ?? 0));
-    this.watcher.on("change", (path, stats) => this.sighted(path, stats?.size ?? 0));
+    this.watcher.on("add", (path, stats) => this.sighted(path, stats?.size ?? 0, false));
+    this.watcher.on("change", (path, stats) => this.sighted(path, stats?.size ?? 0, true));
     this.watcher.on("unlink", (path) => this.candidates.delete(path));
     this.watcher.on("error", () => {}); // a folder yanked mid-watch; the rescan recovers
     this.schedule(0);
@@ -87,13 +87,9 @@ export class Watcher {
     this.watcher = null;
   }
 
-  private sighted(path: string, size: number): void {
+  private sighted(path: string, size: number, changed: boolean): void {
     if (!hasExtension(this.o.cfg, path)) return;
-    const id = findByPath(this.o.db, path);
-    if (id !== null) {
-      restoreIfUnavailable(this.o.db, id); // came back at the path it was last known at
-      return;
-    }
+    if (trackKnownChange(this.o.db, path, size, this.candidates, true, changed)) return;
     if (!this.candidates.has(path)) this.candidates.set(path, fresh(true, size));
   }
 
@@ -153,11 +149,10 @@ export function relist(db: Db, folder: string, cfg: IngestConfig, candidates: Ca
   for (const name of names) {
     const path = join(folder, name);
     if (!hasExtension(cfg, path) || !isFile(path)) continue;
-    const id = findByPath(db, path);
-    if (id !== null) {
-      // reappeared at the exact path it was last known at (not a move)
-      restoreIfUnavailable(db, id);
-    } else if (!candidates.has(path)) {
+    const size = sizeOf(path);
+    if (size === null) continue;
+    if (trackKnownChange(db, path, size, candidates, false, false)) continue;
+    if (!candidates.has(path)) {
       candidates.set(path, fresh(false));
     }
   }
@@ -217,6 +212,16 @@ export async function promote(
   } catch {
     return; // vanished right at the finish line; the next relist re-tracks it
   }
+  const atPath = findByPath(db, path);
+  if (atPath !== null) {
+    const stored = fingerprintOf(db, atPath);
+    if (stored && stored.size === fp.size && stored.head.equals(fp.head) && stored.tail.equals(fp.tail)) {
+      restoreIfUnavailable(db, atPath);
+      return;
+    }
+    if (refreshChangedSource(db, atPath, fp)) onDiscovered(atPath);
+    return;
+  }
   const existing = findByFingerprint(db, fp.size, fp.head, fp.tail);
   if (existing !== null) {
     relink(db, existing, path); // moved or renamed: never reprocessed
@@ -224,6 +229,25 @@ export async function promote(
   }
   const id = insertDiscovered(db, path, fp.size, fp.head, fp.tail);
   onDiscovered(id);
+}
+
+/** Known paths normally stay quiet. A size change means the recorder appended after discovery. */
+function trackKnownChange(
+  db: Db,
+  path: string,
+  size: number,
+  candidates: Candidates,
+  settled: boolean,
+  forceCheck: boolean,
+): boolean {
+  const id = findByPath(db, path);
+  if (id === null) return false;
+  restoreIfUnavailable(db, id);
+  const fp = fingerprintOf(db, id);
+  if (fp && (forceCheck || fp.size !== size) && !candidates.has(path)) {
+    candidates.set(path, fresh(settled, size));
+  }
+  return true;
 }
 
 /**

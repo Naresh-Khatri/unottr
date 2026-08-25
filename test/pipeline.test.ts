@@ -13,6 +13,7 @@ import { people, recordings, segments, speakers } from "../src/main/db/schema";
 import { PipelineError } from "../src/main/errors";
 import { fromBlob, toBlob } from "../src/main/db/embedding";
 import { type DiarizeSpec, type TranscribeSpec, diarize, transcribe } from "../src/main/ingest/pipeline";
+import { SourceChangedError } from "../src/main/ingest/source";
 import type { Chunk } from "../src/worker/chunk";
 import type { Assigned } from "../src/worker/merge";
 import type { Reply, Request, TranscribeJob } from "../src/worker/protocol";
@@ -319,6 +320,22 @@ describe("diarize", () => {
         .every((s) => s.speakerId === people[0].id),
     ).toBe(true);
     expect(recording()).toMatchObject({ status: "done", error: null });
+  });
+
+  it("validates the source after compute and before persistence", async () => {
+    insertSegment({ text: "partial" });
+    scriptedDiarize((sent) => sent);
+
+    await expect(
+      diarize(
+        db,
+        { ...diarizeSpec, validate: () => { throw new SourceChangedError("meeting.mp4"); } },
+        () => {},
+      ),
+    ).rejects.toBeInstanceOf(SourceChangedError);
+
+    expect(db.select().from(speakers).all()).toEqual([]);
+    expect(recording().status).not.toBe("done");
   });
 
   it("keeps a segment that did not split as the same row", async () => {

@@ -49,6 +49,7 @@ export function clearStalePcmCache(db: Db, cacheDir: string): void {
  * itself contains dots (real filenames do) is not truncated early.
  */
 export function stemOfCacheFile(name: string): string | null {
+  if (name.endsWith(".source.json")) name = name.slice(0, -".source.json".length);
   if (!name.endsWith(".pcm")) return null;
   const base = name.slice(0, -4);
   if (base.endsWith(".mix")) return base.slice(0, -4);

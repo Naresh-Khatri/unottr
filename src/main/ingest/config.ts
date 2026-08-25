@@ -43,7 +43,7 @@ export interface IngestConfig {
 export const defaultIngestConfig = (): IngestConfig => ({
   extensions: [...DEFAULT_EXTENSIONS],
   stablePollIntervalMs: 2_000,
-  stableRequiredCount: 5,
+  stableRequiredCount: 15,
   maxProbeChecks: 5,
   rescanIntervalMs: 30_000,
   maxAttempts: 3,

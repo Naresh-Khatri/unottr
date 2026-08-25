@@ -62,6 +62,8 @@ export class IngestService {
     const queue = new Queue({
       db: o.db,
       maxAttempts: cfg.maxAttempts,
+      sourcePollIntervalMs: cfg.stablePollIntervalMs,
+      sourceStableCount: cfg.stableRequiredCount,
       run: (id, spec, onProgress, signal) =>
         spec.kind === "rediarize"
           ? rediarizeRecording(ctxFor(), id, spec.speakers, onProgress, signal)

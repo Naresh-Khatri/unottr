@@ -6,8 +6,14 @@
 
 import type { Status } from "../../shared/ipc";
 import type { Db } from "../db/client";
-import { failOrRetry, forceCpuOf, setForceCpu } from "../db/recordings";
+import {
+  failOrRetry,
+  forceCpuOf,
+  resetForSourceChange,
+  setForceCpu,
+} from "../db/recordings";
 import { PipelineError, err, isCancelled } from "../errors";
+import { SourceChangedError, waitForStableSource } from "./source";
 
 export type IngestEvent =
   | { kind: "discovered"; recording_id: number }
@@ -35,6 +41,8 @@ export interface QueueOptions {
   maxAttempts: number;
   run: RunJob;
   onEvent: (event: IngestEvent) => void;
+  sourcePollIntervalMs?: number;
+  sourceStableCount?: number;
 }
 
 export class Queue {
@@ -113,10 +121,27 @@ export class Queue {
         );
         onEvent({ kind: "done", recording_id: id });
         return;
-      } catch (e) {
+      } catch (caught) {
+        let e = caught;
         // graceful shutdown: leave status/checkpoint exactly as they are, the next startup's
         // reconciliation picks this row back up
         if (isCancelled(e) || signal.aborted) return;
+
+        if (e instanceof SourceChangedError) {
+          resetForSourceChange(db, id);
+          try {
+            await waitForStableSource(e.path, {
+              pollIntervalMs: this.o.sourcePollIntervalMs ?? 2_000,
+              requiredCount: this.o.sourceStableCount ?? 15,
+              signal,
+            });
+            continue;
+          } catch (waitError) {
+            if (isCancelled(waitError) || signal.aborted) return;
+            e = waitError;
+          }
+        }
+
         const error = e instanceof PipelineError ? e : err.db(e);
         // only the slug reaches the db and the ui; without this the message is lost for good
         console.warn(`recording ${id} failed: ${error.message}`);

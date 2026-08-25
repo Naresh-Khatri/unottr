@@ -56,6 +56,8 @@ export interface DiarizeSpec {
    * count, where they don't — there, only the voiceprints get a say (decision #50).
    */
   keepNames?: boolean;
+  /** Last source-version check. Runs after compute, before any transcript row is replaced. */
+  validate?: () => void | Promise<void>;
 }
 
 export interface DiarizeReport {
@@ -159,6 +161,7 @@ export async function diarize(
     },
   );
 
+  await spec.validate?.();
   const counts = persist(db, spec, out.labels, out.embeddings, loaded, out.assigned);
   progress(1);
 
