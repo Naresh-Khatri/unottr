@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowClockwise, FileX, FilmSlate, FolderOpen, Gear, Play, Users, Waveform,
+  ArrowClockwise, ArrowDown, ArrowUp, FileX, FilmSlate, FolderOpen, Gear, Play, Users, Waveform,
 } from "@phosphor-icons/react";
 import {
   api, onJobDone, onJobFailed, onJobProgress, onOverviewChanged, onRecordingDiscovered,
@@ -159,10 +159,23 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
   const [rows, setRows] = useState<RecordingSummary[]>([]);
   const [progress, setProgress] = useState<Record<number, { pct: number; eta: number | null }>>({});
   const [folders, setFolders] = useState<WatchFolder[]>([]);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [refreshing, setRefreshing] = useState(false);
+  const loadVersion = useRef(0);
 
-  const load = useCallback(() => {
-    api.listRecordings(undefined, { by: "recorded_at", dir: "desc" }).then(setRows);
-  }, []);
+  const load = useCallback(async () => {
+    const version = ++loadVersion.current;
+    const next = await api.listRecordings(undefined, { by: "created_at", dir: sortDir });
+    if (version === loadVersion.current) setRows(next);
+  }, [sortDir]);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
   const loadFolders = useCallback(() => { api.listWatchFolders().then(setFolders); }, []);
 
   useEffect(() => { load(); loadFolders(); }, [load, loadFolders]);
@@ -188,10 +201,26 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2 px-4 pt-6 pb-4 sm:px-6 sm:pt-8 sm:pb-5">
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3 px-4 pt-6 pb-4 sm:px-6 sm:pt-8 sm:pb-5">
         <h1 className="text-lg font-semibold tracking-tight">Recordings</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <span className="text-sm text-muted-foreground">{rows.length} in library</span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="icon-sm"
+                  variant="outline"
+                  aria-label="Refresh recordings"
+                  disabled={refreshing}
+                  onClick={refresh}
+                >
+                  <ArrowClockwise className={cn(refreshing && "animate-spin")} />
+                </Button>
+              }
+            />
+            <TooltipContent>Refresh recordings</TooltipContent>
+          </Tooltip>
           <Button size="xs" variant="outline" onClick={onOpenSettings}>
             <FolderOpen />Folders
           </Button>
@@ -208,7 +237,21 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                 <TableRow>
                   <TableHead className="hidden w-28 sm:table-cell" />
                   <TableHead>Name</TableHead>
-                  <TableHead className="hidden w-28 lg:table-cell">Recorded</TableHead>
+                  <TableHead
+                    className="w-32"
+                    aria-sort={sortDir === "desc" ? "descending" : "ascending"}
+                  >
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="-ml-2 font-medium"
+                      aria-label={`Sort created at ${sortDir === "desc" ? "ascending" : "descending"}`}
+                      onClick={() => setSortDir((dir) => dir === "desc" ? "asc" : "desc")}
+                    >
+                      Created at
+                      {sortDir === "desc" ? <ArrowDown /> : <ArrowUp />}
+                    </Button>
+                  </TableHead>
                   <TableHead className="hidden w-20 text-right md:table-cell">Length</TableHead>
                   <TableHead className="hidden w-16 text-right xl:table-cell">Speakers</TableHead>
                   <TableHead className="w-24 text-right sm:w-36">Status</TableHead>
@@ -244,9 +287,6 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                         )}
                         {/* whatever the folded-away columns were carrying, restated inline */}
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground xl:hidden">
-                          <span className="lg:hidden">
-                            {dateLabel(r.recorded_at)} · {timeLabel(r.recorded_at)}
-                          </span>
                           <span className="tabular-nums md:hidden">{durationLabel(r.duration_ms)}</span>
                           {!!r.speaker_count && (
                             <span className="inline-flex items-center gap-1"><Users />{r.speaker_count}</span>
@@ -272,10 +312,10 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                           );
                         })()}
                       </TableCell>
-                      <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
-                        <div>{dateLabel(r.recorded_at)}</div>
+                      <TableCell className="text-sm text-muted-foreground">
+                        <div>{dateLabel(r.created_at)}</div>
                         {/* several recordings a day is the norm; the date alone can't tell them apart */}
-                        <div className="text-xs tabular-nums">{timeLabel(r.recorded_at)}</div>
+                        <div className="text-xs tabular-nums">{timeLabel(r.created_at)}</div>
                       </TableCell>
                       <TableCell className="hidden text-right text-sm text-muted-foreground tabular-nums md:table-cell">
                         {durationLabel(r.duration_ms)}

@@ -116,7 +116,7 @@ const handlers: Record<string, Handler> = {
     queries.listRecordings(
       db(),
       (a?.filter as RecordingFilter | undefined) ?? {},
-      (a?.sort as RecordingSort | undefined) ?? { by: "recorded_at", dir: "desc" },
+      (a?.sort as RecordingSort | undefined) ?? { by: "created_at", dir: "desc" },
     ),
 
   get_recording(a) {

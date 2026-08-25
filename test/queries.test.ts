@@ -33,6 +33,25 @@ describe("listRecordings", () => {
     expect(asc.map((r) => r.id)).toEqual([9003, 9002, 9001]);
   });
 
+  it("sorts by creation time in either direction", () => {
+    db.update(recordings).set({ createdAt: 1 }).where(eq(recordings.id, 9001)).run();
+    db.update(recordings).set({ createdAt: 3 }).where(eq(recordings.id, 9002)).run();
+    db.update(recordings).set({ createdAt: 2 }).where(eq(recordings.id, 9003)).run();
+
+    const descending = q.listRecordings(db, {}, { by: "created_at", dir: "desc" });
+    const ascending = q.listRecordings(db, {}, { by: "created_at", dir: "asc" });
+    expect(descending.map((r) => r.id)).toEqual([9002, 9003, 9001]);
+    expect(descending.map((r) => r.created_at)).toEqual([3, 2, 1]);
+    expect(ascending.map((r) => r.id)).toEqual([9001, 9003, 9002]);
+  });
+
+  it("puts the newest id first when recordings are created in the same second", () => {
+    db.update(recordings).set({ createdAt: 1 }).run();
+
+    const rows = q.listRecordings(db, {}, { by: "created_at", dir: "desc" });
+    expect(rows.map((r) => r.id)).toEqual([9003, 9002, 9001]);
+  });
+
   it("filters by a path substring", () => {
     expect(q.listRecordings(db, { query: "standup" }, SORT).map((r) => r.id)).toEqual([9002]);
   });

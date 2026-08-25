@@ -32,6 +32,7 @@ const SUMMARY_COLUMNS = {
   id: recordings.id,
   path: recordings.path,
   title: sql<string | null>`coalesce(${recordings.title}, ${recordings.aiTitle})`,
+  created_at: recordings.createdAt,
   recorded_at: recordings.recordedAt,
   duration_ms: recordings.durationMs,
   status: recordings.status,
@@ -45,6 +46,7 @@ type SummaryRow = {
   id: number;
   path: string;
   title: string | null;
+  created_at: number;
   recorded_at: number | null;
   duration_ms: number | null;
   status: string;
@@ -65,6 +67,7 @@ function toSummary(r: SummaryRow): RecordingSummary {
 }
 
 const ORDER = {
+  created_at: recordings.createdAt,
   recorded_at: recordings.recordedAt,
   duration_ms: recordings.durationMs,
   // no basename() in sqlite; ordering by path matches filename order for a flat tree
@@ -77,12 +80,14 @@ export function listRecordings(db: Db, filter: RecordingFilter, sort: RecordingS
   if (filter.available !== undefined) where.push(eq(recordings.available, filter.available ? 1 : 0));
   if (filter.query) where.push(like(recordings.path, `%${filter.query}%`));
 
-  const column = ORDER[sort.by] ?? ORDER.recorded_at;
+  const column = ORDER[sort.by] ?? ORDER.created_at;
+  const order = sort.dir === "asc" ? asc(column) : desc(column);
+  const tie = sort.dir === "asc" ? asc(recordings.id) : desc(recordings.id);
   return db
     .select(SUMMARY_COLUMNS)
     .from(recordings)
     .where(where.length ? and(...where) : undefined)
-    .orderBy(sort.dir === "asc" ? asc(column) : desc(column))
+    .orderBy(order, tie)
     .all()
     .map(toSummary);
 }

@@ -63,6 +63,7 @@ export interface RecordingSummary {
   filename: string;
   /** user title, else the AI one; null -> fall back to `filename` (decision #32) */
   title: string | null;
+  created_at: number; // unix seconds; when the recording entered the library
   recorded_at: number | null; // unix seconds
   duration_ms: number | null;
   status: Status;
@@ -136,7 +137,7 @@ export interface RecordingFilter {
 }
 
 export interface RecordingSort {
-  by: "recorded_at" | "duration_ms" | "filename";
+  by: "created_at" | "recorded_at" | "duration_ms" | "filename";
   dir: "asc" | "desc";
 }
 
