@@ -341,6 +341,35 @@ describe("identity", () => {
     expect(rec.fingerprintOf(db, id)?.size).toBe(statSize(path));
     expect(db.select().from(segments).all()).toEqual([]);
   });
+
+  it.skipIf(!haveFfmpeg)("repairs a stale completed row through the restart rescan", async () => {
+    const path = join(dir, "finished-after-ingest.mp4");
+    fixture(path, 1);
+    const first: number[] = [];
+    await promote(db, path, (id) => first.push(id));
+    const id = first[0];
+    rec.setStatus(db, id, "done");
+    db.insert(segments)
+      .values({ recordingId: id, chunkIdx: 0, startMs: 0, endMs: 500, text: "partial" })
+      .run();
+
+    // The recorder kept appending while the old app believed the row was complete. A new
+    // watcher instance sees only the finished file through its initial folder rescan.
+    fixture(path, 2);
+    const candidates: Candidates = new Map();
+    const rediscovered: number[] = [];
+    relist(db, dir, quick(), candidates);
+    expect(candidates.has(path)).toBe(true);
+
+    await stepCandidates(db, cli, quick(), candidates, (changed) => rediscovered.push(changed));
+    await stepCandidates(db, cli, quick(), candidates, (changed) => rediscovered.push(changed));
+
+    expect(rediscovered).toEqual([id]);
+    expect(rec.statusOf(db, id)).toBe("discovered");
+    expect(rec.fingerprintOf(db, id)?.size).toBe(statSize(path));
+    expect(rec.lastChunkIdx(db, id)).toBeNull();
+    expect(db.select().from(segments).all()).toEqual([]);
+  });
 });
 
 // ------------------------------------------------------------------------------- retry

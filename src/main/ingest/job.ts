@@ -140,6 +140,10 @@ export async function processRecording(
   report("extracting", 1);
 
   // --- transcribing (checkpointed inside transcribe) ---
+  // Persist the transition before model lookup or worker startup. The renderer can miss the
+  // in-memory progress tick when it mounts during startup, and a worker can fail before its
+  // first chunk; in both cases leaving the row as "extracting" is both stale and misleading.
+  setStatus(db, id, "transcribing");
   const whisperModel = await fetchModel(ctx, whisperSpec, cfg.downloadModels, signal);
   const vadModel = await fetchModel(ctx, VAD, true, signal);
 

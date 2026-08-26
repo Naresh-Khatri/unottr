@@ -224,9 +224,12 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
   }, [load]);
   const loadFolders = useCallback(() => { api.listWatchFolders().then(setFolders); }, []);
 
-  useEffect(() => { load(); loadFolders(); }, [load, loadFolders]);
+  useEffect(() => { loadFolders(); }, [loadFolders]);
 
   useEffect(() => {
+    // Subscribe before taking the initial snapshot. Startup reconciliation can move a cached
+    // recording through stages before the window finishes mounting; loading first leaves a
+    // gap in which that transition is lost and the row keeps rendering the older DB status.
     const offs = [
       // progress ticks are frequent — patch in place instead of refetching the list
       onJobProgress((p) => {
@@ -243,6 +246,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
       // an overview landing is how a row gets its ai title
       onOverviewChanged(load),
     ];
+    void load();
     return () => offs.forEach((off) => off());
   }, [load]);
 
