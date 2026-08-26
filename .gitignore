@@ -10,3 +10,4 @@
 # staged at package time by scripts/fetch-ffmpeg.sh (224 MB) and fetch-vulkan-loader.sh
 /resources/bin/
 /resources/lib/
+/*.txt
