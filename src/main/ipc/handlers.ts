@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import type {
+  AskScope,
   AiConnectionInput,
   ModelInfo,
   RecordingFilter,
@@ -12,12 +13,14 @@ import type {
 } from "../../shared/ipc";
 import { SUPPORT_MODELS } from "../../shared/ipc";
 import * as ai from "../ai/generate";
+import * as askAi from "../ai/ask";
 import { detectAgents } from "../ai/cli";
 import * as connections from "../ai/connections";
 import { probe } from "../ai/probe";
 import { PRESETS, chatDefault, listModels, modelContext, normalizeBaseUrl } from "../ai/providers";
 import { getAutostart, setAutostart } from "../autostart";
 import { db } from "../db";
+import * as askDb from "../db/ask";
 import * as overviewsDb from "../db/overviews";
 import * as peopleDb from "../db/people";
 import * as queries from "../db/queries";
@@ -51,6 +54,9 @@ const supportSpecs = (): catalog.ModelSpec[] => [
 
 /** Overview generations in flight, so a user who changed their mind can stop paying for one. */
 const generating = new Map<number, AbortController>();
+
+/** Ask calls are keyed by renderer-generated ids so a new, not-yet-persisted thread can stop. */
+const asking = new Map<string, AbortController>();
 
 /** Autodetect runs while the settings card is opening — it has to lose fast or not at all. */
 const DETECT_MS = 600;
@@ -256,6 +262,49 @@ const handlers: Record<string, Handler> = {
       ...("due_date" in (a ?? {}) ? { dueDate: str(a?.due_date) ?? null } : {}),
     });
     events.overviewChanged({ recording_id: recordingId });
+  },
+
+  // -------------------------------------------------------------------------- ask
+
+  ask_threads: (a) => askDb.list(db(), str(a?.search) ?? ""),
+
+  ask_thread(a) {
+    const id = requireId(a, "id");
+    const thread = askDb.get(db(), id);
+    if (!thread) throw new Error(`thread ${id} not found`);
+    return thread;
+  },
+
+  async ask_send(a) {
+    const requestId = str(a?.request_id);
+    if (!requestId) throw new Error("ask_send: request_id required");
+    const threadId = a?.thread_id === null || a?.thread_id === undefined
+      ? null
+      : requireId(a, "thread_id");
+    const controller = new AbortController();
+    asking.set(requestId, controller);
+    try {
+      return await askAi.send(db(), {
+        threadId,
+        scope: askDb.normalizeScope((a?.scope as AskScope | undefined) ?? askDb.emptyScope()),
+        question: str(a?.question) ?? "",
+        signal: controller.signal,
+      });
+    } finally {
+      if (asking.get(requestId) === controller) asking.delete(requestId);
+    }
+  },
+
+  ask_cancel(a) {
+    asking.get(str(a?.request_id) ?? "")?.abort();
+  },
+
+  ask_rename(a) {
+    askDb.rename(db(), requireId(a, "id"), str(a?.title) ?? "");
+  },
+
+  ask_delete(a) {
+    askDb.remove(db(), requireId(a, "id"));
   },
 
   // --------------------------------------------------------------- ai connections

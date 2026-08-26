@@ -309,6 +309,43 @@ export const tasks = sqliteTable(
   (t) => [index("idx_tasks_recording").on(t.recordingId)],
 );
 
+/** A saved Ask conversation. Scope is JSON so new filters can be added without a table rewrite. */
+export const askThreads = sqliteTable(
+  "ask_threads",
+  {
+    id: integer("id").primaryKey(),
+    title: text("title").notNull(),
+    scopeJson: text("scope_json").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [index("idx_ask_threads_updated").on(t.updatedAt)],
+);
+
+export const ASK_ROLES = ["user", "assistant"] as const;
+export type AskRole = (typeof ASK_ROLES)[number];
+
+/**
+ * Assistant payloads contain answer blocks and citation identifiers. Retrieved transcript
+ * windows are deliberately not stored; excerpts are resolved again when the thread is read.
+ */
+export const askMessages = sqliteTable(
+  "ask_messages",
+  {
+    id: integer("id").primaryKey(),
+    threadId: integer("thread_id")
+      .notNull()
+      .references(() => askThreads.id, { onDelete: "cascade" }),
+    role: text("role").$type<AskRole>().notNull(),
+    text: text("text").notNull(),
+    payloadJson: text("payload_json"),
+    provider: text("provider"),
+    model: text("model"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("idx_ask_messages_thread").on(t.threadId, t.createdAt, t.id)],
+);
+
 /**
  * Correlated subquery, not a groupBy join — a recording with no speakers still has to appear.
  * Names written out: drizzle emits interpolated columns unqualified, so `${speakers.recordingId}

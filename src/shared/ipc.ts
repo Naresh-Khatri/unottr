@@ -473,3 +473,68 @@ export interface OverviewProgress {
   part: number;
   total: number;
 }
+
+// Ask. Threads keep a fixed scope so a follow-up cannot silently search a different corpus.
+
+export interface AskScope {
+  /** Empty means every eligible recording. */
+  recording_ids: number[];
+  /** A recording matches when any linked speaker belongs to one of these people. */
+  person_ids: number[];
+  /** Inclusive unix-second meeting-date bounds. */
+  date_from: number | null;
+  date_to: number | null;
+}
+
+export interface AskThreadSummary {
+  id: number;
+  title: string;
+  scope: AskScope;
+  created_at: number;
+  updated_at: number;
+  message_count: number;
+}
+
+export interface AskCitation {
+  kind: "transcript" | "workspace";
+  recording_id: number;
+  recording_title: string;
+  meeting_date: number | null;
+  segment_id: number | null;
+  task_id: number | null;
+  start_ms: number;
+  speaker: string | null;
+  excerpt: string | null;
+  source_changed: boolean;
+  unavailable: boolean;
+}
+
+export interface AskAnswerBlock {
+  text: string;
+  citations: AskCitation[];
+}
+
+export interface AskMessage {
+  id: number;
+  thread_id: number;
+  role: "user" | "assistant";
+  text: string;
+  blocks: AskAnswerBlock[];
+  follow_ups: string[];
+  provider: string | null;
+  model: string | null;
+  searched_recordings: number;
+  used_recordings: number;
+  created_at: number;
+}
+
+export interface AskThread extends AskThreadSummary {
+  messages: AskMessage[];
+}
+
+export interface AskSendInput {
+  request_id: string;
+  thread_id: number | null;
+  scope: AskScope;
+  question: string;
+}

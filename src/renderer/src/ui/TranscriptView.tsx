@@ -1,8 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, Check, Copy, DotsThree, Export, MagnifyingGlass,
-  PencilSimple, Sparkle, UsersThree, VideoCameraSlash,
+  ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, Check, Copy, DotsThree, Export,
+  MagnifyingGlass, ChatCircleDots, PencilSimple, Sparkle, UsersThree, VideoCameraSlash,
 } from "@phosphor-icons/react";
 import { api, onJobDone, onJobFailed, onTranscriptChanged, os } from "@/ipc/client";
 import type { ExportFormat, Person, RecordingDetail, Segment, Speaker } from "@/ipc/types";
@@ -29,10 +29,11 @@ type Item =
 const HEADER_ESTIMATE = 32;
 const SEGMENT_ESTIMATE = 34;
 
-export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transcript", onOpenSettings }: {
+export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transcript", onOpenSettings, onAsk }: {
   id: number; onBack: () => void; initialMs?: number;
   initialTab?: "transcript" | "overview";
   onOpenSettings: () => void;
+  onAsk: () => void;
 }) {
   const [detail, setDetail] = useState<RecordingDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -277,6 +278,9 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
           )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5 md:ml-0">
+          <Button size="sm" variant="outline" disabled={!detail} onClick={onAsk}>
+            <ChatCircleDots /><span className="hidden lg:inline">Ask</span>
+          </Button>
           <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as ExportFormat)}>
             <SelectTrigger className="text-xs" aria-label="Export format">
               <SelectValue>{(v) => String(v).toUpperCase()}</SelectValue>

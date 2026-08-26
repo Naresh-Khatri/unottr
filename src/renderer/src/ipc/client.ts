@@ -2,7 +2,7 @@
 // cheap writes are real. The pipeline commands (retry, backfill, models, cache) reach the
 // main process and get a "not implemented until 08.x" error until their sub-phase lands.
 import type {
-  AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
+  AskScope, AskThread, AskThreadSummary, AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
   ModelInfo, OverviewChanged, OverviewPayload, OverviewProgress, Person, ProbeResult, RecordingDetail,
   RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit,
   Settings, SupportModels, SystemStats, TaskStatus, WatchFolder,
@@ -124,6 +124,21 @@ export const api = {
     USE_MOCK ? mockCommands.task_set_status(id, status) : invoke("task_set_status", { id, status }),
   taskUpdate: (id: number, patch: { text?: string; owner_speaker_id?: number | null; due_date?: string | null }): Promise<void> =>
     USE_MOCK ? mockCommands.task_update(id, patch) : invoke("task_update", { id, ...patch }),
+
+  // -------------------------------------------------------------------------- ask
+
+  askThreads: (search = ""): Promise<AskThreadSummary[]> => invoke("ask_threads", { search }),
+  askThread: (id: number): Promise<AskThread> => invoke("ask_thread", { id }),
+  askSend: (input: {
+    request_id: string;
+    thread_id: number | null;
+    scope: AskScope;
+    question: string;
+  }): Promise<AskThread> => invoke("ask_send", input),
+  askCancel: (request_id: string): Promise<void> => invoke("ask_cancel", { request_id }),
+  askRename: (id: number, title: string): Promise<void> => invoke("ask_rename", { id, title }),
+  askDelete: (id: number): Promise<void> => invoke("ask_delete", { id }),
+
   aiSettings: (): Promise<AiSettings> =>
     USE_MOCK ? mockCommands.ai_settings_get() : invoke("ai_settings_get"),
   aiSettingsSet: (patch: { pseudonymize?: boolean; fallback_connection_id?: number | null }): Promise<AiSettings> =>
