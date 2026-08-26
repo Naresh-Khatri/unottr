@@ -53,6 +53,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
   const [tab, setTab] = useState<string>(initialTab);
   const [activeJob, setActiveJob] = useState<"transcribing" | "diarizing" | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
+  const [gpu, setGpu] = useState<boolean | null>(null);
   const userScrolling = useRef(false);
   const scrollTimer = useRef(0);
 
@@ -93,6 +94,9 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
 
   // the names already known to the app, offered as completions so one voice gets one spelling
   useEffect(() => { api.listPeople().then(setPeople, () => {}); }, []);
+
+  // which of the two diarization engines the fast option would really get, for its labelling
+  useEffect(() => { api.detectedDevice().then((d) => setGpu(d === "gpu"), () => {}); }, []);
 
   const blocks = useMemo(() => {
     const list: { sid: number | null; segs: Segment[] }[] = [];
@@ -347,6 +351,9 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                 <div className="my-1 border-t" />
                 <RediarizeForm
                   current={speakers.length}
+                  durationMs={detail?.recording.duration_ms ?? null}
+                  gpu={gpu}
+                  limitHit={detail?.recording.speaker_limit_hit ?? false}
                   disabled={!detail || detail.recording.status !== "done" || activeJob !== null}
                   onSubmit={(n) => { close(); void startRediarize(n); }}
                 />
@@ -758,28 +765,45 @@ function ReassignMenu({ speakers, palette, current, onPick, onNew }: {
 function RetranscribeForm({ disabled, onSubmit }: { disabled: boolean; onSubmit: () => void }) {
   if (disabled)
     return (
-      <p className="w-64 px-2 py-1 text-xs text-muted-foreground">
+      <p className="w-72 px-2 py-1 text-xs text-muted-foreground">
         Retranscription needs a finished recording.
       </p>
     );
 
   return (
-    <div className="flex w-64 flex-col gap-2 p-1">
+    <div className="flex w-72 flex-col gap-2 p-1">
       <p className="text-xs font-medium">Retranscribe text</p>
-      <p className="text-[11px] leading-snug text-muted-foreground">
-        Runs speech recognition only. Speaker labels are cleared, and speaker identification
-        will not start automatically.
-      </p>
-      <div className="flex justify-end">
-        <Button size="xs" onClick={onSubmit}><ArrowClockwise />Retranscribe</Button>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-muted-foreground">Speakers are cleared, re-identify after</span>
+        <Button size="xs" className="shrink-0" onClick={onSubmit}><ArrowClockwise />Retranscribe</Button>
       </div>
     </div>
   );
 }
 
-/** Auto is the fast path; an exact count deliberately selects the slower CPU clustering. */
-function RediarizeForm({ current, disabled, onSubmit }: {
+/** Wall ms per ms of audio, mirroring the `diarizing:*` priors in main's `ingest/eta.ts`. The
+ *  per-machine rate the backend learns never reaches the renderer, and does not need to: this
+ *  is only ever shown to put the two engines side by side, where the ratio is the point. */
+const DIARIZE_RATE = { gpu: 0.02, cpu: 0.2 };
+
+function costLabel(durationMs: number | null, rate: number): string | null {
+  if (!durationMs) return null;
+  const ms = durationMs * rate;
+  if (ms < 60_000) return `≈${Math.max(1, Math.round(ms / 1000))}s`;
+  const min = Math.round(ms / 60_000);
+  return min < 60 ? `≈${min}m` : `≈${Math.floor(min / 60)}h ${min % 60}m`;
+}
+
+/**
+ * The engines differ in two ways nobody can guess from a device name — how long they take and
+ * how many speakers they can return — so each option states exactly those two, and nothing else.
+ */
+function RediarizeForm({ current, durationMs, gpu, limitHit, disabled, onSubmit }: {
   current: number;
+  durationMs: number | null;
+  /** null until detection lands; false means the fast option is fast in name only */
+  gpu: boolean | null;
+  limitHit: boolean;
   disabled: boolean;
   onSubmit: (count: number | null) => void;
 }) {
@@ -788,6 +812,11 @@ function RediarizeForm({ current, disabled, onSubmit }: {
   const n = Number.parseInt(count, 10);
   const valid = mode === "auto" || (Number.isFinite(n) && n >= 1 && n <= 20);
   const submit = () => onSubmit(mode === "auto" ? null : n);
+  const noGpu = gpu === false;
+  const badge = (device: string, rate: number) => {
+    const cost = costLabel(durationMs, rate);
+    return cost ? `${device} · ${cost}` : device;
+  };
 
   if (disabled)
     return (
@@ -801,26 +830,24 @@ function RediarizeForm({ current, disabled, onSubmit }: {
       <p className="text-xs font-medium">
         {current > 0 ? "Identify speakers again" : "Identify speakers"}
       </p>
-      <div role="radiogroup" aria-label="Speaker identification method" className="grid grid-cols-2 rounded-lg bg-muted p-0.5">
-        <Button
-          role="radio"
-          aria-checked={mode === "auto"}
-          variant={mode === "auto" ? "secondary" : "ghost"}
-          size="xs"
-          onClick={() => setMode("auto")}
-        >
-          Auto · GPU
-        </Button>
-        <Button
-          role="radio"
-          aria-checked={mode === "exact"}
-          variant={mode === "exact" ? "secondary" : "ghost"}
-          size="xs"
-          onClick={() => setMode("exact")}
-        >
-          Exact count · CPU
-        </Button>
+
+      <div role="radiogroup" aria-label="Speaker identification method" className="flex flex-col gap-1">
+        <DiarizeOption
+          selected={mode === "auto"}
+          onSelect={() => setMode("auto")}
+          title={noGpu ? "Automatic" : "Fast"}
+          cost={badge(noGpu ? "CPU" : "GPU", noGpu ? DIARIZE_RATE.cpu : DIARIZE_RATE.gpu)}
+          detail={noGpu ? "Any number of speakers, found for you" : "Up to 4 speakers, found for you"}
+        />
+        <DiarizeOption
+          selected={mode === "exact"}
+          onSelect={() => setMode("exact")}
+          title="Exact count"
+          cost={badge("CPU", DIARIZE_RATE.cpu)}
+          detail="1–20 speakers, you give the number"
+        />
       </div>
+
       {mode === "exact" && (
         <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
           How many people spoke?
@@ -835,15 +862,52 @@ function RediarizeForm({ current, disabled, onSubmit }: {
           />
         </label>
       )}
-      <p className="text-[11px] leading-snug text-muted-foreground">
-        {mode === "auto"
-          ? "Fast detection supports up to four speakers and falls back to CPU if the GPU is unavailable."
-          : "Exact count supports up to 20 speakers. It takes longer and uses more CPU."}
-        {" "}Transcript text is never changed.
-      </p>
-      <div className="flex justify-end">
-        <Button size="xs" disabled={!valid} onClick={submit}>Identify speakers</Button>
+
+      {limitHit && mode === "auto" && !noGpu && (
+        <p className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+          <WarningCircle className="size-3.5 shrink-0" />
+          Last run used all 4 slots.
+        </p>
+      )}
+
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-muted-foreground">Text never changes</span>
+        <Button size="xs" className="shrink-0" disabled={!valid} onClick={submit}>Identify</Button>
       </div>
     </div>
+  );
+}
+
+function DiarizeOption({ selected, onSelect, title, cost, detail }: {
+  selected: boolean;
+  onSelect: () => void;
+  title: string;
+  cost: string;
+  detail: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={cn(
+        "flex flex-col gap-0.5 rounded-md border px-2.5 py-1.5 text-left transition-colors",
+        selected ? "border-primary bg-muted" : "border-transparent bg-muted/40 hover:bg-muted/70",
+      )}
+    >
+      <span className="flex items-center gap-1.5">
+        <span
+          aria-hidden
+          className={cn(
+            "size-2 shrink-0 rounded-full",
+            selected ? "bg-primary" : "border border-muted-foreground/60",
+          )}
+        />
+        <span className="text-xs font-medium">{title}</span>
+        <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">{cost}</span>
+      </span>
+      <span className="pl-3.5 text-[11px] text-muted-foreground">{detail}</span>
+    </button>
   );
 }
