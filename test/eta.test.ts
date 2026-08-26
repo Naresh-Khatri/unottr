@@ -20,6 +20,7 @@ describe("prior", () => {
     expect(prior(rateKey("transcribing", "gpu", "large-v3-turbo"))).toBe(0.041);
     expect(prior(rateKey("transcribing", "gpu", "some-future-model"))).toBe(0.05);
     expect(prior(rateKey("diarizing", "cpu", "3dspeaker"))).toBe(0.2);
+    expect(prior(rateKey("diarizing", "gpu", "sortformer-4spk-v2.1-q8"))).toBe(0.02);
   });
 
   it("puts cpu transcription orders of magnitude above gpu", () => {
@@ -84,6 +85,15 @@ describe("Eta", () => {
     eta.tick("diarizing", 0);
     clock.t = 615_000; // diarization is running at twice its predicted cost
     expect(eta.tick("diarizing", 0.5)).toBe(15_000);
+  });
+
+  it("reprices immediately when a GPU stage falls back to CPU", () => {
+    const clock = { t: 0 };
+    const rates = { ...FLAT, diarizing: 0.02 };
+    const eta = new Eta({ durationMs: 10 * MIN, rates, now: () => clock.t });
+    expect(eta.tick("diarizing", 0)).toBe(12_000);
+    rates.diarizing = 0.2;
+    expect(eta.tick("diarizing", 0)).toBe(120_000);
   });
 });
 

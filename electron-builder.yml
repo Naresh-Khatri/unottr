@@ -50,6 +50,8 @@ extraResources:
   - from: resources/bin
     to: bin
     filter: ["ffmpeg", "ffprobe", "ffmpeg-LICENSE.txt"]
+  - from: resources/bin/sortformer
+    to: bin/sortformer
   - from: resources/icons
     to: icons
   - from: THIRD-PARTY.md

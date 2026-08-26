@@ -10,6 +10,7 @@ import type { Resolved } from "../shared/ipc";
 import type { Chunk } from "./chunk";
 import type { Config } from "./diarize";
 import type { Assigned, Segment } from "./merge";
+import type { Turn } from "./types";
 import type { Options, Utterance } from "./whisper";
 
 export interface TranscribeJob {
@@ -35,9 +36,17 @@ export interface DiarizeJob {
   segments: Segment[];
 }
 
+export interface EmbedJob {
+  pcm: string;
+  segmentation: string;
+  embedding: string;
+  turns: Turn[];
+}
+
 export type Request =
   | { type: "transcribe"; job: TranscribeJob }
   | { type: "diarize"; job: DiarizeJob }
+  | { type: "embed"; job: EmbedJob }
   | { type: "cancel" };
 
 export type Reply =
@@ -48,4 +57,5 @@ export type Reply =
   | { type: "progress"; pct: number }
   | { type: "transcribed" }
   | { type: "diarized"; labels: string[]; embeddings: Float32Array[]; assigned: Assigned[] }
+  | { type: "embedded"; embeddings: Float32Array[] }
   | { type: "failed"; error: ErrorDetail };

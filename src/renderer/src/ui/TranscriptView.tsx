@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   ArrowClockwise, ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, Check, Copy, DotsThree, Export,
   MagnifyingGlass, ChatCircleDots, PencilSimple, Sparkle, UsersThree, VideoCameraSlash,
+  WarningCircle,
 } from "@phosphor-icons/react";
 import { api, onJobDone, onJobFailed, onTranscriptChanged, os } from "@/ipc/client";
 import type { ExportFormat, Person, RecordingDetail, Segment, Speaker } from "@/ipc/types";
@@ -417,6 +418,15 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                   busy={activeJob === "diarizing"}
                   onMerge={(fromId, intoId) => fix(() => api.mergeSpeakers(id, fromId, intoId))}
                 />
+                {detail.recording.speaker_limit_hit && activeJob !== "diarizing" && (
+                  <div className="flex items-start gap-1.5 text-[11px] leading-snug text-amber-700 dark:text-amber-400">
+                    <WarningCircle className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      Fast detection used all four speaker slots. If more people spoke,
+                      identify speakers again with an exact count.
+                    </span>
+                  </div>
+                )}
                 {activeJob === "transcribing" && (
                   <span className="text-xs text-muted-foreground">Retranscribing text…</span>
                 )}
@@ -629,7 +639,7 @@ function SpeakerStrip({ speakers, palette, busy, onMerge }: {
   const [pending, setPending] = useState<{ from: Speaker; into: Speaker; count: number } | null>(null);
   const label = (s: Speaker) => s.display_name || s.label;
 
-  if (busy) return <span className="text-xs">Re-running speakers…</span>;
+  if (busy) return <span className="text-xs">Identifying speakers…</span>;
   if (!speakers.length) return <span>No speakers yet.</span>;
 
   return (
@@ -767,42 +777,72 @@ function RetranscribeForm({ disabled, onSubmit }: { disabled: boolean; onSubmit:
   );
 }
 
-/** "How many people spoke?" — the worker's fixed-k, exposed (decision #50). */
+/** Auto is the fast path; an exact count deliberately selects the slower CPU clustering. */
 function RediarizeForm({ current, disabled, onSubmit }: {
   current: number;
   disabled: boolean;
   onSubmit: (count: number | null) => void;
 }) {
+  const [mode, setMode] = useState<"auto" | "exact">("auto");
   const [count, setCount] = useState(String(Math.max(1, current)));
   const n = Number.parseInt(count, 10);
-  const valid = Number.isFinite(n) && n >= 1 && n <= 20;
+  const valid = mode === "auto" || (Number.isFinite(n) && n >= 1 && n <= 20);
+  const submit = () => onSubmit(mode === "auto" ? null : n);
 
   if (disabled)
     return (
       <p className="w-60 px-2 py-1 text-xs text-muted-foreground">
-        Re-running speakers needs a finished recording.
+        Speaker identification needs a finished recording.
       </p>
     );
 
   return (
-    <div className="flex w-64 flex-col gap-2 p-1">
-      <p className="text-xs font-medium">Re-run speakers</p>
-      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-        How many people spoke?
-        <Input
-          autoFocus
-          value={count}
-          onChange={(e) => setCount(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && valid) onSubmit(n); }}
-          className="h-7 w-14 text-xs"
-        />
-      </label>
+    <div className="flex w-72 flex-col gap-2 p-1">
+      <p className="text-xs font-medium">
+        {current > 0 ? "Identify speakers again" : "Identify speakers"}
+      </p>
+      <div role="radiogroup" aria-label="Speaker identification method" className="grid grid-cols-2 rounded-lg bg-muted p-0.5">
+        <Button
+          role="radio"
+          aria-checked={mode === "auto"}
+          variant={mode === "auto" ? "secondary" : "ghost"}
+          size="xs"
+          onClick={() => setMode("auto")}
+        >
+          Auto · GPU
+        </Button>
+        <Button
+          role="radio"
+          aria-checked={mode === "exact"}
+          variant={mode === "exact" ? "secondary" : "ghost"}
+          size="xs"
+          onClick={() => setMode("exact")}
+        >
+          Exact count · CPU
+        </Button>
+      </div>
+      {mode === "exact" && (
+        <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          How many people spoke?
+          <Input
+            autoFocus
+            inputMode="numeric"
+            aria-label="Number of speakers"
+            value={count}
+            onChange={(e) => setCount(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && valid) submit(); }}
+            className="h-7 w-14 text-xs"
+          />
+        </label>
+      )}
       <p className="text-[11px] leading-snug text-muted-foreground">
-        The transcript text is untouched. Names you typed here that are not a known person are
-        lost; voices the app recognises come back named.
+        {mode === "auto"
+          ? "Fast detection supports up to four speakers and falls back to CPU if the GPU is unavailable."
+          : "Exact count supports up to 20 speakers. It takes longer and uses more CPU."}
+        {" "}Transcript text is never changed.
       </p>
       <div className="flex justify-end">
-        <Button size="xs" disabled={!valid} onClick={() => onSubmit(n)}>Re-run</Button>
+        <Button size="xs" disabled={!valid} onClick={submit}>Identify speakers</Button>
       </div>
     </div>
   );

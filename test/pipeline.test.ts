@@ -358,7 +358,12 @@ describe("diarize", () => {
         .all()
         .every((s) => s.speakerId === people[0].id),
     ).toBe(true);
-    expect(recording()).toMatchObject({ status: "done", error: null });
+    expect(recording()).toMatchObject({
+      status: "done",
+      error: null,
+      diarizationEngine: "sherpa-cpu",
+      speakerLimitHit: 0,
+    });
   });
 
   it("validates the source after compute and before persistence", async () => {

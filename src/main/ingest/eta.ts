@@ -37,7 +37,9 @@ const PRIOR: Record<string, number> = {
   "transcribing:cpu:small": 0.7,
   "transcribing:cpu:base.en": 0.15,
   "transcribing:cpu:*": 1.0,
-  // sherpa has no gpu path, so this one does not vary with the asr device
+  // measured at about 6 s for a 5-minute sample on an RX 6700 XT
+  "diarizing:gpu:sortformer-4spk-v2.1-q8": 0.02,
+  // sherpa has no gpu path, so this fallback does not vary with the asr device
   "diarizing:*:*": 0.2,
 };
 

@@ -9,19 +9,21 @@
 import { join } from "node:path";
 import { and, eq, gt, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { utilityProcess } from "electron";
-import type { Resolved } from "../../shared/ipc";
+import type { DiarizationEngine, Resolved } from "../../shared/ipc";
 import { type Chunk, durationMs as chunkDurationMs } from "../../worker/chunk";
 import type { Config } from "../../worker/diarize";
 import { isEmbedded } from "../../worker/cluster";
-import { type Assigned, type Segment, isSplit } from "../../worker/merge";
+import { type Assigned, type Segment, assign, isSplit } from "../../worker/merge";
 import type { DiarizeJob, Reply, Request, TranscribeJob } from "../../worker/protocol";
 import type { Options, Utterance, Word } from "../../worker/whisper";
+import type { Turn } from "../../worker/types";
 import type { Db } from "../db/client";
 import { toBlob } from "../db/embedding";
 import * as peopleDb from "../db/people";
 import { lastChunkIdx, now } from "../db/recordings";
 import { recordings, segments, speakers } from "../db/schema";
 import { PipelineError, err } from "../errors";
+import { runSortformer } from "./sortformer";
 
 export interface TranscribeSpec {
   recordingId: number;
@@ -57,6 +59,20 @@ export interface DiarizeSpec {
    */
   keepNames?: boolean;
   /** Last source-version check. Runs after compute, before any transcript row is replaced. */
+  validate?: () => void | Promise<void>;
+  engine?: DiarizationEngine;
+  speakerLimitHit?: boolean;
+}
+
+export interface SortformerSpec {
+  recordingId: number;
+  pcm: string;
+  segmentation: string;
+  embedding: string;
+  runtime: string;
+  model: string;
+  threads: number;
+  keepNames?: boolean;
   validate?: () => void | Promise<void>;
 }
 
@@ -161,6 +177,8 @@ export function completeTranscriptionOnly(db: Db, recordingId: number): void {
         lastChunkIdx: null,
         transcriptVersion: sql`${recordings.transcriptVersion} + 1`,
         speakersVersion: sql`${recordings.speakersVersion} + 1`,
+        diarizationEngine: null,
+        speakerLimitHit: 0,
         updatedAt: now(),
       })
       .where(eq(recordings.id, recordingId))
@@ -208,6 +226,80 @@ export async function diarize(
     identified: counts.identified,
     micTrack: spec.micPcm !== null,
   };
+}
+
+/** Fast four-speaker pass, followed by the existing voiceprint embedder and merge logic. */
+export async function diarizeSortformer(
+  db: Db,
+  spec: SortformerSpec,
+  progress: Progress,
+  signal?: AbortSignal,
+): Promise<DiarizeReport> {
+  const loaded = loadSegments(db, spec.recordingId);
+  const turns = await runSortformer({
+    runtime: spec.runtime,
+    model: spec.model,
+    pcm: spec.pcm,
+    threads: spec.threads,
+    signal,
+    onProgress: (pct) => progress(pct * 0.9),
+  });
+  const count = turns.reduce((n, turn) => Math.max(n, turn.speaker + 1), 0);
+  const embeddings = await embedTurns(
+    spec.pcm,
+    spec.segmentation,
+    spec.embedding,
+    turns,
+    (pct) => progress(0.9 + pct * 0.1),
+    signal,
+  );
+  const labels = Array.from({ length: count }, (_, i) => `Speaker ${i + 1}`);
+  const assigned = assign(loaded.map((item) => item.seg), turns);
+  await spec.validate?.();
+  const counts = persist(
+    db,
+    {
+      ...spec,
+      micPcm: null,
+      vadModel: "",
+      config: { threshold: 0, speakers: null },
+      engine: "sortformer-vulkan",
+      speakerLimitHit: count === 4,
+    },
+    labels,
+    embeddings,
+    loaded,
+    assigned,
+  );
+  progress(1);
+  return {
+    speakers: count,
+    segments: loaded.length,
+    split: counts.split,
+    unattributed: counts.unattributed,
+    identified: counts.identified,
+    micTrack: false,
+  };
+}
+
+async function embedTurns(
+  pcm: string,
+  segmentation: string,
+  embedding: string,
+  turns: Turn[],
+  progress: Progress,
+  signal?: AbortSignal,
+): Promise<Float32Array[]> {
+  if (turns.length === 0) return [];
+  const out = await dispatch<Extract<Reply, { type: "embedded" }>>(
+    { type: "embed", job: { pcm, segmentation, embedding, turns } },
+    signal,
+    (reply) => {
+      if (reply.type === "progress") progress(clamp01(reply.pct));
+      return reply.type === "embedded" ? reply : undefined;
+    },
+  );
+  return out.embeddings;
 }
 
 // ---------------------------------------------------------------------------- the worker
@@ -263,7 +355,7 @@ function dispatch<T>(
 
 const crashed = (request: Request, code: number): PipelineError => {
   const message = `compute worker exited (${code})`;
-  return request.type === "diarize" ? err.diarize(message) : err.whisper(message);
+  return request.type === "transcribe" ? err.whisper(message) : err.diarize(message);
 };
 
 // ---------------------------------------------------------------------------- transcribe
@@ -471,6 +563,8 @@ function persist(
         status: "done",
         stageDetail: null,
         error: null,
+        diarizationEngine: spec.engine ?? "sherpa-cpu",
+        speakerLimitHit: spec.speakerLimitHit ? 1 : 0,
         // the cast just changed under any overview written before now (decision #50)
         speakersVersion: sql`${recordings.speakersVersion} + 1`,
         updatedAt: now(),

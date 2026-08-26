@@ -37,8 +37,14 @@ import { defaultIngestConfig } from "../ingest/config";
 import { ingest, jobCounts } from "../ingest/runtime";
 import { check, discover, fromSettings } from "../media/ffmpeg";
 import * as catalog from "../models/catalog";
-import { resolve } from "../models/device";
+import { gpus, resolve } from "../models/device";
 import { ensure, isPresent } from "../models/download";
+import {
+  SORTFORMER,
+  ensureSortformer,
+  isSortformerPresent,
+  sortformerRuntime,
+} from "../models/sortformer";
 import { logsDir, pcmCacheDir } from "../paths";
 import { sampleCpu, sampleGpu } from "../system/stats";
 
@@ -51,6 +57,9 @@ const supportSpecs = (): catalog.ModelSpec[] => [
   catalog.SEGMENTATION,
   catalog.defaultEmbedding(),
 ];
+
+/** Sortformer is useful only when both the staged Vulkan runtime and a hardware GPU exist. */
+const supportsFastDiarization = (): boolean => sortformerRuntime() !== null && gpus().length > 0;
 
 /** Overview generations in flight, so a user who changed their mind can stop paying for one. */
 const generating = new Map<number, AbortController>();
@@ -174,8 +183,15 @@ const handlers: Record<string, Handler> = {
   rediarize(a) {
     const id = requireId(a, "recording_id");
     if (statusOf(db(), id) !== "done") throw new Error(`recording ${id} is not finished`);
-    const speakers = a?.speakers === null ? null : num(a?.speakers);
-    ingest()?.enqueue(id, { kind: "rediarize", speakers: speakers ?? null });
+    const rawSpeakers = a?.speakers;
+    const speakers = rawSpeakers === null || rawSpeakers === undefined ? null : num(rawSpeakers);
+    if (
+      speakers === undefined ||
+      (speakers !== null && (!Number.isInteger(speakers) || speakers < 1 || speakers > 20))
+    ) {
+      throw new Error("speaker count must be a whole number from 1 to 20");
+    }
+    ingest()?.enqueue(id, { kind: "rediarize", speakers });
   },
 
   // ----------------------------------------------------------------------- people
@@ -481,9 +497,12 @@ const handlers: Record<string, Handler> = {
 
   retry_job(a) {
     const id = requireId(a, "recording_id");
+    const was = statusOf(db(), id);
     // false = the row wasn't terminal (a stale or duplicate click); enqueueing then would run
     // a second copy of a job that is already in flight
-    if (resetForRetry(db(), id)) ingest()?.enqueue(id);
+    if (resetForRetry(db(), id)) {
+      ingest()?.enqueue(id, was === "done" ? { kind: "retranscribe" } : undefined);
+    }
   },
 
   /** Scans and confirms in one shot — the explicit-confirmation requirement is satisfied by
@@ -512,20 +531,24 @@ const handlers: Record<string, Handler> = {
 
   support_models: (): SupportModels => {
     const missing = supportSpecs().filter((m) => !isPresent(m));
+    const missingSortformer = supportsFastDiarization() && !isSortformerPresent();
     return {
-      ready: missing.length === 0,
-      missing_bytes: missing.reduce((n, m) => n + m.size, 0),
+      ready: missing.length === 0 && !missingSortformer,
+      missing_bytes:
+        missing.reduce((n, m) => n + m.size, 0) + (missingSortformer ? SORTFORMER.size : 0),
     };
   },
 
   /**
    * Same fire-and-forget shape as `download_model`, under the reserved `support` key. Fetched
    * one after another and reported as a single byte-weighted bar — there is no tier to pick
-   * between, so three bars would be three ways to say the same thing.
+   * between, so separate bars would be several ways to say the same thing.
    */
   download_support_models() {
     const specs = supportSpecs();
-    const total = specs.reduce((n, m) => n + m.size, 0);
+    const includeSortformer = supportsFastDiarization();
+    const total =
+      specs.reduce((n, m) => n + m.size, 0) + (includeSortformer ? SORTFORMER.size : 0);
     const ac = new AbortController();
     downloads.set(SUPPORT_MODELS, ac);
 

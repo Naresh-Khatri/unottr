@@ -35,13 +35,19 @@ import {
   findWhisper,
   whisperPreference,
 } from "../models/catalog";
-import { resolve as resolveDevice } from "../models/device";
+import { gpus, resolve as resolveDevice } from "../models/device";
 import { ensure, isPresent, locate } from "../models/download";
+import {
+  SORTFORMER,
+  ensureSortformer,
+  sortformerRuntime,
+} from "../models/sortformer";
 import type { PipelineConfig } from "./config";
 import { Eta, type Rates, type Timed, prior, rateKey } from "./eta";
 import { compute } from "./fingerprint";
-import { completeTranscriptionOnly, diarize, transcribe } from "./pipeline";
+import { completeTranscriptionOnly, diarize, diarizeSortformer, transcribe } from "./pipeline";
 import {
+  SourceChangedError,
   type SourceVersion,
   assertSourceVersion,
   cacheMatchesSource,
@@ -98,11 +104,13 @@ export async function processRecording(
     : defaultEmbedding();
 
   // resolved before anything slow starts, so the very first tick can already say how long
+  const plannedFastDiarization = cfg.diarizeSpeakers === null && fastDiarizationAvailable();
   const keys: Record<Timed, string> = {
     extracting: rateKey("extracting", device, "ffmpeg"),
     transcribing: rateKey("transcribing", device, whisperSpec.name),
-    // sherpa is cpu-only, so this rate does not vary with what asr ran on
-    diarizing: rateKey("diarizing", "cpu", embeddingSpec.name),
+    diarizing: plannedFastDiarization
+      ? rateKey("diarizing", "gpu", SORTFORMER.name)
+      : rateKey("diarizing", "cpu", embeddingSpec.name),
   };
   const rates = Object.fromEntries(
     Object.entries(keys).map(([stage, key]) => [stage, stageRates.rate(db, key, prior(key))]),
@@ -139,6 +147,10 @@ export async function processRecording(
     (f) => report("extracting", f),
     signal,
   );
+  if (plannedFastDiarization && micPcm !== null) {
+    const cpuKey = rateKey("diarizing", "cpu", embeddingSpec.name);
+    rates.diarizing = stageRates.rate(db, cpuKey, prior(cpuKey));
+  }
   report("extracting", 1);
 
   // --- transcribing (checkpointed inside transcribe) ---
@@ -196,18 +208,19 @@ export async function processRecording(
   const startedDiarize = Date.now();
   let finalFingerprint: Awaited<ReturnType<typeof compute>> | null = null;
   // diarize's persist() writes status = 'done' in the same transaction as the merge
-  await diarize(
-    db,
+  const actualDiarizeKey = await identifySpeakers(
+    ctx,
     {
       recordingId: id,
-      pcm: mainPcm,
+      mainPcm,
       micPcm,
       segmentation,
       embedding,
+      embeddingName: embeddingSpec.name,
       vadModel,
-      config: {
-        threshold: cfg.diarizeThreshold ?? DEFAULT_THRESHOLD,
-        speakers: cfg.diarizeSpeakers,
+      speakers: cfg.diarizeSpeakers,
+      onRateKey: (key) => {
+        rates.diarizing = stageRates.rate(db, key, prior(key));
       },
       validate: async () => {
         assertSourceVersion(path, source);
@@ -220,7 +233,7 @@ export async function processRecording(
   );
   if (finalFingerprint) setFingerprint(db, id, finalFingerprint);
   terminology.applyToRecording(db, id);
-  stageRates.record(db, keys.diarizing, Date.now() - startedDiarize, probed.duration_ms ?? 0);
+  stageRates.record(db, actualDiarizeKey, Date.now() - startedDiarize, probed.duration_ms ?? 0);
 }
 
 /** The tracks the compute stages read. Cached pcm is reused as-is, which is what makes a
@@ -277,7 +290,7 @@ async function prepareAudio(
 }
 
 /**
- * Re-cluster a finished recording's voices at a count the user supplied (decision #50). Only
+ * Re-cluster a finished recording's voices automatically or at a count the user supplied.
  * the speaker rows and `segments.speaker_id` change — the text is never touched, so fts stays
  * valid. Names come back by voiceprint, not by label: with a different `speakers` the old
  * "Speaker 2" is not the new one, so carrying names across by name would be a lie.
@@ -310,38 +323,132 @@ export async function rediarizeRecording(
     const segmentation = await fetchModel(ctx, SEGMENTATION, true, signal);
     const embedding = await fetchModel(ctx, embeddingSpec, true, signal);
 
-    const key = rateKey("diarizing", "cpu", embeddingSpec.name);
+    const plannedFast = speakers === null && micPcm === null && fastDiarizationAvailable();
+    const key = plannedFast
+      ? rateKey("diarizing", "gpu", SORTFORMER.name)
+      : rateKey("diarizing", "cpu", embeddingSpec.name);
+    const rates: Rates = {
+      extracting: 0,
+      transcribing: 0,
+      diarizing: stageRates.rate(db, key, prior(key)),
+    };
     const eta = new Eta({
       durationMs: probed.duration_ms,
       // only the one stage runs, so the others cost nothing to be ahead of
-      rates: { extracting: 0, transcribing: 0, diarizing: stageRates.rate(db, key, prior(key)) },
+      rates,
     });
     onProgress("diarizing", 0, eta.tick("diarizing", 0));
 
     const started = Date.now();
     // persist() writes the new cast, bumps speakers_version and sets status = 'done'
-    await diarize(
-      db,
+    const actualKey = await identifySpeakers(
+      ctx,
       {
         recordingId: id,
-        pcm: mainPcm,
+        mainPcm,
         micPcm,
         segmentation,
         embedding,
+        embeddingName: embeddingSpec.name,
         vadModel,
-        config: { threshold: cfg.diarizeThreshold ?? DEFAULT_THRESHOLD, speakers },
+        speakers,
         keepNames: false,
+        onRateKey: (actual) => {
+          rates.diarizing = stageRates.rate(db, actual, prior(actual));
+        },
       },
       (f) => onProgress("diarizing", f, eta.tick("diarizing", f)),
       signal,
     );
     terminology.applyToRecording(db, id);
-    stageRates.record(db, key, Date.now() - started, probed.duration_ms ?? 0);
+    stageRates.record(db, actualKey, Date.now() - started, probed.duration_ms ?? 0);
   } catch (e) {
     setStatus(db, id, was);
     throw e;
   }
 }
+
+interface SpeakerJob {
+  recordingId: number;
+  mainPcm: string;
+  micPcm: string | null;
+  segmentation: string;
+  embedding: string;
+  embeddingName: string;
+  vadModel: string;
+  speakers: number | null;
+  keepNames?: boolean;
+  onRateKey?: (key: string) => void;
+  validate?: () => void | Promise<void>;
+}
+
+async function identifySpeakers(
+  ctx: JobCtx,
+  job: SpeakerJob,
+  progress: (pct: number) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const runtime = job.speakers === null && job.micPcm === null ? sortformerRuntime() : null;
+  let fellBack = false;
+  if (runtime && gpus().length > 0) {
+    const gpuKey = rateKey("diarizing", "gpu", SORTFORMER.name);
+    job.onRateKey?.(gpuKey);
+    try {
+      const model = await ensureSortformer({ dir: ctx.modelsDir, signal });
+      await diarizeSortformer(
+        ctx.db,
+        {
+          recordingId: job.recordingId,
+          pcm: job.mainPcm,
+          segmentation: job.segmentation,
+          embedding: job.embedding,
+          runtime,
+          model,
+          threads: ctx.cfg.threads ?? availableParallelism(),
+          keepNames: job.keepNames,
+          validate: job.validate,
+        },
+        progress,
+        signal,
+      );
+      return gpuKey;
+    } catch (e) {
+      if (isCancelled(e) || e instanceof SourceChangedError) throw e;
+      console.warn(`Vulkan diarization failed; retrying on CPU: ${String(e)}`);
+      fellBack = true;
+    }
+  }
+
+  const cpuKey = rateKey("diarizing", "cpu", job.embeddingName);
+  job.onRateKey?.(cpuKey);
+  if (fellBack) progress(0);
+  await diarize(
+    ctx.db,
+    {
+      recordingId: job.recordingId,
+      pcm: job.mainPcm,
+      // An exact count means the whole meeting. The separate-mic path adds "You" after
+      // clustering and would therefore return one more speaker than the user requested.
+      micPcm: job.speakers === null ? job.micPcm : null,
+      segmentation: job.segmentation,
+      embedding: job.embedding,
+      vadModel: job.vadModel,
+      config: {
+        threshold: ctx.cfg.diarizeThreshold ?? DEFAULT_THRESHOLD,
+        speakers: job.speakers,
+      },
+      keepNames: job.keepNames,
+      validate: job.validate,
+      engine: "sherpa-cpu",
+      speakerLimitHit: false,
+    },
+    progress,
+    signal,
+  );
+  return cpuKey;
+}
+
+const fastDiarizationAvailable = (): boolean => sortformerRuntime() !== null && gpus().length > 0;
 
 /**
  * `auto` resolves by device, but the tier onboarding actually downloaded wins over one that

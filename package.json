@@ -46,6 +46,7 @@
     "@ai-sdk/openai": "^4.0.44",
     "@ai-sdk/openai-compatible": "^3.0.32",
     "@fugood/whisper.node": "^1.1.1",
+    "@qvac/registry-client": "0.6.1",
     "ai": "^7.0.68",
     "better-sqlite3": "^13.0.3",
     "chokidar": "^5.0.0",

@@ -78,9 +78,15 @@ describe("listRecordings", () => {
   });
 
   it("computes speaker_count, filename and has_video", () => {
+    db.update(recordings)
+      .set({ diarizationEngine: "sortformer-vulkan", speakerLimitHit: 1 })
+      .where(eq(recordings.id, 9001))
+      .run();
     const r = q.listRecordings(db, {}, SORT).find((x) => x.id === 9001);
     expect(r).toMatchObject({
       speaker_count: 2,
+      diarization_engine: "sortformer-vulkan",
+      speaker_limit_hit: true,
       has_video: true,
       filename: "2025-10-06 roadmap-review.mp4",
       available: true,

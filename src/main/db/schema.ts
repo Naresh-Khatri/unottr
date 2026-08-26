@@ -52,6 +52,9 @@ export const recordings = sqliteTable(
     speakersVersion: integer("speakers_version").notNull().default(0),
     /** bumped whenever displayed transcript text changes */
     transcriptVersion: integer("transcript_version").notNull().default(0),
+    diarizationEngine: text("diarization_engine").$type<"sortformer-vulkan" | "sherpa-cpu">(),
+    /** Sortformer emitted all four slots, so another speaker may have been merged. */
+    speakerLimitHit: integer("speaker_limit_hit").notNull().default(0),
   },
   (t) => [
     index("idx_recordings_status").on(t.status),

@@ -73,17 +73,20 @@ const recordings: RecordingSummary[] = [
     filename: "2025-10-06 roadmap-review.mp4", title: "Q4 roadmap trade-offs",
     created_at: 1787468400, recorded_at: 1759754411,
     duration_ms: 2130000, status: "done", stage_detail: null, error: null,
-    speaker_count: 2, available: true, has_video: true },
+    speaker_count: 2, diarization_engine: "sortformer-vulkan", speaker_limit_hit: false,
+    available: true, has_video: true },
   { id: 9002, path: "/home/naresh/fixtures/2026-08-18 standup.mp4",
     filename: "2026-08-18 standup.mp4", title: null,
     created_at: 1787554800, recorded_at: 1765000332,
     duration_ms: 1980000, status: "transcribing", stage_detail: "chunk 12/44",
-    error: null, speaker_count: 0, available: true, has_video: true },
+    error: null, speaker_count: 0, diarization_engine: null, speaker_limit_hit: false,
+    available: true, has_video: true },
   { id: 9003, path: "/home/naresh/fixtures/2025-10-12 interrupted.mp4",
     filename: "2025-10-12 interrupted.mp4", title: null,
     created_at: 1787382000, recorded_at: 1760276883,
     duration_ms: null, status: "failed", stage_detail: null, error: "Truncated",
-    speaker_count: 0, available: false, has_video: false },
+    speaker_count: 0, diarization_engine: null, speaker_limit_hit: false,
+    available: false, has_video: false },
 ];
 
 let folders: WatchFolder[] = [

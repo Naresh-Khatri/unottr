@@ -11,10 +11,10 @@ import { readFileSync } from "node:fs";
 import { PipelineError, err, type ErrorDetail } from "../main/errors";
 import { decodeS16 } from "../main/media/pcm";
 import { pack, range } from "./chunk";
-import { Diarizer } from "./diarize";
+import { defaultConfig, Diarizer } from "./diarize";
 import { assign } from "./merge";
 import * as mic from "./mic";
-import type { DiarizeJob, Reply, Request, TranscribeJob } from "./protocol";
+import type { DiarizeJob, EmbedJob, Reply, Request, TranscribeJob } from "./protocol";
 import { detectSpeech } from "./vad";
 import { Transcriber, shift } from "./whisper";
 
@@ -40,19 +40,36 @@ process.parentPort.on("message", (e) => {
 process.on("uncaughtException", fatal);
 process.on("unhandledRejection", fatal);
 
-async function handle(request: Request & { type: "transcribe" | "diarize" }): Promise<void> {
+async function handle(request: Request & { type: "transcribe" | "diarize" | "embed" }): Promise<void> {
   try {
     if (request.type === "transcribe") {
       stage = "transcribe";
       await transcribe(request.job);
       send({ type: "transcribed" });
-    } else {
+    } else if (request.type === "diarize") {
       stage = "diarize";
       send({ type: "diarized", ...(await diarize(request.job)) });
+    } else {
+      stage = "diarize";
+      send({ type: "embedded", embeddings: embed(request.job) });
     }
   } catch (e) {
     send({ type: "failed", error: detail(e) });
   }
+}
+
+function embed(job: EmbedJob): Float32Array[] {
+  check();
+  const pcm = decodeS16(read(job.pcm));
+  const diarizer = Diarizer.load(job.segmentation, job.embedding, defaultConfig());
+  const count = job.turns.reduce((n, turn) => Math.max(n, turn.speaker + 1), 0);
+  const embeddings: Float32Array[] = [];
+  for (let speaker = 0; speaker < count; speaker++) {
+    check();
+    embeddings.push(diarizer.centroid(pcm, job.turns, speaker));
+    send({ type: "progress", pct: (speaker + 1) / count });
+  }
+  return embeddings;
 }
 
 async function transcribe(job: TranscribeJob): Promise<void> {

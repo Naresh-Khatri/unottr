@@ -38,6 +38,8 @@ const SUMMARY_COLUMNS = {
   status: recordings.status,
   stage_detail: recordings.stageDetail,
   error: recordings.error,
+  diarization_engine: recordings.diarizationEngine,
+  speaker_limit_hit: recordings.speakerLimitHit,
   available: recordings.available,
   speaker_count: speakerCount,
 };
@@ -52,6 +54,8 @@ type SummaryRow = {
   status: string;
   stage_detail: string | null;
   error: string | null;
+  diarization_engine: "sortformer-vulkan" | "sherpa-cpu" | null;
+  speaker_limit_hit: number;
   available: number;
   speaker_count: number;
 };
@@ -63,6 +67,7 @@ function toSummary(r: SummaryRow): RecordingSummary {
     has_video: hasVideo(r.path),
     status: parseStatusLenient(r.status),
     available: r.available !== 0,
+    speaker_limit_hit: r.speaker_limit_hit !== 0,
   };
 }
 

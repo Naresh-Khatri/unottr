@@ -20,6 +20,8 @@ export const IN_FLIGHT: Status[] = [
   "merging",
 ];
 
+export type DiarizationEngine = "sortformer-vulkan" | "sherpa-cpu";
+
 export interface Word {
   text: string;
   start_ms: number;
@@ -70,6 +72,8 @@ export interface RecordingSummary {
   stage_detail: string | null;
   error: string | null; // typed-error slug when status=failed
   speaker_count: number;
+  diarization_engine: DiarizationEngine | null;
+  speaker_limit_hit: boolean;
   available: boolean; // false -> text usable, player disabled
   has_video: boolean;
 }
@@ -194,8 +198,8 @@ export interface ModelInfo {
 }
 
 /**
- * Everything a job needs besides the whisper tier — vad, segmentation, speaker embedding.
- * No tier to choose between, so the ui treats the set as one thing.
+ * Everything a job needs besides the whisper tier — VAD, segmentation, speaker embedding,
+ * and Sortformer on machines where its Vulkan runtime can run. The UI treats it as one set.
  */
 export interface SupportModels {
   ready: boolean;
