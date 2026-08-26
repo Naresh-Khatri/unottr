@@ -30,10 +30,15 @@ interface LiveProgress {
   pct: number;
   eta: number | null;
   receivedAt: number;
+  mode: "full" | "transcribe" | "diarize";
 }
 
-function PipelineProgress({ status, pct }: { status: Status; pct: number }) {
-  if (status !== "transcribing" && status !== "diarizing") {
+function PipelineProgress({ status, pct, mode }: {
+  status: Status;
+  pct: number;
+  mode: LiveProgress["mode"];
+}) {
+  if (mode !== "full" || (status !== "transcribing" && status !== "diarizing")) {
     return <Progress value={pct * 100} className="mt-2" />;
   }
 
@@ -235,7 +240,12 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
       onJobProgress((p) => {
         setProgress((prev) => ({
           ...prev,
-          [p.recording_id]: { pct: p.pct, eta: p.eta_ms, receivedAt: Date.now() },
+          [p.recording_id]: {
+            pct: p.pct,
+            eta: p.eta_ms,
+            receivedAt: Date.now(),
+            mode: p.mode,
+          },
         }));
         setRows((prev) => prev.map((r) => (r.id === p.recording_id ? { ...r, status: p.stage } : r)));
       }),
@@ -352,7 +362,13 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                             <span className="inline-flex items-center gap-1"><Users />{r.speaker_count}</span>
                           )}
                         </div>
-                        {live && <PipelineProgress status={r.status} pct={progress[r.id]?.pct ?? 0} />}
+                        {live && (
+                          <PipelineProgress
+                            status={r.status}
+                            pct={progress[r.id]?.pct ?? 0}
+                            mode={progress[r.id]?.mode ?? "full"}
+                          />
+                        )}
                         {r.status === "failed" && (() => {
                           const info = errorInfo(r.error);
                           return (
@@ -388,7 +404,9 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                         ) : "—"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end"><StatusChip status={r.status} /></div>
+                        <div className="flex justify-end">
+                          <StatusChip status={r.status} mode={progress[r.id]?.mode} />
+                        </div>
                         {live && progress[r.id]?.eta != null && (
                           <div className="mt-1 text-xs text-muted-foreground tabular-nums">
                             {etaLabel(countdownEta(

@@ -463,7 +463,26 @@ describe("queue", () => {
     expect(events.filter((e) => e.kind === "done").map((e) => e.recording_id)).toEqual([a, b]);
     const ticks = events.filter((e) => e.kind === "progress");
     expect(ticks).toHaveLength(2);
-    expect(ticks[0]).toMatchObject({ pct: 0.5, eta_ms: 120_000 });
+    expect(ticks[0]).toMatchObject({ pct: 0.5, eta_ms: 120_000, mode: "full" });
+  });
+
+  it("reports an explicit retranscription as a single-step job", async () => {
+    const id = rec.stub(db, join(dir, "again.mkv"));
+    const events: IngestEvent[] = [];
+    const q = queueOf(events, async (_id, spec, onProgress) => {
+      expect(spec).toEqual({ kind: "retranscribe" });
+      onProgress("transcribing", 0.25, 90_000);
+    });
+
+    q.enqueue(id, { kind: "retranscribe" });
+    await q.idle();
+
+    expect(events[0]).toMatchObject({
+      kind: "progress",
+      recording_id: id,
+      stage: "transcribing",
+      mode: "transcribe",
+    });
   });
 
   it("retries a bounded failure up to max_attempts, then parks it", async () => {

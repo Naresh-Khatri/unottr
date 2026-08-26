@@ -146,6 +146,8 @@ export interface JobProgress {
   recording_id: number;
   stage: Status;
   pct: number;
+  /** Whether this run includes both compute steps or only the requested one. */
+  mode: "full" | "transcribe" | "diarize";
   /** Remaining wall time for the whole job; null when there is nothing to estimate from. */
   eta_ms: number | null;
 }

@@ -219,7 +219,13 @@ export const mockCommands = {
 
   /** No worker here, so it just reports the two events the real one would. */
   rediarize(recording_id: number, _speakers: number | null) {
-    emit("job_progress", { recording_id, stage: "diarizing", pct: 0.4, eta_ms: 8000 });
+    emit("job_progress", {
+      recording_id,
+      stage: "diarizing",
+      pct: 0.4,
+      eta_ms: 8000,
+      mode: "diarize",
+    });
     setTimeout(() => {
       markSpeakersStale(recording_id);
       emit("job_done", { recording_id });
@@ -699,6 +705,7 @@ function startTicking(): void {
       stage: "transcribing",
       pct,
       eta_ms: Math.round((1 - pct) * 9 * 60_000) + 90_000,
+      mode: "full",
     });
     if (pct >= 1) {
       clearInterval(t);

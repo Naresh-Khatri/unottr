@@ -1,8 +1,8 @@
 // One recording, start to finish. Port of crates/unottr-core/src/ingest/pipeline.rs (the name
 // `pipeline.ts` was already taken by the transcribe/diarize database driver this calls into).
 //
-// Always runs the full sequence regardless of which non-terminal status it entered at — see
-// reconcile.ts for why that is simpler and just as correct as resuming at the failed stage.
+// New and failed recordings run the full sequence. An explicit retranscription uses the same
+// checkpoints and source checks but stops before the optional speaker pass.
 
 import { availableParallelism } from "node:os";
 import { dirname, join, parse } from "node:path";
@@ -40,7 +40,7 @@ import { ensure, isPresent, locate } from "../models/download";
 import type { PipelineConfig } from "./config";
 import { Eta, type Rates, type Timed, prior, rateKey } from "./eta";
 import { compute } from "./fingerprint";
-import { diarize, transcribe } from "./pipeline";
+import { completeTranscriptionOnly, diarize, transcribe } from "./pipeline";
 import {
   type SourceVersion,
   assertSourceVersion,
@@ -71,6 +71,7 @@ export async function processRecording(
   id: number,
   onProgress: OnProgress,
   signal?: AbortSignal,
+  options: { diarize?: boolean } = {},
 ): Promise<void> {
   const { db, cli, thumbsDir, cfg } = ctx;
   check(signal);
@@ -106,6 +107,7 @@ export async function processRecording(
   const rates = Object.fromEntries(
     Object.entries(keys).map(([stage, key]) => [stage, stageRates.rate(db, key, prior(key))]),
   ) as Rates;
+  if (options.diarize === false) rates.diarizing = 0;
   const eta = new Eta({ durationMs: probed.duration_ms, rates });
   const report = (stage: Status, pct: number): void => onProgress(stage, pct, eta.tick(stage, pct));
 
@@ -170,6 +172,15 @@ export async function processRecording(
   // a resumed run's wall covers only the chunks it actually ran, so it is not a measurement
   if (transcribed.resumedFrom === 0) {
     stageRates.record(db, keys.transcribing, Date.now() - startedTranscribe, probed.duration_ms ?? 0);
+  }
+
+  if (options.diarize === false) {
+    const finalFingerprint = await compute(path);
+    assertSourceVersion(path, source);
+    setFingerprint(db, id, finalFingerprint);
+    terminology.applyToRecording(db, id);
+    completeTranscriptionOnly(db, id);
+    return;
   }
 
   // --- diarizing ---

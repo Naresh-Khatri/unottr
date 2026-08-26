@@ -543,6 +543,16 @@ const handlers: Record<string, Handler> = {
         });
         done += spec.size;
       }
+      if (includeSortformer) {
+        await ensureSortformer({
+          signal: ac.signal,
+          onProgress: (pct) =>
+            events.modelDownloadProgress({
+              model: SUPPORT_MODELS,
+              pct: Math.min((done + pct * SORTFORMER.size) / total, 0.999),
+            }),
+        });
+      }
       events.modelDownloadProgress({ model: SUPPORT_MODELS, pct: 1 });
     })()
       .catch((e: unknown) => {

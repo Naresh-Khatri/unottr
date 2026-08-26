@@ -67,7 +67,9 @@ export class IngestService {
       run: (id, spec, onProgress, signal) =>
         spec.kind === "rediarize"
           ? rediarizeRecording(ctxFor(), id, spec.speakers, onProgress, signal)
-          : processRecording(ctxFor(), id, onProgress, signal),
+          : processRecording(ctxFor(), id, onProgress, signal, {
+              diarize: spec.kind === "full",
+            }),
       onEvent: o.onEvent,
     });
 

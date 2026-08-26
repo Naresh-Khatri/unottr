@@ -14,7 +14,10 @@ const LABEL: Record<Status, string> = {
   failed: "Failed",
 };
 
-export function StatusChip({ status }: { status: Status }) {
+export function StatusChip({ status, mode }: {
+  status: Status;
+  mode?: "full" | "transcribe" | "diarize";
+}) {
   if (status === "done")
     return <Badge variant="secondary"><CheckCircle weight="fill" />Done</Badge>;
   if (status === "failed")
@@ -25,7 +28,9 @@ export function StatusChip({ status }: { status: Status }) {
     return (
       <Badge variant="outline">
         <CircleNotch className="animate-spin" />
-        {LABEL[status]}
+        {mode === "transcribe" && status === "transcribing"
+          ? "Transcribing"
+          : mode === "diarize" && status === "diarizing" ? "Identifying speakers" : LABEL[status]}
       </Badge>
     );
   return <Badge variant="outline">{LABEL[status]}</Badge>;

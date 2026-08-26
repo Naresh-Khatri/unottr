@@ -146,6 +146,28 @@ export async function transcribe(
   return report;
 }
 
+/**
+ * Finish an explicit text-only rerun. Its new segments have no speaker assignment, so keeping
+ * the old cast would claim those labels still apply. A later re-diarize can rebuild the cast.
+ */
+export function completeTranscriptionOnly(db: Db, recordingId: number): void {
+  db.transaction((tx) => {
+    tx.delete(speakers).where(eq(speakers.recordingId, recordingId)).run();
+    tx.update(recordings)
+      .set({
+        status: "done",
+        stageDetail: null,
+        error: null,
+        lastChunkIdx: null,
+        transcriptVersion: sql`${recordings.transcriptVersion} + 1`,
+        speakersVersion: sql`${recordings.speakersVersion} + 1`,
+        updatedAt: now(),
+      })
+      .where(eq(recordings.id, recordingId))
+      .run();
+  });
+}
+
 /** Cluster the recording's voices and attach them to its transcript rows. */
 export async function diarize(
   db: Db,

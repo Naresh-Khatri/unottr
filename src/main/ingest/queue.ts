@@ -17,15 +17,25 @@ import { SourceChangedError, waitForStableSource } from "./source";
 
 export type IngestEvent =
   | { kind: "discovered"; recording_id: number }
-  | { kind: "progress"; recording_id: number; stage: Status; pct: number; eta_ms: number | null }
+  | {
+      kind: "progress";
+      recording_id: number;
+      stage: Status;
+      pct: number;
+      eta_ms: number | null;
+      mode: "full" | "transcribe" | "diarize";
+    }
   | { kind: "done"; recording_id: number }
   | { kind: "failed"; recording_id: number; error: string };
 
 /**
- * What to run for a queued id. "rediarize" re-clusters a finished recording's voices at a
- * known count (decision #50) — everything else is the full ingest.
+ * What to run for a queued id. The two explicit reruns do only the requested compute step;
+ * newly discovered recordings still run the full ingest.
  */
-export type JobSpec = { kind: "full" } | { kind: "rediarize"; speakers: number | null };
+export type JobSpec =
+  | { kind: "full" }
+  | { kind: "retranscribe" }
+  | { kind: "rediarize"; speakers: number | null };
 
 export const FULL: JobSpec = { kind: "full" };
 
@@ -88,13 +98,16 @@ export class Queue {
   private async runJob(id: number, spec: JobSpec): Promise<void> {
     const { db, maxAttempts, run, onEvent } = this.o;
     const signal = this.controller.signal;
+    const mode = spec.kind === "rediarize"
+      ? "diarize"
+      : spec.kind === "retranscribe" ? "transcribe" : "full";
 
     // a re-diarize runs against a recording that is already done: it must not be able to park
     // that row as failed, retry it, or switch its device — it just reports and leaves
     if (spec.kind === "rediarize") {
       try {
         await run(id, spec, (stage, pct, eta_ms) =>
-          onEvent({ kind: "progress", recording_id: id, stage, pct, eta_ms }),
+          onEvent({ kind: "progress", recording_id: id, stage, pct, eta_ms, mode }),
         signal);
         onEvent({ kind: "done", recording_id: id });
       } catch (e) {
@@ -116,7 +129,8 @@ export class Queue {
         await run(
           id,
           spec,
-          (stage, pct, eta_ms) => onEvent({ kind: "progress", recording_id: id, stage, pct, eta_ms }),
+          (stage, pct, eta_ms) =>
+            onEvent({ kind: "progress", recording_id: id, stage, pct, eta_ms, mode }),
           signal,
         );
         onEvent({ kind: "done", recording_id: id });

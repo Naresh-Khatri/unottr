@@ -12,7 +12,13 @@ import * as q from "../src/main/db/queries";
 import { people, recordings, segments, speakers } from "../src/main/db/schema";
 import { PipelineError } from "../src/main/errors";
 import { fromBlob, toBlob } from "../src/main/db/embedding";
-import { type DiarizeSpec, type TranscribeSpec, diarize, transcribe } from "../src/main/ingest/pipeline";
+import {
+  type DiarizeSpec,
+  type TranscribeSpec,
+  completeTranscriptionOnly,
+  diarize,
+  transcribe,
+} from "../src/main/ingest/pipeline";
 import { SourceChangedError } from "../src/main/ingest/source";
 import type { Chunk } from "../src/worker/chunk";
 import type { Assigned } from "../src/worker/merge";
@@ -152,6 +158,28 @@ describe("transcribe", () => {
     expect(seen).toEqual([0.4, 0.8, 1]);
     expect(rows().map((r) => r.text)).toEqual(["chunk 0.", "chunk 1.", "chunk 2."]);
     expect(recording()).toMatchObject({ status: "diarizing", stageDetail: null, lastChunkIdx: 2 });
+  });
+
+  it("finishes a text-only rerun without keeping stale speaker assignments", async () => {
+    scriptedRun(CHUNKS.length);
+    await transcribe(db, spec, () => {});
+    const speakerId = db.insert(speakers)
+      .values({ recordingId: ID, label: "Speaker 1" })
+      .returning({ id: speakers.id })
+      .get().id;
+    db.update(segments).set({ speakerId }).where(eq(segments.recordingId, ID)).run();
+
+    completeTranscriptionOnly(db, ID);
+
+    expect(db.select().from(speakers).all()).toEqual([]);
+    expect(db.select({ speakerId: segments.speakerId }).from(segments).all())
+      .toEqual([{ speakerId: null }, { speakerId: null }, { speakerId: null }]);
+    expect(recording()).toMatchObject({
+      status: "done",
+      lastChunkIdx: null,
+      transcriptVersion: 1,
+      speakersVersion: 1,
+    });
   });
 
   it("stores each utterance's words as json", async () => {

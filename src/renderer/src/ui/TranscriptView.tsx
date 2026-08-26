@@ -1,7 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, Check, Copy, DotsThree, Export,
+  ArrowClockwise, ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, Check, Copy, DotsThree, Export,
   MagnifyingGlass, ChatCircleDots, PencilSimple, Sparkle, UsersThree, VideoCameraSlash,
 } from "@phosphor-icons/react";
 import { api, onJobDone, onJobFailed, onTranscriptChanged, os } from "@/ipc/client";
@@ -50,8 +50,8 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>(initialTab);
-  const [rediarizing, setRediarizing] = useState(false);
-  const [speakerError, setSpeakerError] = useState<string | null>(null);
+  const [activeJob, setActiveJob] = useState<"transcribing" | "diarizing" | null>(null);
+  const [jobError, setJobError] = useState<string | null>(null);
   const userScrolling = useRef(false);
   const scrollTimer = useRef(0);
 
@@ -61,6 +61,8 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
     setLoadError(null);
     setVideoFailed(false);
     setOpenError(null);
+    setActiveJob(null);
+    setJobError(null);
     api.getRecording(id).then(
       (d) => { if (!stale) { setDetail(d); setSpeakers(d.speakers); } },
       // without this the rejection is swallowed and the screen sits on "Loading…" forever
@@ -182,11 +184,17 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
 
   useEffect(() => {
     const offs = [
-      onJobDone((p) => { if (p.recording_id === id) { setRediarizing(false); void refresh(); } }),
+      onJobDone((p) => {
+        if (p.recording_id === id) { setActiveJob(null); void refresh(); }
+      }),
       onJobFailed((p) => {
         if (p.recording_id !== id) return;
-        setRediarizing(false);
-        setSpeakerError(`Re-running speakers failed (${p.error}). The old speakers are unchanged.`);
+        setActiveJob((job) => {
+          setJobError(job === "diarizing"
+            ? `Speaker identification failed (${p.error}). The old speakers are unchanged.`
+            : `Retranscription failed (${p.error}).`);
+          return null;
+        });
       }),
       onTranscriptChanged((p) => { if (p.recording_id === id) void refresh(); }),
     ];
@@ -194,23 +202,34 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
   }, [id, refresh]);
 
   const fix = useCallback(async (act: () => Promise<unknown>) => {
-    setSpeakerError(null);
+    setJobError(null);
     try {
       await act();
       await refresh();
     } catch (e) {
-      setSpeakerError(String(e));
+      setJobError(String(e));
     }
   }, [refresh]);
 
   async function startRediarize(count: number | null) {
-    setSpeakerError(null);
-    setRediarizing(true);
+    setJobError(null);
+    setActiveJob("diarizing");
     try {
       await api.rediarize(id, count);
     } catch (e) {
-      setRediarizing(false);
-      setSpeakerError(String(e));
+      setActiveJob(null);
+      setJobError(String(e));
+    }
+  }
+
+  async function startRetranscribe() {
+    setJobError(null);
+    setActiveJob("transcribing");
+    try {
+      await api.retryJob(id);
+    } catch (e) {
+      setActiveJob(null);
+      setJobError(String(e));
     }
   }
 
@@ -319,11 +338,18 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
             trigger={<Button size="icon-sm" variant="ghost" aria-label="More"><DotsThree /></Button>}
           >
             {(close) => (
-              <RediarizeForm
-                current={speakers.length}
-                disabled={!detail || detail.recording.status !== "done" || rediarizing}
-                onSubmit={(n) => { close(); void startRediarize(n); }}
-              />
+              <>
+                <RetranscribeForm
+                  disabled={!detail || detail.recording.status !== "done" || activeJob !== null}
+                  onSubmit={() => { close(); void startRetranscribe(); }}
+                />
+                <div className="my-1 border-t" />
+                <RediarizeForm
+                  current={speakers.length}
+                  disabled={!detail || detail.recording.status !== "done" || activeJob !== null}
+                  onSubmit={(n) => { close(); void startRediarize(n); }}
+                />
+              </>
             )}
           </Menu>
         </div>
@@ -388,10 +414,13 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                 <SpeakerStrip
                   speakers={speakers}
                   palette={palette}
-                  busy={rediarizing}
+                  busy={activeJob === "diarizing"}
                   onMerge={(fromId, intoId) => fix(() => api.mergeSpeakers(id, fromId, intoId))}
                 />
-                {speakerError && <span className="text-xs text-destructive">{speakerError}</span>}
+                {activeJob === "transcribing" && (
+                  <span className="text-xs text-muted-foreground">Retranscribing text…</span>
+                )}
+                {jobError && <span className="text-xs text-destructive">{jobError}</span>}
               </CardContent>
             </Card>
           </div>
@@ -713,6 +742,28 @@ function ReassignMenu({ speakers, palette, current, onPick, onNew }: {
         </>
       )}
     </Menu>
+  );
+}
+
+function RetranscribeForm({ disabled, onSubmit }: { disabled: boolean; onSubmit: () => void }) {
+  if (disabled)
+    return (
+      <p className="w-64 px-2 py-1 text-xs text-muted-foreground">
+        Retranscription needs a finished recording.
+      </p>
+    );
+
+  return (
+    <div className="flex w-64 flex-col gap-2 p-1">
+      <p className="text-xs font-medium">Retranscribe text</p>
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        Runs speech recognition only. Speaker labels are cleared, and speaker identification
+        will not start automatically.
+      </p>
+      <div className="flex justify-end">
+        <Button size="xs" onClick={onSubmit}><ArrowClockwise />Retranscribe</Button>
+      </div>
+    </div>
   );
 }
 
