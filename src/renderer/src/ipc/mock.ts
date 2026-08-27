@@ -226,6 +226,7 @@ export const mockCommands = {
       recording_id,
       stage: "diarizing",
       pct: 0.4,
+      phase: null,
       eta_ms: 8000,
       mode: "diarize",
     });
@@ -716,6 +717,7 @@ function startTicking(): void {
       recording_id: 9002,
       stage: "transcribing",
       pct,
+      phase: null,
       eta_ms: Math.round((1 - pct) * 9 * 60_000) + 90_000,
       mode: "full",
     });

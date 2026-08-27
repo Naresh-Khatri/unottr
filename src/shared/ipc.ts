@@ -145,11 +145,16 @@ export interface RecordingSort {
   dir: "asc" | "desc";
 }
 
+/** Work inside a persisted pipeline stage that needs its own honest UI state. */
+export type JobPhase = "detecting_speech" | null;
+
 // main -> renderer events. pct is 0..1.
 export interface JobProgress {
   recording_id: number;
   stage: Status;
   pct: number;
+  /** Null once the stage is reporting ordinary percentage progress. */
+  phase: JobPhase;
   /** Whether this run includes both compute steps or only the requested one. */
   mode: "full" | "transcribe" | "diarize";
   /** Remaining wall time for the whole job; null when there is nothing to estimate from. */

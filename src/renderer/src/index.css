@@ -142,3 +142,20 @@
     height: 100%;
   }
 }
+
+@keyframes progress-indeterminate {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(320%); }
+}
+
+.progress-indeterminate {
+  animation: progress-indeterminate 1.4s cubic-bezier(0.76, 0, 0.24, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate {
+    animation: none;
+    transform: translateX(100%);
+    opacity: 0.65;
+  }
+}

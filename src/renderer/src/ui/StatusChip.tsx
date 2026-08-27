@@ -1,6 +1,6 @@
 import { CheckCircle, CircleNotch, Clock, WarningCircle } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
-import type { Status } from "@/ipc/types";
+import type { JobPhase, Status } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
 
 const LABEL: Record<Status, string> = {
@@ -14,9 +14,10 @@ const LABEL: Record<Status, string> = {
   failed: "Failed",
 };
 
-export function StatusChip({ status, mode }: {
+export function StatusChip({ status, mode, phase }: {
   status: Status;
   mode?: "full" | "transcribe" | "diarize";
+  phase?: JobPhase;
 }) {
   if (status === "done")
     return <Badge variant="secondary"><CheckCircle weight="fill" />Done</Badge>;
@@ -28,7 +29,9 @@ export function StatusChip({ status, mode }: {
     return (
       <Badge variant="outline">
         <CircleNotch className="animate-spin" />
-        {mode === "transcribe" && status === "transcribing"
+        {status === "transcribing" && phase === "detecting_speech"
+          ? "Detecting speech"
+          : mode === "transcribe" && status === "transcribing"
           ? "Transcribing"
           : mode === "diarize" && status === "diarizing" ? "Identifying speakers" : LABEL[status]}
       </Badge>

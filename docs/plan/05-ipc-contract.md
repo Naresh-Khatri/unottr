@@ -77,7 +77,9 @@ The only genuinely phase-04-coupled surface. UI consumes mocked emissions until 
 exists; payload shapes are frozen here.
 
 ```ts
-"job_progress"          { recording_id: number, stage: Status, pct: number }  // pct 0..1
+"job_progress"          { recording_id: number, stage: Status, pct: number,
+                          phase: "detecting_speech" | null,
+                          mode: "full" | "transcribe" | "diarize", eta_ms: number | null }
 "job_done"              { recording_id: number }
 "job_failed"            { recording_id: number, error: string }               // typed slug
 "recording_discovered"  { recording_id: number }

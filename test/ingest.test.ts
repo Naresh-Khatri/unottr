@@ -451,7 +451,7 @@ describe("queue", () => {
     const q = queueOf(events, async (_id, _spec, onProgress) => {
       inFlight += 1;
       expect(inFlight).toBe(1);
-      onProgress("probing", 0.5, 120_000);
+      onProgress("probing", 0.5, 120_000, null);
       await Promise.resolve();
       inFlight -= 1;
     });
@@ -471,7 +471,7 @@ describe("queue", () => {
     const events: IngestEvent[] = [];
     const q = queueOf(events, async (_id, spec, onProgress) => {
       expect(spec).toEqual({ kind: "retranscribe" });
-      onProgress("transcribing", 0.25, 90_000);
+      onProgress("transcribing", 0.25, 90_000, "detecting_speech");
     });
 
     q.enqueue(id, { kind: "retranscribe" });
@@ -481,6 +481,7 @@ describe("queue", () => {
       kind: "progress",
       recording_id: id,
       stage: "transcribing",
+      phase: "detecting_speech",
       mode: "transcribe",
     });
   });

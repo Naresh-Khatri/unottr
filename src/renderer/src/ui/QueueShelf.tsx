@@ -7,7 +7,7 @@ import {
   onJobProgress,
   onRecordingDiscovered,
 } from "@/ipc/client";
-import type { RecordingSummary, Status } from "@/ipc/types";
+import type { JobPhase, RecordingSummary, Status } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
 import { countdownEta, etaLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ interface LiveProgress {
   pct: number;
   eta: number | null;
   receivedAt: number;
+  phase: JobPhase;
 }
 
 const STAGE_LABEL: Record<Status, string> = {
@@ -52,10 +53,13 @@ export function QueueShelf({ onOpen }: { onOpen: (id: number) => void }) {
             pct: p.pct,
             eta: p.eta_ms,
             receivedAt: Date.now(),
+            phase: p.phase,
           },
         }));
         setRows((prev) => prev.map((row) => (
-          row.id === p.recording_id ? { ...row, status: p.stage } : row
+          row.id === p.recording_id
+            ? { ...row, status: p.stage, stage_detail: p.phase }
+            : row
         )));
       }),
       onJobDone(load),
@@ -92,6 +96,10 @@ export function QueueShelf({ onOpen }: { onOpen: (id: number) => void }) {
     ? ""
     : etaLabel(countdownEta(activeProgress.eta, activeProgress.receivedAt, etaClock));
   const pct = Math.min(1, Math.max(0, activeProgress?.pct ?? 0));
+  const detectingSpeech = active.status === "transcribing"
+    && (activeProgress?.phase === "detecting_speech"
+      || (!activeProgress && active.stage_detail === "detecting_speech"));
+  const activeStageLabel = detectingSpeech ? "Detecting speech" : STAGE_LABEL[active.status];
 
   return (
     <footer className="relative z-20 shrink-0 border-t bg-sidebar" aria-label="Processing queue">
@@ -113,7 +121,7 @@ export function QueueShelf({ onOpen }: { onOpen: (id: number) => void }) {
             {active.title ?? active.filename}
           </span>
           <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-            {STAGE_LABEL[active.status]}
+            {activeStageLabel}
           </span>
           <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
             {eta && <span className="tabular-nums">{eta}</span>}
@@ -163,15 +171,19 @@ export function QueueShelf({ onOpen }: { onOpen: (id: number) => void }) {
                       {row.title ?? row.filename}
                     </span>
                     <span className="mt-0.5 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                      <span>{isActive ? STAGE_LABEL[row.status] : "Waiting"}</span>
+                      <span>{isActive ? activeStageLabel : "Waiting"}</span>
                       {isActive && eta && <span className="tabular-nums">{eta}</span>}
                     </span>
                     {isActive && (
                       <span className="mt-2 block h-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                        <span
-                          className="block size-full origin-left bg-primary transition-transform duration-200 ease-out motion-reduce:transition-none"
-                          style={{ transform: `scaleX(${Math.min(1, Math.max(0, live?.pct ?? pct))})` }}
-                        />
+                        {detectingSpeech ? (
+                          <span className="progress-indeterminate block h-full w-1/3 rounded-full bg-primary" />
+                        ) : (
+                          <span
+                            className="block size-full origin-left bg-primary transition-transform duration-200 ease-out motion-reduce:transition-none"
+                            style={{ transform: `scaleX(${Math.min(1, Math.max(0, live?.pct ?? pct))})` }}
+                          />
+                        )}
                       </span>
                     )}
                   </span>

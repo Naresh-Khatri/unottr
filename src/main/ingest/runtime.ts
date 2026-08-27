@@ -85,6 +85,7 @@ function forward(e: IngestEvent): void {
         recording_id: e.recording_id,
         stage: e.stage,
         pct: e.pct,
+        phase: e.phase,
         mode: e.mode,
         eta_ms: e.eta_ms,
       });

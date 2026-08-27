@@ -6,7 +6,7 @@ import {
   api, onJobDone, onJobFailed, onJobProgress, onOverviewChanged, onRecordingDiscovered,
   PREVIEW_COUNT, previewUrl, thumbUrl,
 } from "@/ipc/client";
-import type { RecordingSummary, Status, WatchFolder } from "@/ipc/types";
+import type { JobPhase, RecordingSummary, Status, WatchFolder } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
 import { countdownEta, dateLabel, durationLabel, etaLabel, hms, timeLabel } from "@/lib/format";
 import { errorInfo } from "@/lib/errors";
@@ -32,13 +32,34 @@ interface LiveProgress {
   eta: number | null;
   receivedAt: number;
   mode: "full" | "transcribe" | "diarize";
+  phase: JobPhase;
 }
 
-function PipelineProgress({ status, pct, mode }: {
+function PipelineProgress({ status, pct, mode, phase, durationMs }: {
   status: Status;
   pct: number;
   mode: LiveProgress["mode"];
+  phase: JobPhase;
+  durationMs: number | null;
 }) {
+  if (status === "transcribing" && phase === "detecting_speech") {
+    return (
+      <div className="mt-2">
+        <div className="mb-1 text-[11px] text-muted-foreground">
+          Scanning {durationLabel(durationMs)} of audio before transcription
+        </div>
+        <div
+          className="h-1 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-label="Detecting speech before transcription"
+          aria-valuetext="Scanning the recording. This can take a few minutes."
+        >
+          <span className="progress-indeterminate block h-full w-1/3 rounded-full bg-primary" />
+        </div>
+      </div>
+    );
+  }
+
   if (mode !== "full" || (status !== "transcribing" && status !== "diarizing")) {
     return <Progress value={pct * 100} className="mt-2" />;
   }
@@ -250,9 +271,12 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
             eta: p.eta_ms,
             receivedAt: Date.now(),
             mode: p.mode,
+            phase: p.phase,
           },
         }));
-        setRows((prev) => prev.map((r) => (r.id === p.recording_id ? { ...r, status: p.stage } : r)));
+        setRows((prev) => prev.map((r) => (r.id === p.recording_id
+          ? { ...r, status: p.stage, stage_detail: p.phase }
+          : r)));
       }),
       // terminal/new-row events are rare — a full refetch keeps duration/speaker_count/error correct
       onJobDone(load),
@@ -377,6 +401,9 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                             status={r.status}
                             pct={progress[r.id]?.pct ?? 0}
                             mode={progress[r.id]?.mode ?? "full"}
+                            phase={progress[r.id]?.phase
+                              ?? (r.stage_detail === "detecting_speech" ? "detecting_speech" : null)}
+                            durationMs={r.duration_ms}
                           />
                         )}
                         {r.status === "failed" && (() => {
@@ -415,7 +442,12 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end">
-                          <StatusChip status={r.status} mode={progress[r.id]?.mode} />
+                          <StatusChip
+                            status={r.status}
+                            mode={progress[r.id]?.mode}
+                            phase={progress[r.id]?.phase
+                              ?? (r.stage_detail === "detecting_speech" ? "detecting_speech" : null)}
+                          />
                         </div>
                         {live && progress[r.id]?.eta != null && (
                           <div className="mt-1 text-xs text-muted-foreground tabular-nums">

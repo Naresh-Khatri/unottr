@@ -4,7 +4,7 @@
 // The rust worker was a thread blocking on a channel; here it is a promise chain driven by
 // `enqueue`. The job body is injected so this file never imports electron and stays testable.
 
-import type { Status } from "../../shared/ipc";
+import type { JobPhase, Status } from "../../shared/ipc";
 import type { Db } from "../db/client";
 import {
   failOrRetry,
@@ -25,6 +25,7 @@ export type IngestEvent =
       recording_id: number;
       stage: Status;
       pct: number;
+      phase: JobPhase;
       eta_ms: number | null;
       mode: "full" | "transcribe" | "diarize";
     }
@@ -45,7 +46,7 @@ export const FULL: JobSpec = { kind: "full" };
 export type RunJob = (
   id: number,
   spec: JobSpec,
-  onProgress: (stage: Status, pct: number, etaMs: number | null) => void,
+  onProgress: (stage: Status, pct: number, etaMs: number | null, phase: JobPhase) => void,
   signal: AbortSignal,
 ) => Promise<void>;
 
@@ -112,8 +113,8 @@ export class Queue {
     // that row as failed, retry it, or switch its device — it just reports and leaves
     if (spec.kind === "rediarize") {
       try {
-        await run(id, spec, (stage, pct, eta_ms) =>
-          onEvent({ kind: "progress", recording_id: id, stage, pct, eta_ms, mode }),
+        await run(id, spec, (stage, pct, eta_ms, phase) =>
+          onEvent({ kind: "progress", recording_id: id, stage, pct, phase, eta_ms, mode }),
         signal);
         onEvent({ kind: "done", recording_id: id });
       } catch (e) {
@@ -137,8 +138,8 @@ export class Queue {
         await run(
           id,
           spec,
-          (stage, pct, eta_ms) =>
-            onEvent({ kind: "progress", recording_id: id, stage, pct, eta_ms, mode }),
+          (stage, pct, eta_ms, phase) =>
+            onEvent({ kind: "progress", recording_id: id, stage, pct, phase, eta_ms, mode }),
           signal,
         );
         onEvent({ kind: "done", recording_id: id });

@@ -158,7 +158,7 @@ describe("transcribe", () => {
       speechMs: 25_000,
     });
     // Progress follows audio sent to Whisper, not checkpoint count: 10 s + 10 s + 5 s.
-    expect(seen).toEqual([0.4, 0.8, 1]);
+    expect(seen).toEqual([0, 0.4, 0.8, 1]);
     expect(rows().map((r) => r.text)).toEqual(["chunk 0.", "chunk 1.", "chunk 2."]);
     expect(recording()).toMatchObject({ status: "diarizing", stageDetail: null, lastChunkIdx: 2 });
   });

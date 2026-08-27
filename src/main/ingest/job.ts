@@ -6,7 +6,7 @@
 
 import { availableParallelism } from "node:os";
 import { dirname, join, parse } from "node:path";
-import type { Status } from "../../shared/ipc";
+import type { JobPhase, Status } from "../../shared/ipc";
 import { DEFAULT_THRESHOLD } from "../../worker/cluster";
 import type { Db } from "../db/client";
 import {
@@ -68,7 +68,12 @@ export interface JobCtx {
 }
 
 /** `etaMs` is the whole job's remaining wall time, null while it cannot be estimated. */
-export type OnProgress = (stage: Status, pct: number, etaMs: number | null) => void;
+export type OnProgress = (
+  stage: Status,
+  pct: number,
+  etaMs: number | null,
+  phase: JobPhase,
+) => void;
 
 /** `{stem}.t{n}.pcm` in the cache dir — the name reconcile.ts's stale sweep parses back. */
 export const pcmPathFor = (cacheDir: string, source: string, audioIndex: number): string =>
@@ -89,7 +94,7 @@ export async function processRecording(
 
   // --- probing ---
   setStatus(db, id, "probing");
-  onProgress("probing", 0, null);
+  onProgress("probing", 0, null, null);
   const probed = await probe(cli, path);
   assertSourceVersion(path, source);
   setProbeResult(db, id, probed.container, probed.duration_ms);
@@ -127,7 +132,8 @@ export async function processRecording(
   ) as Rates;
   if (options.diarize === false) rates.diarizing = 0;
   const eta = new Eta({ durationMs: probed.duration_ms, rates });
-  const report = (stage: Status, pct: number): void => onProgress(stage, pct, eta.tick(stage, pct));
+  const report = (stage: Status, pct: number, phase: JobPhase = null): void =>
+    onProgress(stage, pct, eta.tick(stage, pct), phase);
 
   report("probing", 1);
 
@@ -167,11 +173,11 @@ export async function processRecording(
   // Persist the transition before model lookup or worker startup. The renderer can miss the
   // in-memory progress tick when it mounts during startup, and a worker can fail before its
   // first chunk; in both cases leaving the row as "extracting" is both stale and misleading.
-  setStatus(db, id, "transcribing");
+  setStatus(db, id, "transcribing", "detecting_speech");
   const whisperModel = await fetchModel(ctx, whisperSpec, cfg.downloadModels, signal);
   const vadModel = await fetchModel(ctx, VAD, true, signal);
 
-  report("transcribing", 0);
+  report("transcribing", 0, "detecting_speech");
   const startedTranscribe = Date.now();
   const transcribed = await transcribe(
     db,
@@ -347,7 +353,7 @@ export async function rediarizeRecording(
       // only the one stage runs, so the others cost nothing to be ahead of
       rates,
     });
-    onProgress("diarizing", 0, eta.tick("diarizing", 0));
+    onProgress("diarizing", 0, eta.tick("diarizing", 0), null);
 
     const started = Date.now();
     // persist() writes the new cast, bumps speakers_version and sets status = 'done'
@@ -367,7 +373,7 @@ export async function rediarizeRecording(
           rates.diarizing = stageRates.rate(db, actual, prior(actual));
         },
       },
-      (f) => onProgress("diarizing", f, eta.tick("diarizing", f)),
+      (f) => onProgress("diarizing", f, eta.tick("diarizing", f), null),
       signal,
     );
     terminology.applyToRecording(db, id);

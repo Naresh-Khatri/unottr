@@ -21,7 +21,7 @@ import type { Turn } from "../../worker/types";
 import type { Db } from "../db/client";
 import { toBlob } from "../db/embedding";
 import * as peopleDb from "../db/people";
-import { lastChunkIdx, now } from "../db/recordings";
+import { lastChunkIdx, now, setStatus } from "../db/recordings";
 import { recordings, segments, speakers } from "../db/schema";
 import { PipelineError, err } from "../errors";
 import { runSortformer } from "./sortformer";
@@ -132,9 +132,10 @@ export async function transcribe(
         for (const chunk of chunks) {
           completedWork.push(completedWork.at(-1)! + chunkDurationMs(chunk));
         }
-        // a resume starts partway in; say so before the first chunk lands, or the eta reads
-        // the whole backlog as work still to do
-        if (from > 0) progress(workAt(from));
+        // This is also the boundary between the CPU-only VAD scan and Whisper. Report it
+        // even on a fresh run so the UI can leave its indeterminate "Detecting speech" state.
+        setStatus(db, spec.recordingId, "transcribing");
+        progress(workAt(from));
         return undefined;
       case "chunk":
         checkpoint(db, spec.recordingId, reply.idx, reply.utterances);
