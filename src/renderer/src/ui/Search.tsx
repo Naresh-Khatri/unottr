@@ -6,6 +6,7 @@ import { hms } from "@/lib/format";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { LoadingState } from "@/components/ui/loading-state";
 
 export function Search({ onOpen }: {
   onOpen: (recordingId: number, ms: number, tab?: "transcript" | "overview") => void;
@@ -13,16 +14,46 @@ export function Search({ onOpen }: {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searched, setSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const requestVersion = useRef(0);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
+    const version = ++requestVersion.current;
+    const query = q.trim();
+    if (!query) {
+      setHits([]);
+      setSearched(false);
+      setSearching(false);
+      setSearchError(false);
+      return undefined;
+    }
+    setSearching(true);
+    setSearchError(false);
     const t = setTimeout(() => {
-      if (!q.trim()) { setHits([]); setSearched(false); return; }
-      api.search(q).then((h) => { setHits(h); setSearched(true); });
+      api.search(query).then(
+        (next) => {
+          if (version !== requestVersion.current) return;
+          setHits(next);
+          setSearched(true);
+          setSearching(false);
+        },
+        () => {
+          if (version !== requestVersion.current) return;
+          setHits([]);
+          setSearched(true);
+          setSearching(false);
+          setSearchError(true);
+        },
+      );
     }, 180);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      if (requestVersion.current === version) requestVersion.current += 1;
+    };
   }, [q]);
 
   return (
@@ -34,7 +65,9 @@ export function Search({ onOpen }: {
       </div>
 
       <div className="mt-4 space-y-2">
-        {hits.map((h) => (
+        {searching ? (
+          <LoadingState label="Searching transcripts" className="min-h-32" />
+        ) : hits.map((h) => (
           // an overview hit has no moment of its own — it opens the tab, not 0:00
           <Card key={`${h.kind}-${h.recording_id}-${h.segment_id}`}
             onClick={() => onOpen(h.recording_id, h.start_ms, h.kind === "overview" ? "overview" : undefined)}
@@ -51,10 +84,13 @@ export function Search({ onOpen }: {
             </CardContent>
           </Card>
         ))}
-        {searched && !hits.length && (
+        {searchError && (
+          <p className="px-1 py-4 text-sm text-destructive">Search failed. Try again.</p>
+        )}
+        {searched && !searchError && !hits.length && (
           <p className="px-1 py-4 text-sm text-muted-foreground">No matches.</p>
         )}
-        {!searched && (
+        {!searching && !searched && (
           <p className="px-1 py-4 text-sm text-muted-foreground">
             Try “roadmap”, “latency”, “numbers”.
           </p>

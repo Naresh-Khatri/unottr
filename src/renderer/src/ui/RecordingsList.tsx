@@ -20,6 +20,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LoadingState } from "@/components/ui/loading-state";
 
 const ROW_ESTIMATE = 72; // measured hook corrects this once rows with progress/error mount
 const COLS = 7;
@@ -212,12 +213,16 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
   const [folders, setFolders] = useState<WatchFolder[]>([]);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [refreshing, setRefreshing] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const loadVersion = useRef(0);
 
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
     const next = await api.listRecordings(undefined, { by: "created_at", dir: sortDir });
-    if (version === loadVersion.current) setRows(next);
+    if (version === loadVersion.current) {
+      setRows(next);
+      setLoaded(true);
+    }
   }, [sortDir]);
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -298,7 +303,12 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
       </header>
 
       <div ref={virtual.containerRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 sm:px-6">
-        {rows.length === 0 ? (
+        {!loaded ? (
+          <LoadingState
+            label="Loading library"
+            description="Reading recordings from this device."
+          />
+        ) : rows.length === 0 ? (
           <EmptyState hasFolders={folders.length > 0} onOpenSettings={onOpenSettings} />
         ) : (
           <div className="rounded-xl border">

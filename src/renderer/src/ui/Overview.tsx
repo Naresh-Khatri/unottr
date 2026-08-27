@@ -3,7 +3,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowClockwise, Check, CheckSquare, Copy, PencilSimple, Sparkle, Square, Trash, X,
+  ArrowClockwise, Check, CheckSquare, Copy, PencilSimple, Sparkle, Square, Trash, UsersThree,
+  WarningCircle, X,
 } from "@phosphor-icons/react";
 import { api, onOverviewChanged, onOverviewProgress } from "@/ipc/client";
 import type {
@@ -19,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { LoadingState } from "@/components/ui/loading-state";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -26,11 +28,22 @@ interface Props {
   segments: Segment[];
   speakers: Speaker[];
   ready: boolean; // transcript finished; nothing to summarize before that
+  diarizing: boolean;
+  onDiarize: () => void;
   onSeek: (ms: number) => void;
   onOpenSettings: () => void;
 }
 
-export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, onOpenSettings }: Props) {
+export function OverviewPanel({
+  recordingId,
+  segments,
+  speakers,
+  ready,
+  diarizing,
+  onDiarize,
+  onSeek,
+  onOpenSettings,
+}: Props) {
   const [payload, setPayload] = useState<OverviewPayload | null>(null);
   const [conn, setConn] = useState<AiConnection | null>(null);
   const [fallbackConn, setFallbackConn] = useState<AiConnection | null>(null);
@@ -83,6 +96,9 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
 
   const overview = payload?.overview ?? null;
   const running = overview?.status === "running" || busy;
+  const hasSpeech = segments.some((segment) => segment.text.trim().length > 0);
+  const hasIdentifiedSpeaker = segments.some((segment) => segment.speaker_id !== null);
+  const needsDiarization = hasSpeech && !hasIdentifiedSpeaker;
   useEffect(() => { if (!running) setPart(null); }, [running]);
 
   async function generate() {
@@ -128,8 +144,20 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
   const theirs = (payload?.tasks ?? []).filter((t) => !t.is_mine);
   const anyoneIsMe = people.some((p) => p.is_me);
 
+  if (diarizing)
+    return (
+      <LoadingState
+        label="Identifying speakers"
+        description="The overview will be available when speaker identification finishes."
+        className="h-full"
+      />
+    );
+
   if (!ready)
     return <Empty>The overview needs a finished transcript. It’ll be available once this one is done.</Empty>;
+
+  if (needsDiarization)
+    return <DiarizationNeeded onStart={onDiarize} />;
 
   if (connLoaded && !conn)
     return (
@@ -284,6 +312,22 @@ export function OverviewPanel({ recordingId, segments, speakers, ready, onSeek, 
         </footer>
       </div>
     </div>
+  );
+}
+
+function DiarizationNeeded({ onStart }: { onStart: () => void }) {
+  return (
+    <Empty>
+      <WarningCircle className="size-6 text-amber-600 dark:text-amber-400" />
+      <div className="max-w-sm space-y-1">
+        <p className="font-medium text-foreground">Speakers haven’t been identified</p>
+        <p className="text-xs leading-relaxed">
+          Identify speakers before generating an overview so the model can attribute decisions
+          and actions to the right people.
+        </p>
+      </div>
+      <Button size="sm" onClick={onStart}><UsersThree />Identify speakers</Button>
+    </Empty>
   );
 }
 

@@ -5,8 +5,9 @@ import {
   MagnifyingGlass, ChatCircleDots, PencilSimple, Sparkle, UsersThree, VideoCameraSlash,
   WarningCircle,
 } from "@phosphor-icons/react";
-import { api, onJobDone, onJobFailed, onTranscriptChanged, os } from "@/ipc/client";
+import { api, onJobDone, onJobFailed, onJobProgress, onTranscriptChanged, os } from "@/ipc/client";
 import type { ExportFormat, Person, RecordingDetail, Segment, Speaker } from "@/ipc/types";
+import { IN_FLIGHT } from "@/ipc/types";
 import { hms } from "@/lib/format";
 import { canPlayContainer } from "@/lib/media";
 import { speakerPalette, type SpeakerPalette } from "@/lib/speakerColor";
@@ -21,6 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LoadingState } from "@/components/ui/loading-state";
 import { cn } from "@/lib/utils";
 
 type Item =
@@ -67,7 +69,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
     setJobError(null);
     api.getRecording(id).then(
       (d) => { if (!stale) { setDetail(d); setSpeakers(d.speakers); } },
-      // without this the rejection is swallowed and the screen sits on "Loading…" forever
+      // Without this, a rejected read leaves the screen in its loading state forever.
       (e) => { if (!stale) setLoadError(String(e)); },
     );
     setCurrentMs(initialMs);
@@ -143,6 +145,12 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
   }, [activeId, segIndexById]);
 
   const q = query.trim().toLowerCase();
+  const transcriptPending = activeJob === "transcribing"
+    || detail?.recording.status === "discovered"
+    || detail?.recording.status === "probing"
+    || detail?.recording.status === "extracting"
+    || detail?.recording.status === "transcribing"
+    || detail?.recording.status === "merging";
   const matches = useMemo(() => {
     if (!q) return [] as number[];
     return (detail?.segments ?? []).filter((s) => s.text.toLowerCase().includes(q)).map((s) => s.id);
@@ -200,6 +208,15 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
             : `Retranscription failed (${p.error}).`);
           return null;
         });
+      }),
+      onJobProgress((p) => {
+        if (p.recording_id !== id) return;
+        if (p.mode === "transcribe") setActiveJob("transcribing");
+        if (p.mode === "diarize") setActiveJob("diarizing");
+        setDetail((current) => current ? {
+          ...current,
+          recording: { ...current.recording, status: p.stage },
+        } : current);
       }),
       onTranscriptChanged((p) => { if (p.recording_id === id) void refresh(); }),
     ];
@@ -277,7 +294,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
           {detail ? (
             <EditableTitle value={shownTitle ?? detail.recording.filename} initial={detail.recording.title ?? ""}
               onCommit={renameRecording} inputClassName="w-full max-w-md text-sm font-medium" />
-          ) : "Loading…"}
+          ) : "Opening recording…"}
         </div>
         {/* below md the field takes a row of its own rather than squeezing title + actions */}
         <div className="order-last flex w-full items-center gap-0.5 md:order-none md:w-auto">
@@ -290,6 +307,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                 if (e.key === "Enter") jumpMatch(e.shiftKey ? -1 : 1);
               }}
               placeholder="Find in transcript"
+              disabled={transcriptPending}
               className="h-8 pl-7"
             />
           </div>
@@ -302,7 +320,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
           )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5 md:ml-0">
-          <Button size="sm" variant="outline" disabled={!detail} onClick={onAsk}>
+          <Button size="sm" variant="outline" disabled={!detail || transcriptPending} onClick={onAsk}>
             <ChatCircleDots /><span className="hidden lg:inline">Ask</span>
           </Button>
           <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as ExportFormat)}>
@@ -324,7 +342,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                   size="icon-sm"
                   variant="ghost"
                   aria-label="Copy transcript"
-                  disabled={!detail}
+                  disabled={!detail || transcriptPending}
                   onClick={doCopy}
                 >
                   {copied ? <Check /> : <Copy />}
@@ -335,7 +353,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
               {copyError ?? (copied ? "Copied" : `Copy ${exportFormat.toUpperCase()} to clipboard`)}
             </TooltipContent>
           </Tooltip>
-          <Button size="sm" variant="outline" aria-label="Export" disabled={!detail || exporting} onClick={doExport}>
+          <Button size="sm" variant="outline" aria-label="Export" disabled={!detail || transcriptPending || exporting} onClick={doExport}>
             <Export /><span className="hidden lg:inline">Export</span>
           </Button>
           <Menu
@@ -372,7 +390,11 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
           </Button>
         </div>
       ) : !detail ? (
-        <div className="p-8 text-sm text-muted-foreground">Loading…</div>
+        <LoadingState
+          label="Opening recording"
+          description="Loading the media, transcript, and speakers."
+          className="h-full"
+        />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-4 lg:p-4">
           <div className={cn(
@@ -450,63 +472,90 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
 
             <TabsContent value="transcript" className="min-h-0" keepMounted>
               <Card className="h-full min-h-0 overflow-hidden p-0">
-            <div
-              ref={virtual.containerRef}
-              onWheel={markUserScroll}
-              onTouchMove={markUserScroll}
-              className="h-full overflow-y-auto"
-            >
-              <div style={{ height: virtual.topPad }} />
-              {items.slice(virtual.start, virtual.end).map((it, i) => {
-                const idx = virtual.start + i;
-                if (it.kind === "header") {
-                  return (
-                    <div key={`h-${it.blockIdx}`} ref={virtual.measureRef(idx)} className="px-3 pt-4 pb-1 sm:px-4">
-                      <SpeakerName
-                        sid={it.sid}
-                        name={nameFor(it.sid)}
-                        color={palette.ui(it.sid)}
-                        known={people}
-                        onRename={rename}
-                      />
-                    </div>
-                  );
-                }
-                const seg = it.seg;
-                const active = seg.id === activeId;
-                const isMatch = q !== "" && seg.text.toLowerCase().includes(q);
-                const isCurrentMatch = matches[matchIndex] === seg.id;
-                return (
-                  <div
-                    key={seg.id}
-                    ref={virtual.measureRef(idx)}
-                    data-seg={seg.id}
-                    onClick={() => setCurrentMs(seg.start_ms)}
-                    className={cn(
-                      "group relative mx-3 cursor-pointer rounded-md py-1 pr-8 pl-2 text-sm leading-relaxed transition-colors sm:mx-4",
-                      active ? "bg-primary/10 text-foreground" : "hover:bg-muted",
-                      isMatch && "ring-1 ring-primary/40",
-                      isCurrentMatch && "ring-2 ring-primary",
-                    )}
-                  >
-                    <span className="mr-2 font-mono text-[11px] text-muted-foreground tabular-nums">
-                      {hms(seg.start_ms)}
-                    </span>
-                    {seg.speaker_id == null
-                      ? <span className="text-muted-foreground italic">{seg.text}</span>
-                      : seg.text}
-                    <ReassignMenu
-                      speakers={speakers}
-                      palette={palette}
-                      current={seg.speaker_id}
-                      onPick={(sid) => fix(() => api.setSegmentSpeaker(id, seg.id, sid))}
-                      onNew={() => fix(() => api.segmentNewSpeaker(id, seg.id))}
+                {transcriptPending ? (
+                  <LoadingState
+                    label={activeJob === "transcribing" ? "Retranscribing recording" : transcriptLoadingLabel(detail.recording.status)}
+                    description="Transcript generation is in progress. Fresh text will appear here when it is ready."
+                    className="h-full"
+                  />
+                ) : items.length === 0 ? (
+                  IN_FLIGHT.includes(detail.recording.status) ? (
+                    <LoadingState
+                      label={transcriptLoadingLabel(detail.recording.status)}
+                      description="The transcript will appear here when this recording is ready. You can keep using the rest of the app."
+                      className="h-full"
                     />
+                  ) : (
+                    <div className="flex h-full items-center justify-center p-8 text-center">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">No speech found</p>
+                        <p className="text-xs text-muted-foreground">This recording has no transcript text.</p>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div
+                    ref={virtual.containerRef}
+                    onWheel={markUserScroll}
+                    onTouchMove={markUserScroll}
+                    className="h-full overflow-y-auto"
+                  >
+                    <div style={{ height: virtual.topPad }} />
+                    {items.slice(virtual.start, virtual.end).map((it, i) => {
+                      const idx = virtual.start + i;
+                      if (it.kind === "header") {
+                        return (
+                          <div
+                            key={`h-${it.blockIdx}`}
+                            ref={virtual.measureRef(idx)}
+                            className="px-3 pt-4 pb-1 sm:px-4"
+                          >
+                            <SpeakerName
+                              sid={it.sid}
+                              name={nameFor(it.sid)}
+                              color={palette.ui(it.sid)}
+                              known={people}
+                              onRename={rename}
+                            />
+                          </div>
+                        );
+                      }
+                      const seg = it.seg;
+                      const active = seg.id === activeId;
+                      const isMatch = q !== "" && seg.text.toLowerCase().includes(q);
+                      const isCurrentMatch = matches[matchIndex] === seg.id;
+                      return (
+                        <div
+                          key={seg.id}
+                          ref={virtual.measureRef(idx)}
+                          data-seg={seg.id}
+                          onClick={() => setCurrentMs(seg.start_ms)}
+                          className={cn(
+                            "group relative mx-3 cursor-pointer rounded-md py-1 pr-8 pl-2 text-sm leading-relaxed transition-colors sm:mx-4",
+                            active ? "bg-primary/10 text-foreground" : "hover:bg-muted",
+                            isMatch && "ring-1 ring-primary/40",
+                            isCurrentMatch && "ring-2 ring-primary",
+                          )}
+                        >
+                          <span className="mr-2 font-mono text-[11px] text-muted-foreground tabular-nums">
+                            {hms(seg.start_ms)}
+                          </span>
+                          {seg.speaker_id == null
+                            ? <span className="text-muted-foreground italic">{seg.text}</span>
+                            : seg.text}
+                          <ReassignMenu
+                            speakers={speakers}
+                            palette={palette}
+                            current={seg.speaker_id}
+                            onPick={(sid) => fix(() => api.setSegmentSpeaker(id, seg.id, sid))}
+                            onNew={() => fix(() => api.segmentNewSpeaker(id, seg.id))}
+                          />
+                        </div>
+                      );
+                    })}
+                    <div style={{ height: virtual.bottomPad }} />
                   </div>
-                );
-              })}
-              <div style={{ height: virtual.bottomPad }} />
-            </div>
+                )}
               </Card>
             </TabsContent>
 
@@ -517,6 +566,8 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                   segments={detail.segments}
                   speakers={speakers}
                   ready={detail.recording.status === "done"}
+                  diarizing={activeJob === "diarizing" || detail.recording.status === "diarizing"}
+                  onDiarize={() => { void startRediarize(null); }}
                   onSeek={setCurrentMs}
                   onOpenSettings={onOpenSettings}
                 />
@@ -527,6 +578,24 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
       )}
     </div>
   );
+}
+
+function transcriptLoadingLabel(status: RecordingDetail["recording"]["status"]): string {
+  switch (status) {
+    case "discovered":
+      return "Waiting to transcribe";
+    case "probing":
+    case "extracting":
+      return "Preparing the recording";
+    case "transcribing":
+      return "Transcribing recording";
+    case "diarizing":
+      return "Identifying speakers";
+    case "merging":
+      return "Finishing transcript";
+    default:
+      return "Loading transcript";
+  }
 }
 
 function SpeakerName({ sid, name, color, known, onRename }: {

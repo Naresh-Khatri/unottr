@@ -18,6 +18,7 @@ import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { LoadingState } from "@/components/ui/loading-state";
 import {
   Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
 } from "@/components/ui/card";
@@ -91,7 +92,15 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
     onFfmpegChange?.(s.ffmpeg_ok);
   }
 
-  if (!settings) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
+  if (!settings) {
+    return (
+      <LoadingState
+        label="Loading settings"
+        description="Reading folders, models, and device preferences."
+        className="h-full"
+      />
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
