@@ -15,6 +15,11 @@ cosmetic. Full license text ships alongside the binaries as `ffmpeg-LICENSE.txt`
 
 Source: <https://github.com/BtbN/FFmpeg-Builds>. Upstream project: <https://ffmpeg.org>.
 
+The Apple Silicon tester app builds FFmpeg from the upstream commit pinned in
+`scripts/stage-ffmpeg-macos.sh`. It uses the same LGPL v3 boundary and rejects
+`--enable-gpl` or `--enable-nonfree` before staging. The source revision, configure flags,
+binary hashes, and LGPL v3 text ship beside the arm64 binaries.
+
 If a system `ffmpeg`/`ffprobe` is used instead (a dev run, or an override set in Settings),
 its license is whatever that system package carries — not unottr's concern, since nothing
 is bundled in that case.
@@ -33,15 +38,15 @@ Speech-to-text (decision #8). [whisper.cpp](https://github.com/ggml-org/whisper.
 MIT, and so are the Node bindings
 [`@fugood/whisper.node`](https://github.com/whisper-node/whisper.node) and its
 `@fugood/node-whisper-linux-x64-vulkan` prebuild, which ships as a `.node` addon inside the
-AppImage. No separate notice file ships, per MIT's terms (this file *is* the
-notice).
+AppImage. The Apple Silicon tester app uses the project's Darwin arm64 Metal prebuild. No
+separate notice file ships, per MIT's terms (this file *is* the notice).
 
 ## sherpa-onnx — Apache License 2.0
 
 Speaker diarization (segmentation + embedding + clustering primitives, decision #9).
 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) is Apache-2.0, as are its
-`sherpa-onnx-node` bindings and the `sherpa-onnx-linux-x64` prebuild bundled in the
-AppImage (which carries ONNX Runtime, also MIT). The rejoin/prune clustering on top (see
+`sherpa-onnx-node` bindings and the host-specific Linux x64 or Darwin arm64 prebuild bundled
+in each app (which carries ONNX Runtime, also MIT). The rejoin/prune clustering on top (see
 DESIGN.md's *Diarization*) is unottr's own code, MIT like the rest of this repo.
 
 ## Electron, Chromium and the npm dependency tree — MIT / BSD

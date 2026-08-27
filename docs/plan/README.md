@@ -1,6 +1,7 @@
 # unottr — build plan
 
-**Current plan: [09-ai-overview.md](09-ai-overview.md)**, with phase 08's packaging boxes
+**Current plan: [12-macos-arm64.md](12-macos-arm64.md)**. Phase 09 is done. Phase 10,
+bring-your-own model, landed in `3cc8e9e` without its own doc. Phase 08's packaging boxes are
 still open behind it. The Rust is gone as of 08.7 step 4; the last commit that contains it
 is tagged `rust-final`. Everything before 08 is superseded history — phases 00–07 describe
 a Rust/Tauri app that no longer exists. They are kept because they are where each behaviour
@@ -18,7 +19,8 @@ produced are still what the port is checked against.
 | 06 | [06-settings-and-shell.md](06-settings-and-shell.md) | Settings, tray, autostart, first-run, export | superseded |
 | 07 | [07-hardening-and-packaging.md](07-hardening-and-packaging.md) | Failure handling, perf pass, AppImage | superseded |
 | 08 | [08-typescript-migration.md](08-typescript-migration.md) | Tauri/Rust -> Electron/TypeScript, `crates/` deleted | done bar packaging |
-| 09 | [09-ai-overview.md](09-ai-overview.md) | Mistral summary, decisions, role-aware tasks, cited frames | **current** |
+| 09 | [09-ai-overview.md](09-ai-overview.md) | Mistral summary, decisions, role-aware tasks, cited frames | done |
+| 12 | [12-macos-arm64.md](12-macos-arm64.md) | Apple Silicon tester build with local Metal transcription and CPU diarization | **current** |
 
 The decisions in 00–07 still hold; only their implementation moved. Where a superseded
 phase and phase 08 disagree about *how* something is done, phase 08 wins — where they
