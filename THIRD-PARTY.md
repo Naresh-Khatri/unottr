@@ -63,9 +63,10 @@ sudo-less CPU and GPU temperature, usage, and power readings.
 
 ## Provider brand marks — trademarks of their owners
 
-`src/renderer/src/ui/icons/providers/*.svg` are the OpenAI, Anthropic, Mistral, Ollama and
-LM Studio marks, downloaded once from [theSVG](https://thesvg.org) (`npx @thesvg/cli add
-<slug> --variant mono`) and committed rather than pulled in as a dependency. They are used
+`src/renderer/src/ui/icons/providers/*.svg` are provider and harness marks downloaded with
+[theSVG](https://thesvg.org)'s CLI (`npx @thesvg/cli add <slug> --variant color` when a
+color variant exists, otherwise the default or mono variant) and committed rather than
+pulled in as a dependency. New brand marks should use the same CLI. They are used
 only to label the provider each connection points at. The marks remain the trademarks of
 their respective owners and are not covered by this repo's MIT license; their presence is
 nominative use, not endorsement or affiliation.
