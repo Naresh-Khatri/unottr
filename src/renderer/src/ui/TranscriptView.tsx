@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LoadingState } from "@/components/ui/loading-state";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +52,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
   const [exporting, setExporting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [tab, setTab] = useState<string>(initialTab);
   const [activeJob, setActiveJob] = useState<"transcribing" | "diarizing" | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
@@ -320,64 +321,101 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
           )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5 md:ml-0">
-          <Button size="sm" variant="outline" disabled={!detail || transcriptPending} onClick={onAsk}>
-            <ChatCircleDots /><span className="hidden lg:inline">Ask</span>
+          <Button size="sm" disabled={!detail || transcriptPending} onClick={onAsk}>
+            <ChatCircleDots />Ask
           </Button>
-          <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as ExportFormat)}>
-            <SelectTrigger className="text-xs" aria-label="Export format">
-              <SelectValue>{(v) => String(v).toUpperCase()}</SelectValue>
-            </SelectTrigger>
-            {/* default centers the popup on the selected item -> a 4-char trigger gets a menu
-                hanging off to its left */}
-            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
-              {(["txt", "json", "srt", "vtt"] as const).map((f) => (
-                <SelectItem key={f} value={f} className="text-xs">{f.toUpperCase()}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Tooltip>
-            <TooltipTrigger
-              render={
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={`Export transcript as ${exportFormat.toUpperCase()}`}
+            disabled={!detail || transcriptPending || exporting}
+            onClick={doExport}
+          >
+            <Export />Export {exportFormat.toUpperCase()}
+          </Button>
+          <Popover open={actionsOpen} onOpenChange={setActionsOpen}>
+            <PopoverTrigger
+              render={<Button size="icon-sm" variant="ghost" aria-label="More transcript actions" />}
+            >
+              <DotsThree />
+            </PopoverTrigger>
+            <PopoverContent
+              side="bottom"
+              align="end"
+              sideOffset={6}
+              className="w-[min(22rem,calc(100vw-1rem))] overflow-y-auto p-0"
+            >
+              <div className="border-b px-3.5 py-3">
+                <h2 className="text-sm font-semibold tracking-tight">More actions</h2>
+              </div>
+              <section aria-labelledby="output-actions-heading" className="p-3">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h3 id="output-actions-heading" className="text-xs font-semibold">Export and copy</h3>
+                    <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                      Choose the transcript file format.
+                    </p>
+                  </div>
+                  <Select
+                    value={exportFormat}
+                    disabled={!detail || transcriptPending}
+                    onValueChange={(v) => {
+                      setExportFormat(v as ExportFormat);
+                      setCopied(false);
+                      setCopyError(null);
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="min-w-16 text-xs" aria-label="Output format">
+                      <SelectValue>{(v) => String(v).toUpperCase()}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent
+                      align="end"
+                      alignItemWithTrigger={false}
+                      className="w-auto min-w-(--anchor-width)"
+                    >
+                      {(["txt", "json", "srt", "vtt"] as const).map((f) => (
+                        <SelectItem key={f} value={f} className="text-xs">{f.toUpperCase()}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label="Copy transcript"
+                  size="sm"
+                  variant="secondary"
+                  className="mt-2.5 w-full justify-start"
                   disabled={!detail || transcriptPending}
                   onClick={doCopy}
                 >
                   {copied ? <Check /> : <Copy />}
+                  <span className="flex-1 text-left">{copied ? "Copied to clipboard" : "Copy transcript"}</span>
+                  <span className="font-mono text-[10px] font-medium text-muted-foreground">
+                    {exportFormat.toUpperCase()}
+                  </span>
                 </Button>
-              }
-            />
-            <TooltipContent>
-              {copyError ?? (copied ? "Copied" : `Copy ${exportFormat.toUpperCase()} to clipboard`)}
-            </TooltipContent>
-          </Tooltip>
-          <Button size="sm" variant="outline" aria-label="Export" disabled={!detail || transcriptPending || exporting} onClick={doExport}>
-            <Export /><span className="hidden lg:inline">Export</span>
-          </Button>
-          <Menu
-            align="end"
-            trigger={<Button size="icon-sm" variant="ghost" aria-label="More"><DotsThree /></Button>}
-          >
-            {(close) => (
-              <>
-                <RetranscribeForm
-                  disabled={!detail || detail.recording.status !== "done" || activeJob !== null}
-                  onSubmit={() => { close(); void startRetranscribe(); }}
-                />
-                <div className="my-1 border-t" />
-                <RediarizeForm
-                  current={speakers.length}
-                  durationMs={detail?.recording.duration_ms ?? null}
-                  gpu={gpu}
-                  limitHit={detail?.recording.speaker_limit_hit ?? false}
-                  disabled={!detail || detail.recording.status !== "done" || activeJob !== null}
-                  onSubmit={(n) => { close(); void startRediarize(n); }}
-                />
-              </>
-            )}
-          </Menu>
+                {copyError && (
+                  <p role="alert" className="px-2 pt-1 text-[11px] text-destructive">{copyError}</p>
+                )}
+              </section>
+              <div className="divide-y border-t">
+                <section aria-labelledby="retranscribe-heading" className="p-3">
+                  <RetranscribeForm
+                    disabled={!detail || detail.recording.status !== "done" || activeJob !== null}
+                    onSubmit={() => { setActionsOpen(false); void startRetranscribe(); }}
+                  />
+                </section>
+                <section aria-labelledby="speaker-actions-heading" className="p-3">
+                  <RediarizeForm
+                    current={speakers.length}
+                    durationMs={detail?.recording.duration_ms ?? null}
+                    gpu={gpu}
+                    limitHit={detail?.recording.speaker_limit_hit ?? false}
+                    disabled={!detail || detail.recording.status !== "done" || activeJob !== null}
+                    onSubmit={(n) => { setActionsOpen(false); void startRediarize(n); }}
+                  />
+                </section>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </header>
 
@@ -832,20 +870,19 @@ function ReassignMenu({ speakers, palette, current, onPick, onNew }: {
 }
 
 function RetranscribeForm({ disabled, onSubmit }: { disabled: boolean; onSubmit: () => void }) {
-  if (disabled)
-    return (
-      <p className="w-72 px-2 py-1 text-xs text-muted-foreground">
-        Retranscription needs a finished recording.
-      </p>
-    );
-
   return (
-    <div className="flex w-72 flex-col gap-2 p-1">
-      <p className="text-xs font-medium">Retranscribe text</p>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground">Speakers are cleared, re-identify after</span>
-        <Button size="xs" className="shrink-0" onClick={onSubmit}><ArrowClockwise />Retranscribe</Button>
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+      <div className="min-w-0">
+        <h3 id="retranscribe-heading" className="text-xs font-semibold">Retranscribe text</h3>
+        <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+          {disabled
+            ? "Available after transcript processing finishes."
+            : "Replaces the transcript and clears speaker names."}
+        </p>
       </div>
+      <Button size="xs" variant="destructive" disabled={disabled} onClick={onSubmit}>
+        <ArrowClockwise />Retranscribe
+      </Button>
     </div>
   );
 }
@@ -887,20 +924,34 @@ function RediarizeForm({ current, durationMs, gpu, limitHit, disabled, onSubmit 
     return cost ? `${device} · ${cost}` : device;
   };
 
-  if (disabled)
-    return (
-      <p className="w-60 px-2 py-1 text-xs text-muted-foreground">
-        Speaker identification needs a finished recording.
-      </p>
-    );
+  if (disabled) return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+      <div className="min-w-0">
+        <h3 id="speaker-actions-heading" className="text-xs font-semibold">Identify speakers</h3>
+        <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+          Available after transcript processing finishes.
+        </p>
+      </div>
+      <Button size="xs" disabled>Identify</Button>
+    </div>
+  );
 
   return (
-    <div className="flex w-72 flex-col gap-2 p-1">
-      <p className="text-xs font-medium">
-        {current > 0 ? "Identify speakers again" : "Identify speakers"}
-      </p>
+    <div className="flex flex-col gap-3">
+      <div>
+        <h3 id="speaker-actions-heading" className="text-xs font-semibold">
+          {current > 0 ? "Identify speakers again" : "Identify speakers"}
+        </h3>
+        <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+          Speaker labels change; transcript text stays unchanged.
+        </p>
+      </div>
 
-      <div role="radiogroup" aria-label="Speaker identification method" className="flex flex-col gap-1">
+      <div
+        role="radiogroup"
+        aria-label="Speaker identification method"
+        className="divide-y overflow-hidden rounded-lg border bg-background/35"
+      >
         <DiarizeOption
           selected={mode === "auto"}
           onSelect={() => setMode("auto")}
@@ -918,8 +969,11 @@ function RediarizeForm({ current, durationMs, gpu, limitHit, disabled, onSubmit 
       </div>
 
       {mode === "exact" && (
-        <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          How many people spoke?
+        <label className="flex items-center justify-between gap-3 rounded-md bg-muted/40 px-2.5 py-2 text-xs">
+          <span>
+            <span className="block font-medium text-foreground">Speaker count</span>
+            <span className="mt-0.5 block text-[11px] text-muted-foreground">Enter a number from 1 to 20</span>
+          </span>
           <Input
             autoFocus
             inputMode="numeric"
@@ -933,15 +987,16 @@ function RediarizeForm({ current, durationMs, gpu, limitHit, disabled, onSubmit 
       )}
 
       {limitHit && mode === "auto" && !noGpu && (
-        <p className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+        <p className="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-700 dark:text-amber-400">
           <WarningCircle className="size-3.5 shrink-0" />
-          Last run used all 4 slots.
+          Last run found the maximum of 4 speakers.
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground">Text never changes</span>
-        <Button size="xs" className="shrink-0" disabled={!valid} onClick={submit}>Identify</Button>
+      <div className="flex justify-end">
+        <Button size="sm" className="shrink-0" disabled={!valid} onClick={submit}>
+          <UsersThree />Identify speakers
+        </Button>
       </div>
     </div>
   );
@@ -961,22 +1016,24 @@ function DiarizeOption({ selected, onSelect, title, cost, detail }: {
       aria-checked={selected}
       onClick={onSelect}
       className={cn(
-        "flex flex-col gap-0.5 rounded-md border px-2.5 py-1.5 text-left transition-colors",
-        selected ? "border-primary bg-muted" : "border-transparent bg-muted/40 hover:bg-muted/70",
+        "flex min-h-14 w-full cursor-pointer flex-col gap-0.5 px-3 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        selected ? "bg-muted/80" : "hover:bg-muted/45",
       )}
     >
       <span className="flex items-center gap-1.5">
         <span
           aria-hidden
           className={cn(
-            "size-2 shrink-0 rounded-full",
-            selected ? "bg-primary" : "border border-muted-foreground/60",
+            "flex size-3 shrink-0 items-center justify-center rounded-full border",
+            selected ? "border-primary" : "border-muted-foreground/60",
           )}
-        />
+        >
+          {selected && <span className="size-1.5 rounded-full bg-primary" />}
+        </span>
         <span className="text-xs font-medium">{title}</span>
-        <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">{cost}</span>
+        <span className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground">{cost}</span>
       </span>
-      <span className="pl-3.5 text-[11px] text-muted-foreground">{detail}</span>
+      <span className="pl-[1.125rem] text-[11px] leading-4 text-muted-foreground">{detail}</span>
     </button>
   );
 }
