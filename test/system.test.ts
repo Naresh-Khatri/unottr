@@ -1,6 +1,13 @@
 import { cpus } from "node:os";
 import { describe, expect, it } from "vitest";
+import type { AppleHardwareSample } from "../src/main/system/apple";
 import { sampleCpu, sampleGpu } from "../src/main/system/stats";
+
+const apple: AppleHardwareSample = {
+  soc: { chipName: "Apple M4 Pro" },
+  cpu: { tempCelsius: 61.3, powerWatts: 3.16 },
+  gpu: { usageRatio: 0.42, tempCelsius: 54.7, powerWatts: 8.26 },
+};
 
 describe("cpu sampling", () => {
   it("reports one ratio per logical core", () => {
@@ -24,6 +31,13 @@ describe("cpu sampling", () => {
     expect(watts === null || (watts >= 0 && watts < 1000)).toBe(true);
     expect(temp_c === null || (temp_c > 0 && temp_c < 150)).toBe(true);
   });
+
+  it("uses Apple Silicon temperature and power when available", async () => {
+    await new Promise((r) => setTimeout(r, 300));
+    const sample = sampleCpu(apple);
+    expect(sample.temp_c).toBe(61);
+    expect(sample.watts).toBe(3.2);
+  });
 });
 
 describe("gpu sampling", () => {
@@ -36,5 +50,16 @@ describe("gpu sampling", () => {
       expect(v === null || Number.isFinite(v)).toBe(true);
     }
     if (g.usage !== null) expect(g.usage).toBeLessThanOrEqual(1);
+  });
+
+  it("maps Apple Silicon GPU telemetry without inventing dedicated VRAM", async () => {
+    await expect(sampleGpu(apple)).resolves.toEqual({
+      name: "Apple M4 Pro GPU",
+      usage: 0.42,
+      vram_used: null,
+      vram_total: null,
+      temp_c: 55,
+      watts: 8.3,
+    });
   });
 });

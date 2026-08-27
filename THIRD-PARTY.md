@@ -57,6 +57,10 @@ inside the AppImage) and Node.js (MIT). Runtime npm dependencies — React, driz
 better-sqlite3, chokidar, electron-log and the UI libraries — are MIT or ISC; `pnpm licenses
 list --prod` prints the current set.
 
+The Apple Silicon build also bundles
+[`apple-silicon-metrics`](https://github.com/levibuzolic/apple-silicon-metrics) (MIT) for
+sudo-less CPU and GPU temperature, usage, and power readings.
+
 ## Provider brand marks — trademarks of their owners
 
 `src/renderer/src/ui/icons/providers/*.svg` are the OpenAI, Anthropic, Mistral, Ollama and

@@ -61,6 +61,7 @@
   "optionalDependencies": {
     "@fugood/node-whisper-darwin-arm64": "^1.1.1",
     "@fugood/node-whisper-linux-x64-vulkan": "^1.1.1",
+    "apple-silicon-metrics": "^0.1.2",
     "sherpa-onnx-darwin-arm64": "^1.13.6",
     "sherpa-onnx-linux-x64": "^1.13.6"
   },

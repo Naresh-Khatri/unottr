@@ -1,5 +1,5 @@
-// Ambient cpu/gpu meters for the sidebar footer. Collapsed = usage bar + percentage only;
-// everything else (cores, ram, vram, thermals, what the next job will run on) is behind the caret.
+// Ambient cpu/gpu meters for the sidebar footer. Temperature stays visible beside usage;
+// cores, memory, power, and queue details are behind the caret.
 
 import { useEffect, useState } from "react";
 import { CaretDown } from "@phosphor-icons/react";
@@ -49,8 +49,8 @@ export function ResourceMeters() {
         onClick={() => setOpen((v) => !v)}
       >
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <Meter label="CPU" value={cpu.usage} />
-          <Meter label="GPU" value={gpu?.usage ?? null} />
+          <Meter label="CPU" value={cpu.usage} temp={cpu.temp_c} />
+          <Meter label="GPU" value={gpu?.usage ?? null} temp={gpu?.temp_c ?? null} />
         </div>
         <CaretDown
           className={cn("size-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
@@ -62,12 +62,14 @@ export function ResourceMeters() {
   );
 }
 
-function Meter({ label, value }: { label: string; value: number | null }) {
+function Meter({ label, value, temp }: { label: string; value: number | null; temp: number | null }) {
   return (
-    <div className="grid grid-cols-[1.7rem_1fr_2.1rem] items-center gap-2 text-[11px] leading-none">
+    <div className="grid grid-cols-[1.7rem_1fr_auto] items-center gap-2 text-[11px] leading-none">
       <span className="text-muted-foreground">{label}</span>
       <Bar value={value} />
-      <span className="text-right tabular-nums text-muted-foreground">{pct(value)}</span>
+      <span className="text-right tabular-nums text-muted-foreground">
+        {pct(value)}{temp != null && ` · ${Math.round(temp)}°`}
+      </span>
     </div>
   );
 }

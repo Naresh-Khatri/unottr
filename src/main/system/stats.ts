@@ -1,6 +1,5 @@
-// Live cpu/gpu numbers for the sidebar meters. Every reader is a cheap file read — os.cpus()
-// is /proc/stat, amdgpu publishes its own counters under sysfs. nvidia has no sysfs
-// equivalent, so that one path shells out and is throttled to a spawn per NVIDIA_INTERVAL_MS.
+// Live cpu/gpu numbers for the sidebar meters. Linux uses sysfs or nvidia-smi. Apple Silicon
+// uses a shared native sample because its useful CPU/GPU sensors are not public file reads.
 
 import { execFile, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -9,6 +8,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { CpuStats, GpuStats } from "../../shared/ipc";
 import { gpus } from "../models/device";
+import { sampleAppleHardware, type AppleHardwareSample } from "./apple";
 
 const run = promisify(execFile);
 
@@ -127,7 +127,7 @@ let previousEnergy = raplEnergy();
 let sampledAt = Date.now();
 let cached: CpuStats | null = null;
 
-export function sampleCpu(): CpuStats {
+export function sampleCpu(apple: AppleHardwareSample | null = null): CpuStats {
   const at = Date.now();
   if (cached && at - sampledAt < MIN_WINDOW_MS) return cached;
 
@@ -149,8 +149,8 @@ export function sampleCpu(): CpuStats {
     load1: loadavg()[0] ?? 0,
     mem_used: totalmem() - freemem(),
     mem_total: totalmem(),
-    temp_c: cpuTemp(),
-    watts: power,
+    temp_c: validTemperature(apple?.cpu.tempCelsius) ?? cpuTemp(),
+    watts: nonNegative(apple?.cpu.powerWatts) ?? power,
   };
   return cached;
 }
@@ -161,7 +161,8 @@ type Source = { kind: "amd"; dir: string } | { kind: "nvidia" } | { kind: "none"
 
 let source: Source | undefined;
 
-export async function sampleGpu(): Promise<GpuStats | null> {
+export async function sampleGpu(apple: AppleHardwareSample | null = null): Promise<GpuStats | null> {
+  if (apple) return appleGpu(apple);
   source ??= detect();
   // vulkan's name is the better one to show: it is the device whisper actually binds to
   const vulkan = gpus()[0]?.name;
@@ -176,6 +177,32 @@ export async function sampleGpu(): Promise<GpuStats | null> {
     ? { name: vulkan, usage: null, vram_used: null, vram_total: null, temp_c: null, watts: null }
     : null;
 }
+
+export async function sampleHardware(): Promise<{ cpu: CpuStats; gpu: GpuStats | null }> {
+  const apple = await sampleAppleHardware();
+  return { cpu: sampleCpu(apple), gpu: await sampleGpu(apple) };
+}
+
+function appleGpu(sample: AppleHardwareSample): GpuStats {
+  return {
+    name: sample.soc?.chipName ? `${sample.soc.chipName} GPU` : "Apple GPU",
+    usage: ratio(sample.gpu.usageRatio),
+    // Apple Silicon has unified memory, so presenting RAM as dedicated VRAM would mislead.
+    vram_used: null,
+    vram_total: null,
+    temp_c: validTemperature(sample.gpu.tempCelsius),
+    watts: nonNegative(sample.gpu.powerWatts),
+  };
+}
+
+const ratio = (value: number | null | undefined): number | null =>
+  value != null && Number.isFinite(value) ? clamp01(value) : null;
+
+const validTemperature = (value: number | null | undefined): number | null =>
+  value != null && Number.isFinite(value) && value > 0 && value < 150 ? Math.round(value) : null;
+
+const nonNegative = (value: number | null | undefined): number | null =>
+  value != null && Number.isFinite(value) && value >= 0 ? Math.round(value * 10) / 10 : null;
 
 /** Tests and anything that changes the machine's driver situation mid-session. */
 export function resetGpuSource(): void {

@@ -7,6 +7,7 @@ import { onJobCounts, startIngest, stopIngest } from "./ingest/runtime";
 import { registerHandlers, setTrayAvailable } from "./ipc/handlers";
 import { initLogging } from "./logging";
 import { MEDIA_SCHEME, registerMediaProtocol } from "./media-protocol";
+import { closeAppleHardware } from "./system/apple";
 import { Tray } from "./tray";
 import { attachTray, createWindow, markQuitting, showMainWindow } from "./window";
 
@@ -75,7 +76,10 @@ app.on("before-quit", (e) => {
 });
 
 // checkpoints the wal, so a `-wal` file isn't left behind next to the database
-app.on("will-quit", closeDatabase);
+app.on("will-quit", () => {
+  closeAppleHardware();
+  closeDatabase();
+});
 
 /** Chromium's lock is a symlink to `<hostname>-<pid>`; a hostname may itself contain dashes. */
 function lockHolderPid(): number | null {

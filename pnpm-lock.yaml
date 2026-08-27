@@ -127,6 +127,9 @@ importers:
       '@fugood/node-whisper-linux-x64-vulkan':
         specifier: ^1.1.1
         version: 1.1.1
+      apple-silicon-metrics:
+        specifier: ^0.1.2
+        version: 0.1.2
       sherpa-onnx-darwin-arm64:
         specifier: ^1.13.6
         version: 1.13.6
@@ -1607,6 +1610,13 @@ packages:
     peerDependencies:
       dmg-builder: 26.15.3
       electron-builder-squirrel-windows: 26.15.3
+
+  apple-silicon-metrics@0.1.2:
+    resolution: {integrity: sha512-ztcMEnDBqeFXiGgJmPgnjxT5RAqh2oiwywawIQsnNR8T3qP4BjiLTc3sPJvfnZ1WVqfeA3mfARJDlR+fXOtEPw==}
+    engines: {node: '>=20'}
+    cpu: [arm64]
+    os: [darwin]
+    hasBin: true
 
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
@@ -5568,6 +5578,9 @@ snapshots:
       which: 5.0.0
     transitivePeerDependencies:
       - supports-color
+
+  apple-silicon-metrics@0.1.2:
+    optional: true
 
   argparse@2.0.1: {}
 

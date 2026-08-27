@@ -47,7 +47,7 @@ import {
   sortformerRuntime,
 } from "../models/sortformer";
 import { logsDir, pcmCacheDir } from "../paths";
-import { sampleCpu, sampleGpu } from "../system/stats";
+import { sampleHardware } from "../system/stats";
 
 /** Live model downloads by tier (plus SUPPORT_MODELS), so cancelling has something to abort. */
 const downloads = new Map<string, AbortController>();
@@ -448,9 +448,9 @@ const handlers: Record<string, Handler> = {
   /** Polled once a second or so by the sidebar meters — keep every reader in here cheap. */
   async system_stats(): Promise<SystemStats> {
     const { active, total } = jobCounts();
+    const hardware = await sampleHardware();
     return {
-      cpu: sampleCpu(),
-      gpu: await sampleGpu(),
+      ...hardware,
       device: resolve(settingsDb.load(db()).device),
       jobs_active: active,
       jobs_queued: Math.max(0, total - active),
