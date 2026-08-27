@@ -148,14 +148,14 @@ works, but have a GPU.
 
 ## What it needs
 
-- **Linux** (the v1 target; the stack is written to keep macOS/Windows open — see
-  `DESIGN.md`).
-- **ffmpeg / ffprobe** — bundled in the AppImage (LGPL build); a dev run picks them up from
-  `resources/bin/` or `PATH`.
-- **A GPU with a Vulkan driver** is used automatically if present (whisper.cpp's Vulkan
-  backend), otherwise it falls back to CPU.
-- **First run** downloads a whisper model (~150 MB–575 MB depending on tier) and two small
-  diarization models (~35 MB). Everything after that is offline.
+- **Linux x64 or an Apple Silicon Mac** running macOS 13 or newer. Windows and Intel Macs
+  are not supported.
+- **ffmpeg / ffprobe** are bundled in packaged builds. A development run finds them in
+  `resources/bin/` or on `PATH`.
+- **Vulkan on Linux or Metal on Apple Silicon** runs Whisper on the GPU. Linux can fall
+  back to CPU.
+- **First run** downloads the selected Whisper model and the local speaker models. Apple
+  Silicon defaults to Large V3 Turbo and also downloads Small for offline recovery.
 - **A model for AI overviews, only if you want them** — a local server (Ollama, LM Studio)
   or an API key. Without either, nothing else in the app is affected.
 
@@ -191,12 +191,33 @@ Both fetch scripts are required. Without ffmpeg every job parks on a typed error
 the Vulkan loader the whisper addon won't load at all on a machine with no driver installed
 — it does not degrade to CPU on its own (see *Vulkan packaging* in `DESIGN.md`).
 
+### Build on Apple Silicon
+
+Use an M1 or newer Mac running macOS 13 or newer. Install Xcode Command Line Tools, Node,
+and the pnpm version declared in `package.json`, then run:
+
+```sh
+xcode-select --install
+pnpm install --frozen-lockfile
+pnpm stage:macos:icon
+pnpm stage:macos:ffmpeg
+pnpm typecheck
+pnpm test
+pnpm smoke:native
+pnpm dist --mac --arm64
+```
+
+The app and tester zip land under `release/`. The build is ad-hoc signed and not notarized,
+so open it once with Control-click, then **Open**. See the
+[full Mac build and tester checklist](docs/macos-tester-build.md) before sharing the zip.
+
 ## Docs
 
 | File | What's in it |
 |---|---|
 | `DESIGN.md` | Architecture, the decision log, diarization internals, measured performance |
 | `docs/plan/` | Phase-by-phase implementation plans |
+| `docs/macos-tester-build.md` | Apple Silicon build and tester checklist |
 | `MANUAL-CHECKS.md` | The checks that need a live app rather than a test suite |
 | `THIRD-PARTY.md` | What's bundled and under which licence |
 | `plans.md` | What's next |
