@@ -8,11 +8,13 @@ import { app } from "electron";
 const dir = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "autostart");
 const file = join(dir, "unottr.desktop");
 
-export function getAutostart(): boolean {
+export function getAutostart(platform: NodeJS.Platform = process.platform): boolean {
+  if (!autostartAvailable(platform)) return false;
   return existsSync(file);
 }
 
-export function setAutostart(on: boolean): void {
+export function setAutostart(on: boolean, platform: NodeJS.Platform = process.platform): void {
+  if (!autostartAvailable(platform)) return;
   if (!on) {
     rmSync(file, { force: true });
     return;
@@ -34,4 +36,9 @@ export function setAutostart(on: boolean): void {
       "",
     ].join("\n"),
   );
+}
+
+/** mac login items deferred */
+export function autostartAvailable(platform: NodeJS.Platform = process.platform): boolean {
+  return platform === "linux";
 }

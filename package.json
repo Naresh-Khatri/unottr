@@ -11,6 +11,9 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
+    "smoke:native": "UNOTTR_NATIVE_SMOKE=1 vitest run test/native-addons.test.ts --reporter=verbose",
+    "stage:macos:ffmpeg": "./scripts/stage-ffmpeg-macos.sh",
+    "stage:macos:icon": "./scripts/stage-macos-icon.sh",
     "seed": "tsx test/seed.ts",
     "dist": "electron-vite build && electron-builder"
   },
@@ -56,7 +59,9 @@
     "zod": "^4.4.3"
   },
   "optionalDependencies": {
+    "@fugood/node-whisper-darwin-arm64": "^1.1.1",
     "@fugood/node-whisper-linux-x64-vulkan": "^1.1.1",
+    "sherpa-onnx-darwin-arm64": "^1.13.6",
     "sherpa-onnx-linux-x64": "^1.13.6"
   },
   "packageManager": "pnpm@11.20.0+sha512.9a6f330a95b66446ea088faf1521405a8a01f07fde7124cc9958dfed52d4bb436737e65b08f85f37b46fcba375092558ac51262b816844b22f63406ed166bfee"

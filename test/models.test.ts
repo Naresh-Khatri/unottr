@@ -87,6 +87,20 @@ describe("device", () => {
       resetGpuCache();
     }
   });
+
+  it("resolves auto to Metal on Apple Silicon only", () => {
+    const before = process.env.VK_DRIVER_FILES;
+    process.env.VK_DRIVER_FILES = "/nonexistent.json";
+    resetGpuCache();
+    try {
+      expect(resolve("auto", "darwin", "arm64")).toBe("gpu");
+      expect(resolve("auto", "darwin", "x64")).toBe("cpu");
+    } finally {
+      if (before === undefined) delete process.env.VK_DRIVER_FILES;
+      else process.env.VK_DRIVER_FILES = before;
+      resetGpuCache();
+    }
+  });
 });
 
 // --------------------------------------------------------------------------- download

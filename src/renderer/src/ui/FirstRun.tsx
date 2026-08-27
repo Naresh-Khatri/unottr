@@ -11,7 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { InstalledAgentSetup } from "./AiConnections";
 
-const TIERS: { tier: string; label: string }[] = [
+const TIERS: { tier: ModelInfo["tier"]; label: string }[] = [
   { tier: "small", label: "Small" },
   { tier: "medium", label: "Medium" },
   { tier: "turbo", label: "Turbo" },
@@ -21,7 +21,7 @@ const TIERS: { tier: string; label: string }[] = [
 export function FirstRun({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
   const [folder, setFolder] = useState<WatchFolder | null>(null);
-  const [tier, setTier] = useState("small");
+  const [tier, setTier] = useState<ModelInfo["tier"]>("small");
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [downloading, setDownloading] = useState(false);
   const [pct, setPct] = useState(0);
@@ -38,7 +38,10 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
   const [connections, setConnections] = useState<AiConnection[]>([]);
 
   useEffect(() => {
-    api.listModels().then(setModels);
+    api.listModels().then((available) => {
+      setModels(available);
+      setTier(available.find((m) => m.recommended)?.tier ?? "small");
+    });
     api.supportModels().then(setSupport);
     api.aiDetectAgents().then(setAgents, () => setAgents([]));
     api.aiConnections().then(setConnections, () => {});
@@ -61,6 +64,7 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
           if (p.pct >= 1) {
             setSupportBusy(false);
             api.supportModels().then(setSupport);
+            api.listModels().then(setModels);
           }
           return;
         }
@@ -87,19 +91,15 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, folder]);
 
-  // small and mandatory, so it starts itself rather than asking — the button below is the
-  // retry path, not the happy one
-  useEffect(() => {
-    if (current !== "Model" || supportBusy || supportError || !support || support.ready) return;
-    startSupport();
-    // startSupport is stable enough; the guards above are what decide this
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, support, supportBusy, supportError]);
-
   const tierInfo = models.find((m) => m.tier === tier);
   // `downloaded` can lag one refetch behind the terminal event, so pct still counts
   const modelReady = tierInfo?.downloaded === true || pct >= 1;
   const supportReady = support?.ready === true || supportPct >= 1;
+  const selectedCoveredBySupport = tierInfo?.recovery === true;
+  const selectedMissingBytes = modelReady || selectedCoveredBySupport ? 0 : (tierInfo?.size ?? 0);
+  const setupMissingBytes = selectedMissingBytes + (support?.missing_bytes ?? 0);
+  const setupBusy = downloading || supportBusy;
+  const setupReady = modelReady && supportReady;
 
   async function pickFolder() {
     const picked = await os.pickFolder();
@@ -107,34 +107,33 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
     setFolder(await api.addWatchFolder(picked));
   }
 
-  function selectTier(t: string) {
+  function selectTier(t: ModelInfo["tier"]) {
     setTier(t);
     setPct(0);
     setDownloadError(null);
   }
 
-  async function startDownload() {
-    setDownloading(true);
-    setPct(0);
+  async function startModelSetup() {
+    const fetchSelected = !modelReady && !selectedCoveredBySupport;
+    const fetchSupport = !supportReady;
+    setDownloading(fetchSelected);
+    setSupportBusy(fetchSupport);
+    if (fetchSelected) setPct(0);
+    if (fetchSupport) setSupportPct(0);
     setDownloadError(null);
-    try {
-      // resolves as soon as the download is queued; the terminal signal is the event
-      await api.downloadModel(tier);
-    } catch (e) {
-      setDownloading(false);
-      setDownloadError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  async function startSupport() {
-    setSupportBusy(true);
-    setSupportPct(0);
     setSupportError(null);
     try {
-      await api.downloadSupportModels();
+      // Both calls resolve once queued. Progress events own the busy state after that.
+      await Promise.all([
+        fetchSelected ? api.downloadModel(tier) : Promise.resolve(),
+        fetchSupport ? api.downloadSupportModels() : Promise.resolve(),
+      ]);
     } catch (e) {
+      setDownloading(false);
       setSupportBusy(false);
-      setSupportError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setDownloadError(message);
+      setSupportError(message);
     }
   }
 
@@ -193,51 +192,74 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
 
           {current === "Model" && (
             <div className="flex flex-col gap-3">
-              <p className="text-sm text-muted-foreground">Download a transcription model.</p>
+              <p className="text-sm text-muted-foreground">
+                Choose the transcription model to keep on this machine.
+              </p>
               <div className="flex gap-2">
                 {TIERS.map(({ tier: t, label }) => (
                   <Button
                     key={t}
                     size="sm"
                     variant={tier === t ? "secondary" : "outline"}
-                    disabled={downloading}
+                    disabled={setupBusy}
                     onClick={() => selectTier(t)}
                   >
-                    {label}
+                    {label}{models.find((m) => m.tier === t)?.recommended ? " (Recommended)" : ""}
                   </Button>
                 ))}
               </div>
-              {modelReady ? (
-                <p className="flex items-center gap-1.5 text-sm text-primary">
-                  <CheckCircle />Model ready
+              {tierInfo && (
+                <p className="text-xs text-muted-foreground">
+                  {bytesLabel(tierInfo.size)}
+                  {tierInfo.recovery ? " · also used as the offline recovery model" : ""}
                 </p>
-              ) : downloading ? (
-                <Progress value={pct * 100} />
-              ) : (
-                <Button onClick={startDownload}>
-                  {downloadError ? "Retry download" : "Download"}
-                </Button>
               )}
-              {downloadError && !downloading && !modelReady && (
+
+              {setupReady ? (
+                <p className="flex items-center gap-1.5 text-sm text-primary">
+                  <CheckCircle />Models ready
+                </p>
+              ) : (
+                <>
+                  {downloading && (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-muted-foreground">{tierInfo?.name}</span>
+                      <Progress value={pct * 100} />
+                    </div>
+                  )}
+                  {supportBusy && (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-muted-foreground">Support models</span>
+                      <Progress value={supportPct * 100} />
+                    </div>
+                  )}
+                  {!setupBusy && (
+                    <Button disabled={!tierInfo || !support} onClick={startModelSetup}>
+                      {downloadError || supportError ? "Retry download" : "Download models"}
+                      {setupMissingBytes > 0 ? ` (${bytesLabel(setupMissingBytes)})` : ""}
+                    </Button>
+                  )}
+                </>
+              )}
+              {downloadError && !setupBusy && !setupReady && (
                 <p className="text-sm text-destructive">{downloadError}</p>
               )}
 
               <div className="flex flex-col gap-2 border-t pt-3">
                 <p className="text-xs text-muted-foreground">
-                  Speaker models — telling voices apart. Needed for every recording.
+                  {models.some((m) => m.recovery)
+                    ? "Support files include speaker models and Small for offline recovery."
+                    : "Speaker models tell voices apart. Every recording needs them."}
                 </p>
                 {supportReady ? (
                   <p className="flex items-center gap-1.5 text-sm text-primary">
-                    <CheckCircle />Speaker models ready
+                    <CheckCircle />Support models ready
                   </p>
-                ) : supportBusy ? (
-                  <Progress value={supportPct * 100} />
-                ) : (
-                  <Button size="sm" variant="outline" onClick={startSupport}>
-                    {supportError ? "Retry" : "Download"} speaker models
-                    {support ? ` (${bytesLabel(support.missing_bytes)})` : ""}
-                  </Button>
-                )}
+                ) : !setupBusy && support ? (
+                  <p className="text-xs text-muted-foreground">
+                    {bytesLabel(support.missing_bytes)} included in the setup download
+                  </p>
+                ) : null}
                 {supportError && !supportBusy && (
                   <p className="text-sm text-destructive">{supportError}</p>
                 )}
@@ -307,7 +329,7 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
           {step < steps.length - 1 ? (
             <Button
               size="sm"
-              disabled={(current === "Folder" && !folder) || (current === "Model" && !(modelReady && supportReady))}
+              disabled={(current === "Folder" && !folder) || (current === "Model" && !setupReady)}
               onClick={() => setStep((s) => s + 1)}
             >
               Next<ArrowRight />

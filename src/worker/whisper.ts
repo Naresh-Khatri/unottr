@@ -7,9 +7,10 @@ import { initWhisper, type WhisperContext } from "@fugood/whisper.node";
 import { err } from "../main/errors";
 import { toArrayBuffer } from "../main/media/pcm";
 import type { Resolved } from "../shared/ipc";
+import { WHISPER_VARIANT } from "./native-backend";
+import { isOomMessage } from "./whisper-errors";
 
-/** The only prebuilt we ship; `useGpu` picks the backend inside it, cpu path included. */
-export const VARIANT = "vulkan";
+export const VARIANT = WHISPER_VARIANT;
 
 /** Whisper keeps talking past a full stop only when it hears no boundary at all. */
 const MAX_UTTERANCE_MS = 15_000;
@@ -65,8 +66,10 @@ export class Transcriber {
 
   static async load(model: string, device: Resolved, opts: Options): Promise<Transcriber> {
     const ctx = await initWhisper({ filePath: model, useGpu: device === "gpu" }, VARIANT).catch(
-      // bad magic, truncated file, unreadable -- all the same fix for the user
-      () => {
+      // model load allocates Metal buffers; OOM can happen before the first chunk
+      (e: unknown) => {
+        const message = e instanceof Error ? e.message : String(e);
+        if (device === "gpu" && isOomMessage(message)) throw err.gpuOom();
         throw err.modelMissing(basename(model));
       },
     );
@@ -125,19 +128,6 @@ export class Transcriber {
   private whisperError(message: string): Error {
     return this.device === "gpu" && isOomMessage(message) ? err.gpuOom() : err.whisper(message);
   }
-}
-
-const OOM_NEEDLES = [
-  "out of device memory",
-  "out of memory",
-  "vk_error_out_of_device_memory",
-  "oom",
-  "allocation failed",
-];
-
-export function isOomMessage(message: string): boolean {
-  const m = message.toLowerCase();
-  return OOM_NEEDLES.some((needle) => m.includes(needle));
 }
 
 /**

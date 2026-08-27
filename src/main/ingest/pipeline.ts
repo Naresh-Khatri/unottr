@@ -16,6 +16,7 @@ import { isEmbedded } from "../../worker/cluster";
 import { type Assigned, type Segment, assign, isSplit } from "../../worker/merge";
 import type { DiarizeJob, Reply, Request, TranscribeJob } from "../../worker/protocol";
 import type { Options, Utterance, Word } from "../../worker/whisper";
+import { isOomMessage } from "../../worker/whisper-errors";
 import type { Turn } from "../../worker/types";
 import type { Db } from "../db/client";
 import { toBlob } from "../db/embedding";
@@ -317,9 +318,15 @@ function dispatch<T>(
   return new Promise<T>((resolve, reject) => {
     const child = utilityProcess.fork(join(__dirname, "worker.cjs"), [], {
       serviceName: "unottr-compute",
+      stdio: ["ignore", "inherit", "pipe"],
     });
 
     let settled = false;
+    let stderrTail = "";
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      stderrTail = `${stderrTail}${chunk}`.slice(-16_384);
+    });
     const finish = (act: () => void) => {
       if (settled) return;
       settled = true;
@@ -343,19 +350,21 @@ function dispatch<T>(
       }
     });
 
-    // ggml aborts from inside c++ on a bad allocation, so a dead worker is a normal failure
-    // mode and not one it ever gets to report
+    // native abort bypasses the message channel; stderr distinguishes known GPU OOMs
     child.on("exit", (code) => {
-      finish(() => reject(crashed(request, code)));
+      finish(() => reject(crashed(request, code, stderrTail)));
     });
 
     child.once("spawn", () => child.postMessage(request));
   });
 }
 
-const crashed = (request: Request, code: number): PipelineError => {
+const crashed = (request: Request, code: number, stderr: string): PipelineError => {
   const message = `compute worker exited (${code})`;
-  return request.type === "transcribe" ? err.whisper(message) : err.diarize(message);
+  if (request.type === "transcribe") {
+    return request.job.device === "gpu" && isOomMessage(stderr) ? err.gpuOom() : err.whisper(message);
+  }
+  return err.diarize(message);
 };
 
 // ---------------------------------------------------------------------------- transcribe

@@ -121,9 +121,15 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.2.0)(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.12))
     optionalDependencies:
+      '@fugood/node-whisper-darwin-arm64':
+        specifier: ^1.1.1
+        version: 1.1.1
       '@fugood/node-whisper-linux-x64-vulkan':
         specifier: ^1.1.1
         version: 1.1.1
+      sherpa-onnx-darwin-arm64:
+        specifier: ^1.13.6
+        version: 1.13.6
       sherpa-onnx-linux-x64:
         specifier: ^1.13.6
         version: 1.13.6

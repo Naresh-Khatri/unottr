@@ -3,6 +3,7 @@
 // are missing, and a resumed run must neither duplicate nor lose one.
 
 import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type Db, openDatabase } from "../src/main/db/client";
@@ -32,6 +33,8 @@ class Fake extends EventEmitter {
 
   killed = false;
   requests: Request[] = [];
+  stderr = new PassThrough();
+  stdout = null;
 
   constructor() {
     super();
@@ -217,6 +220,18 @@ describe("transcribe", () => {
     Fake.respond = (fake) => fake.emit("exit", 1);
     await expect(diarize(db, diarizeSpec, () => {})).rejects.toMatchObject({
       detail: { kind: "diarize_failed" },
+    });
+  });
+
+  it("recognizes a GPU OOM reported on stderr before the worker aborts", async () => {
+    Fake.respond = (fake, request) => {
+      if (request.type !== "transcribe") return;
+      fake.stderr.write("ggml_metal: failed to allocate Metal buffer");
+      fake.emit("exit", 134);
+    };
+
+    await expect(transcribe(db, spec, () => {})).rejects.toMatchObject({
+      detail: { kind: "gpu_oom" },
     });
   });
 

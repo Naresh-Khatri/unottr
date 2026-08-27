@@ -6,7 +6,7 @@ import { initWhisperVad } from "@fugood/whisper.node";
 import { err } from "../main/errors";
 import { toArrayBuffer } from "../main/media/pcm";
 import { MAX_CHUNK_MS, type Span } from "./chunk";
-import { VARIANT } from "./whisper";
+import { WHISPER_VARIANT } from "./native-backend";
 
 /**
  * @param pcm whole-file 16 kHz mono s16le — `detectSpeechData` reads raw buffers as 16-bit
@@ -20,8 +20,7 @@ export async function detectSpeech(pcm: Buffer, model: string): Promise<Span[]> 
       // cannot run the operation"). <1 MB, ~1 s on cpu, so there is nothing to win here.
       useGpu: false,
     },
-    // naming the variant is not optional: it is the only prebuild installed
-    VARIANT,
+    WHISPER_VARIANT,
     // bad magic, truncated file, unreadable -- all the same fix for the user
   ).catch(() => {
     throw err.modelMissing(basename(model));

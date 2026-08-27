@@ -1,0 +1,1 @@
+ALTER TABLE `recordings` ADD `whisper_fallback` text;

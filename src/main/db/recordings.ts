@@ -193,6 +193,29 @@ export function forceCpuOf(db: Db, id: number): boolean {
   );
 }
 
+export type WhisperFallback = "small-metal";
+
+/** model switch invalidates checkpoints; never mix Turbo and Small rows */
+export function setWhisperFallback(db: Db, id: number, fallback: WhisperFallback): void {
+  db.transaction((tx) => {
+    tx.delete(segments).where(eq(segments.recordingId, id)).run();
+    tx.update(recordings)
+      .set({ whisperFallback: fallback, lastChunkIdx: null, stageDetail: null, updatedAt: now() })
+      .where(eq(recordings.id, id))
+      .run();
+  });
+}
+
+export function whisperFallbackOf(db: Db, id: number): WhisperFallback | null {
+  return (
+    db
+      .select({ fallback: recordings.whisperFallback })
+      .from(recordings)
+      .where(eq(recordings.id, id))
+      .get()?.fallback ?? null
+  );
+}
+
 /**
  * Bumps `attempts`, records the error slug, and parks the row if the policy says so.
  * Returns true if it will be retried. A graceful shutdown never reaches here — the worker

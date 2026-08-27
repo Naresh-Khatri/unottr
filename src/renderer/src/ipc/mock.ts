@@ -633,9 +633,18 @@ const settings: Settings = {
 };
 
 const models: ModelInfo[] = [
-  { tier: "turbo", name: "large-v3-turbo", size: 1_624_000_000, downloaded: true },
-  { tier: "medium", name: "medium", size: 1_530_000_000, downloaded: false },
-  { tier: "small", name: "small", size: 488_000_000, downloaded: false },
+  {
+    tier: "turbo", name: "large-v3-turbo", size: 1_624_000_000, downloaded: true,
+    recommended: true, recovery: false,
+  },
+  {
+    tier: "medium", name: "medium", size: 1_530_000_000, downloaded: false,
+    recommended: false, recovery: false,
+  },
+  {
+    tier: "small", name: "small", size: 488_000_000, downloaded: false,
+    recommended: false, recovery: true,
+  },
 ];
 
 let supportReady = false;

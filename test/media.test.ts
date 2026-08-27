@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { PipelineError } from "../src/main/errors";
-import { discover, extractPcm, probe, progressMs } from "../src/main/media/ffmpeg";
+import {
+  bundledCandidates,
+  discover,
+  extractPcm,
+  probe,
+  progressMs,
+} from "../src/main/media/ffmpeg";
 import { mixPcm, pcmBytesForMs, pcmDurationMs, readPcmF32 } from "../src/main/media/pcm";
 import { AUTO, parseRule, select } from "../src/main/media/track";
 import type { AudioStream, Probe } from "../src/main/media/types";
@@ -191,6 +197,23 @@ describe("progressMs", () => {
   it("rejects ffmpeg's not-yet-started sentinels", () => {
     expect(progressMs("out_time_us=N/A")).toBeNull();
     expect(progressMs("out_time_us=-9223372036854")).toBeNull();
+  });
+});
+
+describe("bundled FFmpeg discovery", () => {
+  it("prefers a platform-qualified Apple Silicon resource", () => {
+    expect(
+      bundledCandidates("ffmpeg", {
+        platform: "darwin",
+        arch: "arm64",
+        resourcesPath: "/Applications/unottr.app/Contents/Resources",
+        execPath: "/Applications/unottr.app/Contents/MacOS/unottr",
+        cwd: "/checkout",
+      }).slice(0, 2),
+    ).toEqual([
+      "/Applications/unottr.app/Contents/Resources/bin/darwin-arm64/ffmpeg",
+      "/Applications/unottr.app/Contents/Resources/bin/ffmpeg",
+    ]);
   });
 });
 

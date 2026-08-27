@@ -39,6 +39,7 @@ import { check, discover, fromSettings } from "../media/ffmpeg";
 import * as catalog from "../models/catalog";
 import { gpus, resolve } from "../models/device";
 import { ensure, isPresent } from "../models/download";
+import { modelPolicy, supportSpecs } from "../models/setup";
 import {
   SORTFORMER,
   ensureSortformer,
@@ -50,13 +51,6 @@ import { sampleCpu, sampleGpu } from "../system/stats";
 
 /** Live model downloads by tier (plus SUPPORT_MODELS), so cancelling has something to abort. */
 const downloads = new Map<string, AbortController>();
-
-/** Fetched together and never chosen between, so they are one unit to the ui. */
-const supportSpecs = (): catalog.ModelSpec[] => [
-  catalog.VAD,
-  catalog.SEGMENTATION,
-  catalog.defaultEmbedding(),
-];
 
 /** Sortformer is useful only when both the staged Vulkan runtime and a hardware GPU exist. */
 const supportsFastDiarization = (): boolean => sortformerRuntime() !== null && gpus().length > 0;
@@ -521,13 +515,20 @@ const handlers: Record<string, Handler> = {
   // ------------------------------------------------------------ models & device
 
   /** `base.en` is cli-only, so it is not one of the three tiers settings offers. */
-  list_models: (): ModelInfo[] =>
-    catalog.WHISPER.filter((m) => m.name !== "base.en").map((m) => ({
-      tier: catalog.modelNameToTier(m.name) as ModelInfo["tier"],
-      name: m.name,
-      size: m.size,
-      downloaded: isPresent(m),
-    })),
+  list_models: (): ModelInfo[] => {
+    const policy = modelPolicy();
+    return catalog.WHISPER.filter((m) => m.name !== "base.en").map((m) => {
+      const tier = catalog.modelNameToTier(m.name) as ModelInfo["tier"];
+      return {
+        tier,
+        name: m.name,
+        size: m.size,
+        downloaded: isPresent(m),
+        recommended: tier === policy.recommendedTier,
+        recovery: tier === policy.recoveryTier,
+      };
+    });
+  },
 
   support_models: (): SupportModels => {
     const missing = supportSpecs().filter((m) => !isPresent(m));

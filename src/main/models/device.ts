@@ -1,4 +1,4 @@
-// Port of the device half of crates/unottr-core/src/transcribe/engine.rs.
+// Port of the device half of crates/unottr-core/src/transcribe/engine.rs. Metal added for Mac.
 //
 // Deviation from the rust, forced by the addon: whisper-rs exposed `vulkan::list_devices()`
 // (name + free/total vram, straight from VK_EXT_memory_budget). @fugood/whisper.node exposes
@@ -17,6 +17,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Device, Resolved } from "../../shared/ipc";
+import { isAppleSilicon } from "../platform";
 import type { ModelSpec } from "./catalog";
 import { defaultWhisper } from "./catalog";
 
@@ -43,14 +44,19 @@ export function resetGpuCache(): void {
  * `gpu` is taken at the user's word — if they forced it and there is no card, whisper falls
  * back on its own rather than failing.
  */
-export function resolve(device: Device): Resolved {
+export function resolve(
+  device: Device,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): Resolved {
   switch (device) {
     case "cpu":
       return "cpu";
     case "gpu":
       return "gpu";
     default:
-      return gpus().length > 0 ? "gpu" : "cpu";
+      // Metal is Whisper-only; gpus() remains Vulkan proof for Sortformer
+      return isAppleSilicon(platform, arch) ? "gpu" : gpus().length > 0 ? "gpu" : "cpu";
   }
 }
 

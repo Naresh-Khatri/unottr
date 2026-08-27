@@ -537,6 +537,60 @@ describe("queue", () => {
     expect(events.at(-1)).toEqual({ kind: "failed", recording_id: id, error: "gpu_oom" });
   });
 
+  it("retries Small on Metal once and persists the choice on Apple Silicon", async () => {
+    const id = rec.stub(db, join(dir, "metal-oom.mkv"));
+    db.insert(segments)
+      .values({ recordingId: id, chunkIdx: 0, startMs: 0, endMs: 500, text: "turbo checkpoint" })
+      .run();
+    db.update(recordings).set({ lastChunkIdx: 0 }).where(eq(recordings.id, id)).run();
+    const events: IngestEvent[] = [];
+    const fallbacks: Array<string | null> = [];
+    const q = new Queue({
+      db,
+      maxAttempts: 1,
+      platform: "darwin",
+      arch: "arm64",
+      onEvent: collect(events),
+      run: async () => {
+        fallbacks.push(rec.whisperFallbackOf(db, id));
+        throw err.gpuOom();
+      },
+    });
+
+    q.enqueue(id);
+    await q.idle();
+
+    expect(fallbacks).toEqual([null, "small-metal"]);
+    expect(rec.whisperFallbackOf(db, id)).toBe("small-metal");
+    expect(rec.forceCpuOf(db, id)).toBe(false);
+    expect(rec.lastChunkIdx(db, id)).toBeNull();
+    expect(db.select().from(segments).all()).toEqual([]);
+    expect(events.at(-1)).toEqual({ kind: "failed", recording_id: id, error: "gpu_oom" });
+  });
+
+  it("does not run the Metal fallback after cancellation or a generic crash", async () => {
+    for (const failure of [err.cancelled(), err.whisper("compute worker exited (1)")]) {
+      const id = rec.stub(db, join(dir, `${failure.slug}.mkv`));
+      const events: IngestEvent[] = [];
+      const q = new Queue({
+        db,
+        maxAttempts: 1,
+        platform: "darwin",
+        arch: "arm64",
+        onEvent: collect(events),
+        run: async () => {
+          throw failure;
+        },
+      });
+
+      q.enqueue(id);
+      await q.idle();
+
+      expect(rec.whisperFallbackOf(db, id)).toBeNull();
+      expect(events.filter((event) => event.kind === "done")).toEqual([]);
+    }
+  });
+
   it("leaves a cancelled job exactly as it was", async () => {
     const id = rec.stub(db, join(dir, "shutdown.mkv"));
     rec.setStatus(db, id, "transcribing");

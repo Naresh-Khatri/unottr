@@ -12,7 +12,7 @@ afterAll(() => rmSync(config, { recursive: true, force: true }));
 
 vi.mock("electron", () => ({ app: { getPath: () => "/opt/unottr/unottr" } }));
 
-const { getAutostart, setAutostart } = await import("../src/main/autostart");
+const { autostartAvailable, getAutostart, setAutostart } = await import("../src/main/autostart");
 const entry = join(config, "autostart", "unottr.desktop");
 
 describe("autostart", () => {
@@ -46,5 +46,12 @@ describe("autostart", () => {
     expect(readFileSync(entry, "utf8")).toContain('Exec="/home/u/Apps/unottr.AppImage" --hidden');
     delete process.env.APPIMAGE;
     setAutostart(false);
+  });
+
+  it("does not write a Freedesktop entry on macOS", () => {
+    expect(autostartAvailable("darwin")).toBe(false);
+    expect(getAutostart("darwin")).toBe(false);
+    setAutostart(true, "darwin");
+    expect(existsSync(entry)).toBe(false);
   });
 });

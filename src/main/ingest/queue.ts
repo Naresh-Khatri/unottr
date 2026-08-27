@@ -11,8 +11,11 @@ import {
   forceCpuOf,
   resetForSourceChange,
   setForceCpu,
+  setWhisperFallback,
+  whisperFallbackOf,
 } from "../db/recordings";
 import { PipelineError, err, isCancelled } from "../errors";
+import { isAppleSilicon } from "../platform";
 import { SourceChangedError, waitForStableSource } from "./source";
 
 export type IngestEvent =
@@ -53,6 +56,9 @@ export interface QueueOptions {
   onEvent: (event: IngestEvent) => void;
   sourcePollIntervalMs?: number;
   sourceStableCount?: number;
+  /** host override for platform recovery tests */
+  platform?: NodeJS.Platform;
+  arch?: string;
 }
 
 export class Queue {
@@ -122,6 +128,8 @@ export class Queue {
     // read back rather than assumed false: a previous run may already have forced cpu for
     // this recording, and that one automatic retry is not owed twice
     let forcedCpu = forceCpuOf(db, id);
+    let whisperFallback = whisperFallbackOf(db, id);
+    const appleSilicon = isAppleSilicon(this.o.platform, this.o.arch);
 
     for (;;) {
       if (signal.aborted) return;
@@ -160,12 +168,20 @@ export class Queue {
         // only the slug reaches the db and the ui; without this the message is lost for good
         console.warn(`recording ${id} failed: ${error.message}`);
 
-        // 07's gpu_oom decision: silent to the user, one automatic cpu retry. Bypasses
-        // failOrRetry entirely — this is a transparent device switch, not an attempt.
-        if (error.slug === "gpu_oom" && !forcedCpu) {
-          forcedCpu = true;
-          setForceCpu(db, id, true);
-          continue;
+        // persist device/model switch before retry; not an ordinary attempt
+        if (error.slug === "gpu_oom") {
+          if (appleSilicon && whisperFallback === null) {
+            whisperFallback = "small-metal";
+            setWhisperFallback(db, id, whisperFallback);
+            console.warn(`recording ${id} retrying model=small backend=metal fallback=metal_oom`);
+            continue;
+          }
+          if (!appleSilicon && !forcedCpu) {
+            forcedCpu = true;
+            setForceCpu(db, id, true);
+            console.warn(`recording ${id} retrying backend=cpu fallback=gpu_oom`);
+            continue;
+          }
         }
 
         const willRetry = failOrRetry(db, id, error.slug, (attempts) =>

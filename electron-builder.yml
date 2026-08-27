@@ -1,6 +1,4 @@
-# every native dep here ships a n-api prebuild (better-sqlite3, sherpa-onnx, whisper), so a
-# rebuild would only swap a working binary for a locally compiled one — and would break the
-# node-side test run against the same node_modules
+# all native deps ship N-API prebuilds; rebuilding would break Node-side tests
 npmRebuild: false
 
 appId: dev.unottr.app
@@ -14,61 +12,50 @@ files:
   # db/migrate.ts resolves ../../drizzle off out/main at runtime
   - drizzle/**
   - package.json
-  # NO "!**/{...,src,test,docs}/**" here. this list is an allowlist -- nothing outside it
-  # ships from the app dir anyway -- but electron-builder reuses these patterns when it
-  # copies node_modules, so a "**/" ignore reaches into deps. it stripped electron-log/src,
-  # whose main.js is a stub that requires ./src/main -> app dead on launch.
-  # whisper.node lists every backend as optional, so linux-x64 pulls three. we ask for
-  # vulkan and its own loader falls back to the plain build; cuda is never requested and
-  # wasm is the browser path. 204 MB of addon we would ship and never dlopen.
+  # no broad **/ ignores: electron-builder applies them inside dependencies too
+  # Linux keeps Vulkan plus its plain fallback; CUDA and browser WASM are unused
   - "!node_modules/@fugood/node-whisper-linux-x64-cuda/**"
   - "!node_modules/@fugood/node-whisper-wasm/**"
-  # the prebuilt addon is what we load; the vendored whisper.cpp tree only feeds a source build
+  # prebuilt only; vendored whisper.cpp feeds source builds
   - "!node_modules/@fugood/whisper.node/whisper.cpp/**"
-  # npmRebuild is off, so deps/ + src/ (the sqlite amalgamation) never compile here.
-  # lib/binding.js picks prebuilds/<platform>-<arch>.node at runtime -- keep only ours.
-  # musl is unreachable anyway: the bundled electron is glibc-linked.
+  # npmRebuild is off; keep only the host SQLite prebuild
   - "!node_modules/better-sqlite3/deps/**"
   - "!node_modules/better-sqlite3/src/**"
-  - "!node_modules/better-sqlite3/prebuilds/darwin-*"
-  - "!node_modules/better-sqlite3/prebuilds/win32-*"
-  - "!node_modules/better-sqlite3/prebuilds/linuxmusl-*"
-  - "!node_modules/better-sqlite3/prebuilds/linux-arm64.node"
 
-# native addons cannot be dlopen'd from inside an asar, and the two prebuilt packages carry
-# the .so files those addons need next to them
+# native addons, adjacent libraries, and migrations must stay outside asar
 asarUnpack:
   - "**/*.node"
-  # drizzle's migrator stats the folder before reading it; unpacked keeps that honest
   - drizzle/**
-  - node_modules/sherpa-onnx-linux-x64/**
-  - node_modules/@fugood/node-whisper-linux-x64-vulkan/**
   - node_modules/better-sqlite3/**
 
-# lands in <appdir>/resources/, which is what media/ffmpeg.ts and tray.ts look at
 extraResources:
-  - from: resources/bin
-    to: bin
-    filter: ["ffmpeg", "ffprobe", "ffmpeg-LICENSE.txt"]
-  - from: resources/bin/sortformer
-    to: bin/sortformer
   - from: resources/icons
     to: icons
   - from: THIRD-PARTY.md
     to: THIRD-PARTY.md
 
-# next to the electron binary, which is on the AppImage AppRun's LD_LIBRARY_PATH — the only
-# place the loader will actually find it, since the addon's RUNPATH points at a ci machine.
-# LD_LIBRARY_PATH is read at process start, so setting it from js would be too late.
-extraFiles:
-  - from: resources/lib/libvulkan.so.1
-    to: libvulkan.so.1
-
 linux:
   target: [AppImage]
   category: AudioVideo
-  # ui is english-only; chromium falls back to en-US for any system locale. 54 other .pak
-  # files were 12 MB of the image. revisit when we localize.
+  files:
+    - "!node_modules/better-sqlite3/prebuilds/darwin-*"
+    - "!node_modules/better-sqlite3/prebuilds/win32-*"
+    - "!node_modules/better-sqlite3/prebuilds/linuxmusl-*"
+    - "!node_modules/better-sqlite3/prebuilds/linux-arm64.node"
+  asarUnpack:
+    - node_modules/sherpa-onnx-linux-x64/**
+    - node_modules/@fugood/node-whisper-linux-x64-vulkan/**
+  extraResources:
+    - from: resources/bin
+      to: bin
+      filter: ["ffmpeg", "ffprobe", "ffmpeg-LICENSE.txt"]
+    - from: resources/bin/sortformer
+      to: bin/sortformer
+  # AppRun adds this location before the native addon loads
+  extraFiles:
+    - from: resources/lib/libvulkan.so.1
+      to: libvulkan.so.1
+  # UI is English-only; other locale packs add 12 MB
   electronLanguages: [en-US]
   icon: resources/icons
   synopsis: Local transcription of screen recordings
@@ -77,9 +64,37 @@ linux:
     and keeps everything searchable. Nothing leaves the device.
   desktop:
     entry:
-      # matches the autostart entry we write ourselves, so both launch the same way
       Terminal: "false"
       Type: Application
 
 appImage:
   artifactName: ${productName}-${version}-${arch}.AppImage
+
+mac:
+  target:
+    - target: dir
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  minimumSystemVersion: 13.0.0
+  category: public.app-category.utilities
+  icon: resources/icons/icon.icns
+  identity: "-"
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  electronLanguages: [en-US]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  files:
+    - "!node_modules/@fugood/node-whisper-linux-*/**"
+    - "!node_modules/@fugood/node-whisper-darwin-x64/**"
+    - "!node_modules/sherpa-onnx-linux-*/**"
+    - "!node_modules/sherpa-onnx-darwin-x64/**"
+    - "!node_modules/better-sqlite3/prebuilds/linux*"
+    - "!node_modules/better-sqlite3/prebuilds/win32-*"
+    - "!node_modules/better-sqlite3/prebuilds/darwin-x64.node"
+  asarUnpack:
+    - node_modules/sherpa-onnx-darwin-arm64/**
+    - node_modules/@fugood/node-whisper-darwin-arm64/**
+  extraResources:
+    - from: resources/bin/darwin-arm64
+      to: bin/darwin-arm64

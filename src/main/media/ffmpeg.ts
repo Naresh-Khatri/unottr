@@ -14,19 +14,30 @@ export interface FfmpegCli {
   ffprobe: string;
 }
 
-/**
- * Packaged: `resources/bin/` next to the asar (electron-builder `extraResources`). Dev and
- * tests: `resources/bin/` in the repo, since `process.resourcesPath` then points into the
- * electron install. Neither present -> the bare name, resolved on PATH.
- */
+/** platform resource -> legacy resource -> PATH */
+export function bundledCandidates(
+  name: string,
+  host: {
+    platform?: NodeJS.Platform;
+    arch?: string;
+    resourcesPath?: string;
+    execPath?: string;
+    cwd?: string;
+  } = {},
+): string[] {
+  const platformDir = `${host.platform ?? process.platform}-${host.arch ?? process.arch}`;
+  const resourcesPath = host.resourcesPath ?? process.resourcesPath;
+  const bases = [
+    resourcesPath ? join(resourcesPath, "bin") : null,
+    join(dirname(host.execPath ?? process.execPath), "bin"),
+    join(host.cwd ?? process.cwd(), "resources", "bin"),
+  ].filter((dir): dir is string => dir !== null);
+  return bases.flatMap((dir) => [join(dir, platformDir, name), join(dir, name)]);
+}
+
 function bundledOr(name: string): string {
-  const dirs = [
-    process.resourcesPath ? join(process.resourcesPath, "bin") : null,
-    join(dirname(process.execPath), "bin"),
-    join(process.cwd(), "resources", "bin"),
-  ];
-  for (const dir of dirs) {
-    if (dir && existsSync(join(dir, name))) return join(dir, name);
+  for (const candidate of bundledCandidates(name)) {
+    if (existsSync(candidate)) return candidate;
   }
   return name;
 }

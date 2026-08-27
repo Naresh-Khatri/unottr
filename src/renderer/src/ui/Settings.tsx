@@ -496,6 +496,7 @@ function ModelCard({
 }) {
   const supportPct = progressByTier[SUPPORT_MODELS];
   const supportBusy = supportPct != null && supportPct < 1;
+  const recovery = models.find((m) => m.recovery);
   return (
     <Card>
       <CardHeader>
@@ -516,6 +517,8 @@ function ModelCard({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   {label}
+                  {info?.recommended && <Badge variant="secondary">recommended</Badge>}
+                  {info?.recovery && <Badge variant="outline">offline recovery</Badge>}
                   {info?.downloaded && <Badge variant="outline"><CheckCircle />downloaded</Badge>}
                 </div>
                 {info && <div className="text-xs text-muted-foreground">{bytesLabel(info.size)}</div>}
@@ -528,10 +531,11 @@ function ModelCard({
                 <Button size="xs" variant="outline" onClick={() => onCancel(tier)}><StopCircle />Cancel</Button>
               ) : (
                 <Button
-                  size="xs" variant="outline" disabled={info?.downloaded}
+                  size="xs" variant="outline" disabled={info?.downloaded || info?.recovery}
                   onClick={() => onDownload(tier)}
                 >
-                  <Download />{info?.downloaded ? "Downloaded" : "Download"}
+                  <Download />
+                  {info?.downloaded ? "Downloaded" : info?.recovery ? "Included below" : "Download"}
                 </Button>
               )}
             </div>
@@ -541,11 +545,13 @@ function ModelCard({
         <div className="flex items-center gap-3 rounded-lg border border-dashed p-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-sm font-medium">
-              Speaker models
+              Support models
               {support?.ready && <Badge variant="outline"><CheckCircle />downloaded</Badge>}
             </div>
             <div className="text-xs text-muted-foreground">
-              Voice activity, segmentation and embedding — every recording needs all three.
+              {recovery
+                ? `Voice activity and speaker models, plus ${recovery.name} for offline recovery.`
+                : "Voice activity, segmentation and embedding. Every recording needs all three."}
             </div>
             {supportBusy && <Progress value={supportPct * 100} className="mt-1.5" />}
             {!supportBusy && errorByTier[SUPPORT_MODELS] && (

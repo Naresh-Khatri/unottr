@@ -16,6 +16,7 @@ import {
   setProbeResult,
   setStatus,
   statusOf,
+  whisperFallbackOf,
 } from "../db/recordings";
 import * as stageRates from "../db/stage-rates";
 import * as terminology from "../db/terminology";
@@ -42,6 +43,7 @@ import {
   ensureSortformer,
   sortformerRuntime,
 } from "../models/sortformer";
+import { isAppleSilicon } from "../platform";
 import type { PipelineConfig } from "./config";
 import { Eta, type Rates, type Timed, prior, rateKey } from "./eta";
 import { compute } from "./fingerprint";
@@ -92,13 +94,21 @@ export async function processRecording(
   assertSourceVersion(path, source);
   setProbeResult(db, id, probed.container, probed.duration_ms);
 
-  // a prior run may have gpu-oom'd (the queue's fallback persists this) — read it back so
-  // the override survives a restart, not just the one automatic in-process retry
-  const devicePref = forceCpuOf(db, id) ? "cpu" : cfg.device;
+  // persisted before retry -> restart cannot restore the OOM plan
+  const appleSilicon = isAppleSilicon();
+  const whisperFallback = whisperFallbackOf(db, id);
+  const useSmallMetal = whisperFallback === "small-metal" && appleSilicon;
+  const devicePref = useSmallMetal ? "gpu" : forceCpuOf(db, id) ? "cpu" : cfg.device;
   const device = resolveDevice(devicePref);
-  const whisperSpec = cfg.whisperModel
-    ? (findWhisper(cfg.whisperModel) ?? raise(cfg.whisperModel))
-    : autoWhisper(ctx.modelsDir, device === "gpu");
+  const whisperSpec = useSmallMetal
+    ? (findWhisper("small") ?? raise("small"))
+    : cfg.whisperModel
+      ? (findWhisper(cfg.whisperModel) ?? raise(cfg.whisperModel))
+      : autoWhisper(ctx.modelsDir, device === "gpu");
+  const backend = device === "cpu" ? "cpu" : appleSilicon ? "metal" : "vulkan";
+  console.info(
+    `recording ${id} whisper requested=${cfg.whisperModel ?? "auto"} actual=${whisperSpec.name} backend=${backend} fallback=${whisperFallback ?? "none"}`,
+  );
   const embeddingSpec = cfg.embeddingModel
     ? (findEmbedding(cfg.embeddingModel) ?? raise(cfg.embeddingModel))
     : defaultEmbedding();

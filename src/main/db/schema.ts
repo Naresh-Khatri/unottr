@@ -44,6 +44,8 @@ export const recordings = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
     /** sticky "whisper OOM'd on the gpu for this file, use cpu" flag (decision #19) */
     forceCpu: integer("force_cpu").notNull().default(0),
+    /** sticky Apple Silicon recovery after Metal OOM */
+    whisperFallback: text("whisper_fallback").$type<"small-metal">(),
     /** user-set; outranks `aiTitle`, which outranks the filename (decision #32) */
     title: text("title"),
     aiTitle: text("ai_title"),

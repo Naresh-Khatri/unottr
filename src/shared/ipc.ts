@@ -195,6 +195,9 @@ export interface ModelInfo {
   name: string;
   size: number; // bytes
   downloaded: boolean;
+  recommended: boolean;
+  /** downloaded with platform support models */
+  recovery: boolean;
 }
 
 /**
