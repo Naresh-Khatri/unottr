@@ -16,6 +16,7 @@ import type {
   JobFailed,
   JobProgress,
   IncomingFileProgress,
+  LibraryRefreshResult,
   ModelDownloadProgress,
   ModelInfo,
   Overview,
@@ -122,6 +123,7 @@ function markSpeakersStale(recording_id: number): void {
 }
 
 export const mockCommands = {
+  refresh_library: (): Promise<LibraryRefreshResult> => wait({ pending_files: 0 }),
   list_recordings(filter?: RecordingFilter, sort?: RecordingSort) {
     let rows = recordings.slice();
     if (filter?.status) rows = rows.filter((r) => r.status === filter.status);

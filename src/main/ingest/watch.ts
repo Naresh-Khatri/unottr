@@ -92,6 +92,12 @@ export class Watcher {
     this.watcher = null;
   }
 
+  /** Force the periodic folder scan now. Candidate files keep the normal stability gate. */
+  async refresh(): Promise<number> {
+    await this.queueTick(true);
+    return this.candidates.size;
+  }
+
   private sighted(path: string, size: number, changed: boolean): void {
     if (!hasExtension(this.o.cfg, path)) return;
     const alreadyTracked = this.candidates.has(path);
@@ -110,19 +116,26 @@ export class Watcher {
   private schedule(delay: number): void {
     if (this.stopped) return;
     this.timer = setTimeout(() => {
-      this.tick = this.runTick()
+      void this.queueTick(false)
         .catch(() => {}) // a db or fs fault this tick; the next one retries everything
         .finally(() => this.schedule(this.o.cfg.stablePollIntervalMs));
     }, delay);
   }
 
-  private async runTick(): Promise<void> {
+  private queueTick(forceRescan: boolean): Promise<void> {
+    const previous = this.tick;
+    const next = previous.catch(() => {}).then(() => this.runTick(forceRescan));
+    this.tick = next;
+    return next;
+  }
+
+  private async runTick(forceRescan = false): Promise<void> {
     const { db, cli, cfg } = this.o;
     const folders = listEnabled(db).map((f) => f.path);
     this.syncWatches(folders);
 
     // chokidar drives prompt discovery; the rescan is the backstop for whatever it missed
-    const fullRescan = Date.now() - this.lastRescan >= cfg.rescanIntervalMs;
+    const fullRescan = forceRescan || Date.now() - this.lastRescan >= cfg.rescanIntervalMs;
     if (fullRescan) {
       this.lastRescan = Date.now();
       for (const folder of folders) relist(db, folder, cfg, this.candidates);

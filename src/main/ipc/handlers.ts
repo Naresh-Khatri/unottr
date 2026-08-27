@@ -161,6 +161,10 @@ const handlers: Record<string, Handler> = {
       (a?.sort as RecordingSort | undefined) ?? { by: "created_at", dir: "desc" },
     ),
 
+  async refresh_library() {
+    return { pending_files: await ingest()?.refresh() ?? 0 };
+  },
+
   get_recording(a) {
     const id = requireId(a, "id");
     const detail = queries.getRecording(db(), id);

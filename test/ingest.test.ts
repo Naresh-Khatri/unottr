@@ -38,6 +38,7 @@ import {
   relist,
   stepCandidates,
   sweepMissing,
+  Watcher,
 } from "../src/main/ingest/watch";
 import { discover } from "../src/main/media/ffmpeg";
 import type { IncomingFileProgress } from "../src/shared/ipc";
@@ -205,6 +206,32 @@ describe("pcm cache names", () => {
 
 describe.skipIf(!haveFfmpeg)("candidate promotion", () => {
   const cfg = quick();
+
+  it("finds a new watched file when the library is refreshed", async () => {
+    const path = join(dir, "manual-refresh.mp4");
+    fixture(path);
+    wf.add(db, dir);
+    const discovered: number[] = [];
+    const progress: IncomingFileProgress[] = [];
+    const watcher = new Watcher({
+      db,
+      cli,
+      cfg,
+      onDiscovered: (id) => discovered.push(id),
+      onCandidate: (event) => progress.push(event),
+    });
+
+    expect(await watcher.refresh()).toBe(1);
+    expect(progress.at(-1)).toMatchObject({
+      path,
+      phase: "waiting_for_copy",
+    });
+
+    await watcher.refresh();
+    expect(await watcher.refresh()).toBe(0);
+    expect(discovered).toHaveLength(1);
+    expect(rec.findByPath(db, path)).toBe(discovered[0]);
+  });
 
   it("reports stability and probing before a watched file is promoted", async () => {
     const path = join(dir, "incoming.mp4");

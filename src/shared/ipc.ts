@@ -185,6 +185,11 @@ export interface RecordingDiscovered {
   recording_id: number;
 }
 
+export interface LibraryRefreshResult {
+  /** Files noticed by the watcher that are still settling or being checked. */
+  pending_files: number;
+}
+
 /** A watched file before it is safe to promote into the recordings table. */
 export interface IncomingFileProgress {
   path: string;

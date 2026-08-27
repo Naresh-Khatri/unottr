@@ -99,6 +99,11 @@ export class IngestService {
     this.queue.enqueue(id, spec);
   }
 
+  /** Scan enabled watch folders immediately, without bypassing copy-stability checks. */
+  refresh(): Promise<number> {
+    return this.watcher.refresh();
+  }
+
   /** The running job finishes its current chunk and checkpoints before this resolves. */
   async shutdown(): Promise<void> {
     await Promise.all([this.watcher.shutdown(), this.queue.shutdown()]);

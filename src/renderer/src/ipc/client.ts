@@ -2,7 +2,7 @@
 // cheap writes are real. The pipeline commands (retry, backfill, models, cache) reach the
 // main process and get a "not implemented until 08.x" error until their sub-phase lands.
 import type {
-  AskProgress, AskScope, AskThread, AskThreadSummary, AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, BackfillProgress, DiskUsage, IncomingFileProgress, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
+  AskProgress, AskScope, AskThread, AskThreadSummary, AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, BackfillProgress, DiskUsage, IncomingFileProgress, JobDone, JobFailed, JobProgress, LibraryRefreshResult, ModelDownloadProgress,
   ModelInfo, OverviewChanged, OverviewPayload, OverviewProgress, Person, ProbeResult, RecordingDetail,
   ProbeProgress, RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit,
   Settings, SupportModels, SystemStats, TaskStatus, WatchFolder,
@@ -16,6 +16,8 @@ const USE_MOCK = false;
 export const api = {
   listRecordings: (filter?: RecordingFilter, sort?: RecordingSort): Promise<RecordingSummary[]> =>
     USE_MOCK ? mockCommands.list_recordings(filter, sort) : invoke("list_recordings", { filter, sort }),
+  refreshLibrary: (): Promise<LibraryRefreshResult> =>
+    USE_MOCK ? mockCommands.refresh_library() : invoke("refresh_library"),
   getRecording: (id: number): Promise<RecordingDetail> =>
     USE_MOCK ? mockCommands.get_recording(id) : invoke("get_recording", { id }),
   search: (query: string, limit = 50): Promise<SearchHit[]> =>

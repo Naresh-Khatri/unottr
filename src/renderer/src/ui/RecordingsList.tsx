@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowClockwise, ArrowDown, ArrowUp, FileX, FilmSlate, FolderOpen, Gear, Play, Users, Waveform,
+  ArrowClockwise, ArrowDown, ArrowUp, Check, Clock, FileX, FilmSlate, FolderOpen, Gear, Play,
+  Users, WarningCircle, Waveform,
 } from "@phosphor-icons/react";
 import {
   api, onJobDone, onJobFailed, onOverviewChanged, onRecordingDiscovered,
@@ -26,6 +27,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 
 const ROW_ESTIMATE = 72; // measured hook corrects this once rows with progress/error mount
 const COLS = 7;
+type RefreshState = "idle" | "refreshing" | "done" | "pending" | "error";
 
 const TILE = "relative aspect-video w-24 shrink-0 overflow-hidden rounded-md border bg-muted";
 
@@ -219,9 +221,11 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
   const [etaClock, setEtaClock] = useState(() => Date.now());
   const [folders, setFolders] = useState<WatchFolder[]>([]);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshState, setRefreshState] = useState<RefreshState>("idle");
+  const [refreshPending, setRefreshPending] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const loadVersion = useRef(0);
+  const refreshResetTimer = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
@@ -232,16 +236,29 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
     }
   }, [sortDir]);
   const refresh = useCallback(async () => {
-    setRefreshing(true);
+    if (refreshResetTimer.current !== null) window.clearTimeout(refreshResetTimer.current);
+    setRefreshState("refreshing");
     try {
+      const result = await api.refreshLibrary();
       await load();
-    } finally {
-      setRefreshing(false);
+      setRefreshPending(result.pending_files);
+      setRefreshState(result.pending_files > 0 ? "pending" : "done");
+      refreshResetTimer.current = window.setTimeout(() => {
+        setRefreshState("idle");
+        setRefreshPending(0);
+        refreshResetTimer.current = null;
+      }, 1_600);
+    } catch {
+      setRefreshState("error");
     }
   }, [load]);
   const loadFolders = useCallback(() => { api.listWatchFolders().then(setFolders); }, []);
 
   useEffect(() => { loadFolders(); }, [loadFolders]);
+
+  useEffect(() => () => {
+    if (refreshResetTimer.current !== null) window.clearTimeout(refreshResetTimer.current);
+  }, []);
 
   useEffect(() => {
     // Subscribe before taking the initial snapshot. Startup reconciliation can move a cached
@@ -280,26 +297,54 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3 px-4 pt-6 pb-4 sm:px-6 sm:pt-8 sm:pb-5">
         <h1 className="text-lg font-semibold tracking-tight">Recordings</h1>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <span className="text-sm text-muted-foreground">{rows.length} in library</span>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="icon-sm"
-                  variant="outline"
-                  aria-label="Refresh recordings"
-                  disabled={refreshing}
-                  onClick={refresh}
-                >
-                  <ArrowClockwise className={cn(refreshing && "animate-spin")} />
-                </Button>
-              }
-            />
-            <TooltipContent>Refresh recordings</TooltipContent>
-          </Tooltip>
-          <Button size="xs" variant="outline" onClick={onOpenSettings}>
-            <FolderOpen />Folders
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {rows.length} {rows.length === 1 ? "recording" : "recordings"}
+          </span>
+          <Button
+            size="xs"
+            variant="outline"
+            className={cn(refreshState === "error" && "text-destructive")}
+            aria-label={refreshState === "error" ? "Retry refreshing recordings" : undefined}
+            disabled={refreshState === "refreshing"}
+            onClick={refresh}
+          >
+            {refreshState === "refreshing" ? (
+              <ArrowClockwise className="animate-spin motion-reduce:animate-none" />
+            ) : refreshState === "done" ? (
+              <Check />
+            ) : refreshState === "pending" ? (
+              <Clock />
+            ) : refreshState === "error" ? (
+              <WarningCircle />
+            ) : (
+              <ArrowClockwise />
+            )}
+            {refreshState === "refreshing"
+              ? "Refreshing"
+              : refreshState === "done"
+                ? "Updated"
+                : refreshState === "pending"
+                  ? `${refreshPending} detected`
+                  : refreshState === "error" ? "Retry" : "Refresh"}
           </Button>
+          <Button
+            size="xs"
+            variant="outline"
+            aria-label={`Manage folders, ${folders.length} configured`}
+            onClick={onOpenSettings}
+          >
+            <FolderOpen />Folders
+            <span className="text-muted-foreground tabular-nums">{folders.length}</span>
+          </Button>
+          <span className="sr-only" role="status" aria-live="polite">
+            {refreshState === "refreshing"
+              ? "Refreshing recordings"
+              : refreshState === "done"
+                ? "Recordings updated"
+                : refreshState === "pending"
+                  ? `${refreshPending} ${refreshPending === 1 ? "file" : "files"} detected and waiting to finish copying`
+                  : refreshState === "error" ? "Could not refresh recordings" : ""}
+          </span>
         </div>
       </header>
 
