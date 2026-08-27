@@ -92,7 +92,7 @@ export async function askCli<T>(a: CliAsk<T>): Promise<CliAnswer<T>> {
 }
 
 async function askClaude<T>(a: CliAsk<T>): Promise<CliAnswer<T>> {
-  const schema = JSON.stringify(toJsonSchema(a.schema));
+  const schema = JSON.stringify(toClaudeJsonSchema(a.schema));
   const args = [
     "-p",
     "--safe-mode",
@@ -302,6 +302,12 @@ function executableCandidates(name: string): string[] {
     // nvm is optional.
   }
   return [...new Set([...paths, ...fixed, ...nvm])];
+}
+
+export function toClaudeJsonSchema(schema: z.ZodType<unknown>): unknown {
+  const output = z.toJSONSchema(schema, { target: "draft-07" });
+  delete output.$schema;
+  return output;
 }
 
 const toJsonSchema = (schema: z.ZodType<unknown>): unknown => z.toJSONSchema(schema);

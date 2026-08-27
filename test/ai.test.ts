@@ -18,7 +18,7 @@ import { APICallError } from "ai";
 import { type OverviewOutput, overviewExample, overviewSchema } from "../src/main/ai/schema";
 import { z } from "zod";
 import * as connections from "../src/main/ai/connections";
-import { parseClaude, parseCodex } from "../src/main/ai/cli";
+import { parseClaude, parseCodex, toClaudeJsonSchema } from "../src/main/ai/cli";
 
 // nothing here touches a key, so the only thing electron is asked for is its absence
 vi.mock("electron", () => ({ safeStorage: { isEncryptionAvailable: () => false, encryptString: () => Buffer.alloc(0), decryptString: () => "" } }));
@@ -217,6 +217,16 @@ describe("loosely", () => {
 });
 
 describe("installed agent output", () => {
+  it("gives Claude Code a schema dialect its validator supports", () => {
+    const schema = toClaudeJsonSchema(pingSchema);
+    expect(schema).not.toHaveProperty("$schema");
+    expect(schema).toMatchObject({
+      type: "object",
+      properties: { ok: { type: "boolean" } },
+      required: ["ok"],
+    });
+  });
+
   it("reads Claude's schema result, actual model, and usage", () => {
     const answer = parseClaude(JSON.stringify({
       structured_output: { ok: true },
