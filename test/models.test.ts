@@ -153,7 +153,12 @@ describe("model store", () => {
   it("downloads, verifies and reports progress", async () => {
     const s = spec();
     const seen: number[] = [];
-    const path = await ensure(s, { dir, onProgress: (p) => seen.push(p) });
+    const phases: string[] = [];
+    const path = await ensure(s, {
+      dir,
+      onProgress: (p) => seen.push(p),
+      onPhase: (phase) => phases.push(phase),
+    });
 
     expect(path).toBe(modelPath(s, dir));
     expect(readFileSync(path).equals(BODY)).toBe(true);
@@ -161,6 +166,7 @@ describe("model store", () => {
     expect(await sha256File(path)).toBe(DIGEST);
     expect(isPresent(s, dir)).toBe(true);
     expect(existsSync(`${path}.part`)).toBe(false);
+    expect(phases).toEqual(["connecting", "downloading", "verifying", "installing", "done"]);
   });
 
   it("fetches nothing once the file is there, but still reports done", async () => {

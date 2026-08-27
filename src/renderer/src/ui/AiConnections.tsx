@@ -3,8 +3,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ArrowClockwise, CheckCircle, Circle, Plus, TerminalWindow, Trash, Warning, XCircle } from "@phosphor-icons/react";
-import { api, os } from "@/ipc/client";
-import type { AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, ProbeResult } from "@/ipc/types";
+import { api, onProbeProgress, os } from "@/ipc/client";
+import type { AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, ProbeProgress, ProbeResult } from "@/ipc/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -387,6 +387,7 @@ function ConnectionForm({ presets, conn, onDone, onCancel, onDraft }: {
   const [typedModel, setTypedModel] = useState(false);
   const [busy, setBusy] = useState<"saving" | "testing" | null>(null);
   const [probe, setProbe] = useState<ProbeResult | null>(conn?.probe ?? null);
+  const [probeProgress, setProbeProgress] = useState<ProbeProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [needsPlain, setNeedsPlain] = useState(false);
 
@@ -482,6 +483,7 @@ function ConnectionForm({ presets, conn, onDone, onCancel, onDraft }: {
     if (id === null) return;
     if (unsaved) onDraft(id);
     setBusy("testing");
+    setProbeProgress(null);
     setError(null);
     try {
       const result = await api.aiConnectionTest(id);
@@ -493,8 +495,13 @@ function ConnectionForm({ presets, conn, onDone, onCancel, onDraft }: {
       setError(String(e));
     } finally {
       setBusy(null);
+      setProbeProgress(null);
     }
   }
+
+  useEffect(() => onProbeProgress((progress) => {
+    if (progress.connection_id === rowId) setProbeProgress(progress);
+  }), [rowId]);
 
 
 
@@ -618,7 +625,9 @@ function ConnectionForm({ presets, conn, onDone, onCancel, onDraft }: {
       )}
       {error && !needsPlain && <span className="text-xs text-destructive">{error}</span>}
 
-      {(probe || busy === "testing") && <ProbeChecklist probe={probe} running={busy === "testing"} />}
+      {(probe || busy === "testing") && (
+        <ProbeChecklist probe={probe} progress={probeProgress} running={busy === "testing"} />
+      )}
 
       <div className="flex gap-2">
         <Button size="xs" variant="outline" disabled={!baseUrl || busy !== null} onClick={test}>
@@ -653,24 +662,33 @@ const RUNG_LABELS: Record<string, string> = {
  * first three and fails the last — which is exactly the failure a key check would have
  * called a success.
  */
-function ProbeChecklist({ probe, running }: { probe: ProbeResult | null; running: boolean }) {
+function ProbeChecklist({ probe, progress, running }: {
+  probe: ProbeResult | null;
+  progress: ProbeProgress | null;
+  running: boolean;
+}) {
   const order = ["reachable", "authorized", "responds", "structured"];
+  const rungs = progress?.rungs ?? probe?.rungs ?? [];
   return (
     <div className="flex flex-col gap-1 rounded-lg border p-3 text-xs">
       {order.map((step) => {
-        const rung = probe?.rungs.find((r) => r.step === step);
+        const rung = rungs.find((r) => r.step === step);
+        const active = running && progress?.active_step === step;
         return (
           <div key={step} className="flex items-center gap-2">
             {rung ? (
               rung.ok ? <CheckCircle weight="fill" className="size-4 shrink-0 text-emerald-600" />
                 : <XCircle weight="fill" className="size-4 shrink-0 text-destructive" />
-            ) : running ? (
+            ) : active ? (
               <Spinner className="size-4 shrink-0" />
             ) : (
               <Circle className="size-4 shrink-0 text-muted-foreground" />
             )}
-            <span className={rung || running ? "" : "text-muted-foreground"}>{RUNG_LABELS[step]}</span>
+            <span className={rung || active ? "" : "text-muted-foreground"}>{RUNG_LABELS[step]}</span>
             {rung?.detail && <span className="truncate text-muted-foreground">— {rung.detail}</span>}
+            {active && progress?.strategy && (
+              <span className="truncate text-muted-foreground">· trying {progress.strategy.replace("_", " ")}</span>
+            )}
           </div>
         );
       })}

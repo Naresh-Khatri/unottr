@@ -6,7 +6,7 @@
 
 import { availableParallelism } from "node:os";
 import { dirname, join, parse } from "node:path";
-import type { JobPhase, Status } from "../../shared/ipc";
+import type { JobPhase, ModelDownloadPhase, Status } from "../../shared/ipc";
 import { DEFAULT_THRESHOLD } from "../../worker/cluster";
 import type { Db } from "../db/client";
 import {
@@ -41,6 +41,7 @@ import { ensure, isPresent, locate } from "../models/download";
 import {
   SORTFORMER,
   ensureSortformer,
+  isSortformerPresent,
   sortformerRuntime,
 } from "../models/sortformer";
 import { isAppleSilicon } from "../platform";
@@ -134,16 +135,22 @@ export async function processRecording(
   const eta = new Eta({ durationMs: probed.duration_ms, rates });
   const report = (stage: Status, pct: number, phase: JobPhase = null): void =>
     onProgress(stage, pct, eta.tick(stage, pct), phase);
+  const announce = (stage: Status, pct: number, phase: Exclude<JobPhase, null>): void => {
+    setStatus(db, id, stage, phase);
+    report(stage, pct, phase);
+  };
 
   report("probing", 1);
 
   if (probed.has_video && probed.duration_ms) {
     try {
+      announce("probing", 0, "generating_previews");
       await extractThumbnails(cli, path, {
         durationMs: probed.duration_ms,
         thumb: thumbPathFor(thumbsDir, id),
         previews: Array.from({ length: PREVIEW_COUNT }, (_, i) => previewPathFor(thumbsDir, id, i)),
         signal,
+        onProgress: (pct) => report("probing", pct, "generating_previews"),
       });
     } catch (e) {
       // cancellation must still abort the job; any other failure just means no thumbnails
@@ -161,6 +168,7 @@ export async function processRecording(
     source,
     probed,
     (f) => report("extracting", f),
+    (phase, pct) => announce("extracting", pct, phase),
     signal,
   );
   if (plannedFastDiarization && micPcm !== null) {
@@ -174,8 +182,17 @@ export async function processRecording(
   // in-memory progress tick when it mounts during startup, and a worker can fail before its
   // first chunk; in both cases leaving the row as "extracting" is both stale and misleading.
   setStatus(db, id, "transcribing", "detecting_speech");
-  const whisperModel = await fetchModel(ctx, whisperSpec, cfg.downloadModels, signal);
-  const vadModel = await fetchModel(ctx, VAD, true, signal);
+  const transcribeModelActivity = modelActivity(
+    (phase, pct) => announce("transcribing", pct, phase),
+  );
+  const whisperModel = await fetchModel(
+    ctx,
+    whisperSpec,
+    cfg.downloadModels,
+    signal,
+    transcribeModelActivity,
+  );
+  const vadModel = await fetchModel(ctx, VAD, true, signal, transcribeModelActivity);
 
   report("transcribing", 0, "detecting_speech");
   const startedTranscribe = Date.now();
@@ -217,8 +234,11 @@ export async function processRecording(
   setStatus(db, id, "diarizing");
   // always fetched, like VAD: every job diarizes, so `downloadModels` would only ever be the
   // difference between fetching 34 MB and failing the job over it
-  const segmentation = await fetchModel(ctx, SEGMENTATION, true, signal);
-  const embedding = await fetchModel(ctx, embeddingSpec, true, signal);
+  const diarizeModelActivity = modelActivity(
+    (phase, pct) => announce("diarizing", pct, phase),
+  );
+  const segmentation = await fetchModel(ctx, SEGMENTATION, true, signal, diarizeModelActivity);
+  const embedding = await fetchModel(ctx, embeddingSpec, true, signal, diarizeModelActivity);
 
   report("diarizing", 0);
   const startedDiarize = Date.now();
@@ -243,6 +263,8 @@ export async function processRecording(
         finalFingerprint = await compute(path);
         assertSourceVersion(path, source);
       },
+      onPhase: (phase, pct) => announce("diarizing", pct, phase),
+      onFinishing: () => announce("merging", 0, "finishing"),
     },
     (f) => report("diarizing", f),
     signal,
@@ -265,17 +287,21 @@ async function prepareAudio(
   source: SourceVersion,
   probed: Probe,
   onFraction: (f: number) => void,
+  onPhase: ((phase: "mixing_tracks", pct: number) => void) | undefined,
   signal?: AbortSignal,
 ): Promise<Audio> {
   const { db, cli, cacheDir } = ctx;
   const choice = select(probed, owningTrackRule(db, path));
 
-  const extractTrack = async (audioIndex: number): Promise<string> => {
+  const extractTrack = async (
+    audioIndex: number,
+    progress: (pct: number) => void,
+  ): Promise<string> => {
     const out = pcmPathFor(cacheDir, path, audioIndex);
     if (cacheMatchesSource(out, source)) return out;
     discardCachedPcm(out);
     try {
-      await extractPcm(cli, path, { audioIndex, out, onProgress: onFraction, signal });
+      await extractPcm(cli, path, { audioIndex, out, onProgress: progress, signal });
       assertSourceVersion(path, source);
       markCacheSource(out, source);
     } catch (e) {
@@ -286,14 +312,18 @@ async function prepareAudio(
   };
 
   if (choice.selection.kind === "blind") {
-    return { mainPcm: await extractTrack(choice.selection.stream), micPcm: null };
+    return { mainPcm: await extractTrack(choice.selection.stream, onFraction), micPcm: null };
   }
-  const mic = await extractTrack(choice.selection.mic);
-  const desktop = await extractTrack(choice.selection.desktop);
+  const mic = await extractTrack(choice.selection.mic, (pct) => onFraction(pct * 0.45));
+  const desktop = await extractTrack(
+    choice.selection.desktop,
+    (pct) => onFraction(0.45 + pct * 0.45),
+  );
   const mix = join(cacheDir, `${parse(path).name}.mix.pcm`);
   if (!cacheMatchesSource(mix, source)) {
     discardCachedPcm(mix);
     try {
+      onPhase?.("mixing_tracks", 0.9);
       mixPcm([mic, desktop], mix);
       assertSourceVersion(path, source);
       markCacheSource(mix, source);
@@ -326,18 +356,34 @@ export async function rediarizeRecording(
   // the transcript is already there; a failure has to put the row back exactly as it was
   const was = statusOf(db, id) ?? "done";
 
-  setStatus(db, id, "diarizing");
+  setStatus(db, id, "diarizing", "preparing_audio");
   try {
+    onProgress("diarizing", 0, null, "preparing_audio");
     const probed = await probe(cli, path);
     assertSourceVersion(path, source);
-    const { mainPcm, micPcm } = await prepareAudio(ctx, path, source, probed, () => {}, signal);
+    const { mainPcm, micPcm } = await prepareAudio(
+      ctx,
+      path,
+      source,
+      probed,
+      (pct) => onProgress("diarizing", pct, null, "preparing_audio"),
+      (phase, pct) => {
+        setStatus(db, id, "diarizing", phase);
+        onProgress("diarizing", pct, null, phase);
+      },
+      signal,
+    );
 
     const embeddingSpec = cfg.embeddingModel
       ? (findEmbedding(cfg.embeddingModel) ?? raise(cfg.embeddingModel))
       : defaultEmbedding();
-    const vadModel = await fetchModel(ctx, VAD, true, signal);
-    const segmentation = await fetchModel(ctx, SEGMENTATION, true, signal);
-    const embedding = await fetchModel(ctx, embeddingSpec, true, signal);
+    const announceModel = modelActivity((phase, pct) => {
+      setStatus(db, id, "diarizing", phase);
+      onProgress("diarizing", pct, null, phase);
+    });
+    const vadModel = await fetchModel(ctx, VAD, true, signal, announceModel);
+    const segmentation = await fetchModel(ctx, SEGMENTATION, true, signal, announceModel);
+    const embedding = await fetchModel(ctx, embeddingSpec, true, signal, announceModel);
 
     const plannedFast = speakers === null && micPcm === null && fastDiarizationAvailable();
     const key = plannedFast
@@ -372,6 +418,14 @@ export async function rediarizeRecording(
         onRateKey: (actual) => {
           rates.diarizing = stageRates.rate(db, actual, prior(actual));
         },
+        onPhase: (phase, pct) => {
+          setStatus(db, id, "diarizing", phase);
+          onProgress("diarizing", pct, eta.tick("diarizing", pct), phase);
+        },
+        onFinishing: () => {
+          setStatus(db, id, "merging", "finishing");
+          onProgress("merging", 0, null, "finishing");
+        },
       },
       (f) => onProgress("diarizing", f, eta.tick("diarizing", f), null),
       signal,
@@ -395,6 +449,8 @@ interface SpeakerJob {
   speakers: number | null;
   keepNames?: boolean;
   onRateKey?: (key: string) => void;
+  onPhase?: (phase: Exclude<JobPhase, null | "queued">, pct: number) => void;
+  onFinishing?: () => void;
   validate?: () => void | Promise<void>;
 }
 
@@ -410,7 +466,18 @@ async function identifySpeakers(
     const gpuKey = rateKey("diarizing", "gpu", SORTFORMER.name);
     job.onRateKey?.(gpuKey);
     try {
-      const model = await ensureSortformer({ dir: ctx.modelsDir, signal });
+      let phase: Exclude<JobPhase, null | "queued"> = "connecting_model";
+      const modelMissing = !isSortformerPresent(ctx.modelsDir);
+      const model = await ensureSortformer({
+        dir: ctx.modelsDir,
+        signal,
+        onPhase: modelMissing ? (next) => {
+          if (next === "done") return;
+          phase = jobPhase(next);
+          job.onPhase?.(phase, 0);
+        } : undefined,
+        onProgress: modelMissing ? (pct) => job.onPhase?.(phase, pct) : undefined,
+      });
       await diarizeSortformer(
         ctx.db,
         {
@@ -423,6 +490,7 @@ async function identifySpeakers(
           threads: ctx.cfg.threads ?? availableParallelism(),
           keepNames: job.keepNames,
           validate: job.validate,
+          onPersist: job.onFinishing,
         },
         progress,
         signal,
@@ -437,7 +505,11 @@ async function identifySpeakers(
 
   const cpuKey = rateKey("diarizing", "cpu", job.embeddingName);
   job.onRateKey?.(cpuKey);
-  if (fellBack) progress(0);
+  if (fellBack) {
+    progress(0);
+    job.onPhase?.("retrying_on_cpu", 0);
+  }
+  if (job.micPcm && job.speakers === null) job.onPhase?.("detecting_mic_speech", 0);
   await diarize(
     ctx.db,
     {
@@ -457,6 +529,7 @@ async function identifySpeakers(
       validate: job.validate,
       engine: "sherpa-cpu",
       speakerLimitHit: false,
+      onPersist: job.onFinishing,
     },
     progress,
     signal,
@@ -483,12 +556,33 @@ function fetchModel(
   spec: ModelSpec,
   download: boolean,
   signal?: AbortSignal,
+  onActivity?: (phase: Exclude<JobPhase, null | "queued">, pct: number) => void,
 ): Promise<string> {
   const dir = ctx.modelsDir;
-  return download || isPresent(spec, dir)
-    ? ensure(spec, { dir, signal })
-    : Promise.resolve(locate(spec, dir));
+  if (!download && !isPresent(spec, dir)) return Promise.resolve(locate(spec, dir));
+  if (isPresent(spec, dir)) return ensure(spec, { dir, signal });
+
+  let phase: Exclude<JobPhase, null | "queued"> = "connecting_model";
+  return ensure(spec, {
+    dir,
+    signal,
+    onPhase: (next) => {
+      if (next === "done") return;
+      phase = jobPhase(next);
+      onActivity?.(phase, 0);
+    },
+    onProgress: (pct) => onActivity?.(phase, pct),
+  });
 }
+
+const jobPhase = (phase: ModelDownloadPhase): Exclude<JobPhase, null | "queued"> =>
+  phase === "connecting"
+    ? "connecting_model"
+    : phase === "downloading" ? "downloading_model" : "verifying_model";
+
+const modelActivity = (
+  report: (phase: Exclude<JobPhase, null | "queued">, pct: number) => void,
+) => report;
 
 /**
  * The watch folder a path lives directly under (watches are non-recursive) gives its track

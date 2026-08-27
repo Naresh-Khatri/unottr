@@ -39,6 +39,7 @@ export function startIngest(): void {
     modelsDir: modelsDir(),
     settingsAware: true,
     onEvent: forward,
+    onCandidate: events.incomingFileProgress,
   });
 }
 
@@ -54,6 +55,7 @@ export async function stopIngest(): Promise<void> {
 let jobs = { active: 0, total: 0 };
 let statusSink: ((active: number, total: number, etaMs: number | null) => void) | null = null;
 let etaMs: number | null = null;
+const counted = new Set<number>();
 
 /** The tray's status line subscribes here; nothing else needs to be pushed the counts. */
 export function onJobCounts(fn: (active: number, total: number, etaMs: number | null) => void): void {
@@ -64,11 +66,17 @@ export function onJobCounts(fn: (active: number, total: number, etaMs: number | 
 export const jobCounts = (): { active: number; total: number } => jobs;
 
 function count(e: IngestEvent): void {
-  if (e.kind === "discovered") jobs.total += 1;
+  if (e.kind === "discovered" || e.kind === "queued") {
+    if (!counted.has(e.recording_id)) {
+      counted.add(e.recording_id);
+      jobs.total += 1;
+    }
+  }
   else if (e.kind === "progress") {
     jobs.active = 1;
     etaMs = e.eta_ms;
   } else {
+    counted.delete(e.recording_id);
     jobs = { active: 0, total: Math.max(0, jobs.total - 1) };
     etaMs = null;
   }
@@ -88,6 +96,15 @@ function forward(e: IngestEvent): void {
         phase: e.phase,
         mode: e.mode,
         eta_ms: e.eta_ms,
+      });
+    case "queued":
+      return events.jobProgress({
+        recording_id: e.recording_id,
+        stage: e.stage,
+        pct: 0,
+        phase: "queued",
+        mode: e.mode,
+        eta_ms: null,
       });
     case "done":
       return events.jobDone({ recording_id: e.recording_id });

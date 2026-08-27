@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
-import type { ProbeResult, ProbeRung, Strategy } from "../../shared/ipc";
+import type { ProbeResult, ProbeRung, ProbeStep, Strategy } from "../../shared/ipc";
 import type { Db } from "../db/client";
 import { askBackend } from "./backend";
 import { CliProcessError } from "./cli";
@@ -30,8 +30,19 @@ const PING_PROMPT = "Set ok to true and city to the capital of France.";
 /** Cheapest first — the first one that works is the one every real generation will use. */
 const LADDER: Strategy[] = ["native", "json_mode", "prompted"];
 
-export async function probe(db: Db, r: Row, signal?: AbortSignal): Promise<ProbeResult> {
-  if (r.kind === "cli") return probeCli(db, r, signal);
+export type ProbeProgress = (
+  rungs: ProbeRung[],
+  activeStep: ProbeStep,
+  strategy: Strategy | null,
+) => void;
+
+export async function probe(
+  db: Db,
+  r: Row,
+  signal?: AbortSignal,
+  onProgress?: ProbeProgress,
+): Promise<ProbeResult> {
+  if (r.kind === "cli") return probeCli(db, r, signal, onProgress);
   const rungs: ProbeRung[] = [];
   const key = keyOf(r);
   const spec = preset(r.preset);
@@ -48,6 +59,7 @@ export async function probe(db: Db, r: Row, signal?: AbortSignal): Promise<Probe
   // 1 + 2 — the model list answers "is anything listening?" and "is this key any good?" at
   // once, and hands us the dropdown's contents on the way past.
   try {
+    onProgress?.([...rungs], "reachable", null);
     models = await listModels(r.baseUrl, key, r.wire, timeout(REACH_MS, signal), r.preset);
     rungs.push({ step: "reachable", ok: true, detail: hostOf(r.baseUrl) });
     rungs.push({ step: "authorized", ok: true, detail: `${models.length} model${models.length === 1 ? "" : "s"}` });
@@ -81,6 +93,7 @@ export async function probe(db: Db, r: Row, signal?: AbortSignal): Promise<Probe
   let lastError = "";
   for (const candidate of LADDER) {
     try {
+      onProgress?.([...rungs], "responds", candidate);
       const { object } = await ask({
         model: languageModel({
           wire: r.wire,
@@ -114,7 +127,12 @@ export async function probe(db: Db, r: Row, signal?: AbortSignal): Promise<Probe
   return stop();
 }
 
-async function probeCli(db: Db, r: Row, signal?: AbortSignal): Promise<ProbeResult> {
+async function probeCli(
+  db: Db,
+  r: Row,
+  signal?: AbortSignal,
+  onProgress?: ProbeProgress,
+): Promise<ProbeResult> {
   const rungs: ProbeRung[] = [];
   const stop = (strategy: Strategy | null, model: string | null): ProbeResult => {
     const result = { ok: rungs.every((g) => g.ok), rungs, strategy, models: [], model };
@@ -127,6 +145,7 @@ async function probeCli(db: Db, r: Row, signal?: AbortSignal): Promise<ProbeResu
     return stop(null, null);
   }
   try {
+    onProgress?.([...rungs], "reachable", null);
     await access(r.executablePath, constants.X_OK);
     rungs.push({ step: "reachable", ok: true, detail: r.executablePath });
   } catch {
@@ -135,6 +154,7 @@ async function probeCli(db: Db, r: Row, signal?: AbortSignal): Promise<ProbeResu
   }
 
   try {
+    onProgress?.([...rungs], "responds", "native");
     const answer = await askBackend({
       connection: { ...r, strategy: "native" },
       schema: pingSchema,

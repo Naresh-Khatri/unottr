@@ -2,17 +2,7 @@ import { CheckCircle, CircleNotch, Clock, WarningCircle } from "@phosphor-icons/
 import { Badge } from "@/components/ui/badge";
 import type { JobPhase, Status } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
-
-const LABEL: Record<Status, string> = {
-  discovered: "Queued",
-  probing: "Probing",
-  extracting: "Extracting",
-  transcribing: "Transcribing · 1/2",
-  diarizing: "Speakers · 2/2",
-  merging: "Merging",
-  done: "Done",
-  failed: "Failed",
-};
+import { jobActivity } from "@/lib/activity";
 
 export function StatusChip({ status, mode, phase }: {
   status: Status;
@@ -24,17 +14,19 @@ export function StatusChip({ status, mode, phase }: {
   if (status === "failed")
     return <Badge variant="destructive"><WarningCircle weight="fill" />Failed</Badge>;
   if (status === "discovered")
-    return <Badge variant="ghost"><Clock />Queued</Badge>;
+    return (
+      <Badge variant="ghost">
+        <Clock />{phase ? jobActivity(status, phase, mode).label : "Queued"}
+      </Badge>
+    );
   if (IN_FLIGHT.includes(status))
     return (
       <Badge variant="outline">
-        <CircleNotch className="animate-spin" />
-        {status === "transcribing" && phase === "detecting_speech"
-          ? "Detecting speech"
-          : mode === "transcribe" && status === "transcribing"
-          ? "Transcribing"
-          : mode === "diarize" && status === "diarizing" ? "Identifying speakers" : LABEL[status]}
+        {phase === "queued"
+          ? <Clock />
+          : <CircleNotch className="animate-spin motion-reduce:animate-none" />}
+        {jobActivity(status, phase, mode).label}
       </Badge>
     );
-  return <Badge variant="outline">{LABEL[status]}</Badge>;
+  return <Badge variant="outline">{jobActivity(status, phase, mode).label}</Badge>;
 }

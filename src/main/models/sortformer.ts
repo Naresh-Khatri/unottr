@@ -3,6 +3,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { QVACRegistryClient } from "@qvac/registry-client";
 import { err } from "../errors";
+import type { ModelDownloadPhase } from "../../shared/ipc";
 import { modelsDir } from "../paths";
 import { sha256File } from "./download";
 
@@ -31,6 +32,7 @@ export function isSortformerPresent(dir: string = modelsDir()): boolean {
 export interface EnsureSortformerOptions {
   dir?: string;
   onProgress?: (pct: number) => void;
+  onPhase?: (phase: ModelDownloadPhase) => void;
   signal?: AbortSignal;
 }
 
@@ -40,6 +42,7 @@ export async function ensureSortformer(o: EnsureSortformerOptions = {}): Promise
   const final = sortformerModelPath(dir);
   if (isSortformerPresent(dir)) {
     o.onProgress?.(1);
+    o.onPhase?.("done");
     return final;
   }
   if (o.signal?.aborted) throw err.cancelled();
@@ -48,7 +51,9 @@ export async function ensureSortformer(o: EnsureSortformerOptions = {}): Promise
   const part = `${final}.part`;
   const client = new QVACRegistryClient();
   try {
+    o.onPhase?.("connecting");
     await client.ready();
+    o.onPhase?.("downloading");
     await client.downloadModel(SORTFORMER.registryPath, SORTFORMER.registrySource, {
       outputFile: part,
       timeout: 600_000,
@@ -64,6 +69,7 @@ export async function ensureSortformer(o: EnsureSortformerOptions = {}): Promise
     await client.close().catch(() => {});
   }
 
+  o.onPhase?.("verifying");
   const size = statSync(part).size;
   const digest = await sha256File(part);
   if (size !== SORTFORMER.size || digest !== SORTFORMER.sha256) {
@@ -74,8 +80,10 @@ export async function ensureSortformer(o: EnsureSortformerOptions = {}): Promise
     );
   }
 
+  o.onPhase?.("installing");
   await rename(part, final);
   o.onProgress?.(1);
+  o.onPhase?.("done");
   return final;
 }
 

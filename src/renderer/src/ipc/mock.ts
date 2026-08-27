@@ -3,22 +3,26 @@
 // has no data layer. 08.2 flips USE_MOCK back off.
 
 import type {
+  AskProgress,
   AiConnection,
   AiConnectionInput,
   AiPreset,
   AiSettings,
   ProbeResult,
   BackfillEstimate,
+  BackfillProgress,
   DiskUsage,
   JobDone,
   JobFailed,
   JobProgress,
+  IncomingFileProgress,
   ModelDownloadProgress,
   ModelInfo,
   Overview,
   OverviewChanged,
   OverviewProgress,
   OverviewPayload,
+  ProbeProgress,
   Person,
   RecordingDetail,
   RecordingDiscovered,
@@ -354,9 +358,10 @@ export const mockCommands = {
   },
   support_models: (): Promise<SupportModels> =>
     wait({ ready: supportReady, missing_bytes: supportReady ? 0 : 35_159_175 }),
+  model_download_status: (): Promise<ModelDownloadProgress[]> => wait([]),
   download_support_models() {
     if (supportReady) {
-      emit("model_download_progress", { model: SUPPORT_MODELS, pct: 1 });
+      emit("model_download_progress", { model: SUPPORT_MODELS, pct: 1, phase: "done" });
       return wait(undefined);
     }
     let pct = 0;
@@ -364,13 +369,13 @@ export const mockCommands = {
     downloads.set(SUPPORT_MODELS, setInterval(() => {
       pct = Math.min(0.999, pct + 0.2);
       if (pct < 0.999) {
-        emit("model_download_progress", { model: SUPPORT_MODELS, pct });
+        emit("model_download_progress", { model: SUPPORT_MODELS, pct, phase: "downloading" });
         return;
       }
       clearInterval(downloads.get(SUPPORT_MODELS));
       downloads.delete(SUPPORT_MODELS);
       supportReady = true;
-      emit("model_download_progress", { model: SUPPORT_MODELS, pct: 1 });
+      emit("model_download_progress", { model: SUPPORT_MODELS, pct: 1, phase: "done" });
     }, 250));
     return wait(undefined);
   },
@@ -379,7 +384,7 @@ export const mockCommands = {
     if (!m) return wait(undefined);
     // already on disk = instant done, same as the real `ensure`
     if (m.downloaded) {
-      emit("model_download_progress", { model: tier, pct: 1 });
+      emit("model_download_progress", { model: tier, pct: 1, phase: "done" });
       return wait(undefined);
     }
     let pct = 0;
@@ -387,14 +392,14 @@ export const mockCommands = {
     downloads.set(tier, setInterval(() => {
       pct = Math.min(0.999, pct + 0.05);
       if (pct < 0.999) {
-        emit("model_download_progress", { model: tier, pct });
+        emit("model_download_progress", { model: tier, pct, phase: "downloading" });
         return;
       }
       clearInterval(downloads.get(tier));
       downloads.delete(tier);
       // flipped before the terminal event — pct 1 promises the file is there
       m.downloaded = true;
-      emit("model_download_progress", { model: tier, pct: 1 });
+      emit("model_download_progress", { model: tier, pct: 1, phase: "done" });
     }, 250));
     return wait(undefined);
   },
@@ -402,7 +407,7 @@ export const mockCommands = {
     if (!downloads.has(tier)) return wait(undefined);
     clearInterval(downloads.get(tier));
     downloads.delete(tier);
-    emit("model_download_progress", { model: tier, pct: 0, error: "cancelled" });
+    emit("model_download_progress", { model: tier, pct: 0, phase: "done", error: "cancelled" });
     return wait(undefined);
   },
   clear_cache: () => wait(undefined),
@@ -656,7 +661,10 @@ let mockLoad = 0;
 
 // A tiny event bus so the mock can push the same events the main process will.
 type Payloads = {
+  ask_progress: AskProgress;
+  backfill_progress: BackfillProgress;
   job_progress: JobProgress;
+  incoming_file_progress: IncomingFileProgress;
   job_done: JobDone;
   job_failed: JobFailed;
   recording_discovered: RecordingDiscovered;
@@ -664,10 +672,14 @@ type Payloads = {
   model_download_progress: ModelDownloadProgress;
   overview_changed: OverviewChanged;
   overview_progress: OverviewProgress;
+  probe_progress: ProbeProgress;
 };
 
 const subscribers: { [K in keyof Payloads]: Set<(p: Payloads[K]) => void> } = {
+  ask_progress: new Set(),
+  backfill_progress: new Set(),
   job_progress: new Set(),
+  incoming_file_progress: new Set(),
   job_done: new Set(),
   job_failed: new Set(),
   recording_discovered: new Set(),
@@ -675,6 +687,7 @@ const subscribers: { [K in keyof Payloads]: Set<(p: Payloads[K]) => void> } = {
   model_download_progress: new Set(),
   overview_changed: new Set(),
   overview_progress: new Set(),
+  probe_progress: new Set(),
 };
 
 function emit<K extends keyof Payloads>(event: K, payload: Payloads[K]): void {
@@ -691,10 +704,13 @@ function subscribe<K extends keyof Payloads>(event: K) {
 }
 
 export const mockEvents = {
+  ask_progress: subscribe("ask_progress"),
+  backfill_progress: subscribe("backfill_progress"),
   job_progress(cb: (p: JobProgress) => void) {
     startTicking();
     return subscribe("job_progress")(cb);
   },
+  incoming_file_progress: subscribe("incoming_file_progress"),
   job_done: subscribe("job_done"),
   job_failed: subscribe("job_failed"),
   recording_discovered: subscribe("recording_discovered"),
@@ -702,6 +718,7 @@ export const mockEvents = {
   model_download_progress: subscribe("model_download_progress"),
   overview_changed: subscribe("overview_changed"),
   overview_progress: subscribe("overview_progress"),
+  probe_progress: subscribe("probe_progress"),
 };
 
 // Fake progress for recording 9002 so the live progress bar has something to render.

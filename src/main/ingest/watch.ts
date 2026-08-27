@@ -1,14 +1,16 @@
 // Port of crates/unottr-core/src/ingest/watch.rs: folder watching, completion detection, and
 // the missing-file/fingerprint sweep.
 //
-// Rust staged completion as inotify CLOSE_WRITE -> size-stable -> ffprobe. chokidar exposes no
-// CLOSE_WRITE, so `awaitWriteFinish` collapses the first two for files it sees, and files found
-// by the periodic rescan still serve the size-stability ticks. Fragmented mp4 stays probeable
-// while a recorder appends to it, so the pipeline also validates the source snapshot.
+// Rust staged completion as inotify CLOSE_WRITE -> size-stable -> ffprobe. Chokidar exposes no
+// CLOSE_WRITE, so every sighted file enters our explicit size-stability gate. Keeping that gate
+// here also lets the renderer show the file immediately instead of hiding it inside chokidar's
+// awaitWriteFinish timer. The pipeline still validates its source snapshot because fragmented
+// mp4 can remain probeable while a recorder appends to it.
 
 import { readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { type FSWatcher, watch as chokidar } from "chokidar";
+import type { IncomingFileProgress } from "../../shared/ipc";
 import type { Db } from "../db/client";
 import {
   availablePaths,
@@ -24,7 +26,7 @@ import {
 import { listEnabled } from "../db/watch-folders";
 import type { FfmpegCli } from "../media/ffmpeg";
 import { probe } from "../media/ffmpeg";
-import { type IngestConfig, awaitWriteFinish, hasExtension } from "./config";
+import { type IngestConfig, hasExtension } from "./config";
 import { compute } from "./fingerprint";
 
 /** A file seen in a watched folder but not yet promoted to a `recordings` row: still being
@@ -33,7 +35,7 @@ export interface Candidate {
   lastSize: number;
   stableTicks: number;
   probeChecks: number;
-  /** chokidar's awaitWriteFinish already held it still; skip straight to the probe. */
+  /** Optional fast path for a caller that has already established file stability. */
   settled: boolean;
 }
 
@@ -52,6 +54,8 @@ export interface WatcherOptions {
   cfg: IngestConfig;
   /** A brand new `discovered` row: emit the event and queue the job. */
   onDiscovered: (id: number) => void;
+  /** A file that is visible to the watcher but not safe to ingest yet. */
+  onCandidate?: (progress: IncomingFileProgress) => void;
 }
 
 export class Watcher {
@@ -69,12 +73,13 @@ export class Watcher {
     this.watcher = chokidar([], {
       depth: 0,
       ignoreInitial: false,
-      awaitWriteFinish: awaitWriteFinish(this.o.cfg),
       alwaysStat: true,
     });
     this.watcher.on("add", (path, stats) => this.sighted(path, stats?.size ?? 0, false));
     this.watcher.on("change", (path, stats) => this.sighted(path, stats?.size ?? 0, true));
-    this.watcher.on("unlink", (path) => this.candidates.delete(path));
+    this.watcher.on("unlink", (path) => {
+      if (this.candidates.delete(path)) this.candidate(path, "done", 0);
+    });
     this.watcher.on("error", () => {}); // a folder yanked mid-watch; the rescan recovers
     this.schedule(0);
   }
@@ -89,8 +94,17 @@ export class Watcher {
 
   private sighted(path: string, size: number, changed: boolean): void {
     if (!hasExtension(this.o.cfg, path)) return;
-    if (trackKnownChange(this.o.db, path, size, this.candidates, true, changed)) return;
-    if (!this.candidates.has(path)) this.candidates.set(path, fresh(true, size));
+    const alreadyTracked = this.candidates.has(path);
+    if (trackKnownChange(this.o.db, path, size, this.candidates, false, changed)) {
+      if (!alreadyTracked && this.candidates.has(path)) {
+        this.candidate(path, "waiting_for_copy", 0);
+      }
+      return;
+    }
+    if (!this.candidates.has(path)) {
+      this.candidates.set(path, fresh(false, size));
+      this.candidate(path, "waiting_for_copy", 0);
+    }
   }
 
   private schedule(delay: number): void {
@@ -114,7 +128,7 @@ export class Watcher {
       for (const folder of folders) relist(db, folder, cfg, this.candidates);
     }
 
-    await stepCandidates(db, cli, cfg, this.candidates, this.o.onDiscovered);
+    await stepCandidates(db, cli, cfg, this.candidates, this.o.onDiscovered, this.o.onCandidate);
 
     if (fullRescan) await sweepMissing(db, folders);
   }
@@ -135,6 +149,20 @@ export class Watcher {
         this.watched.add(path);
       }
     }
+  }
+
+  private candidate(
+    path: string,
+    phase: IncomingFileProgress["phase"],
+    done: number,
+  ): void {
+    this.o.onCandidate?.({
+      path,
+      filename: basename(path),
+      phase,
+      done,
+      total: this.o.cfg.stableRequiredCount,
+    });
   }
 }
 
@@ -164,12 +192,14 @@ export async function stepCandidates(
   cfg: IngestConfig,
   candidates: Candidates,
   onDiscovered: (id: number) => void,
+  onCandidate?: (progress: IncomingFileProgress) => void,
 ): Promise<void> {
   const ready: string[] = [];
   for (const [path, cand] of [...candidates]) {
     const size = sizeOf(path);
     if (size === null) {
       candidates.delete(path); // vanished before it finished writing
+      emitCandidate(onCandidate, cfg, path, "done", 0);
       continue;
     }
     if (size !== cand.lastSize) {
@@ -177,12 +207,17 @@ export async function stepCandidates(
       cand.stableTicks = 0;
       cand.probeChecks = 0;
       cand.settled = false; // writing resumed; the write-finish verdict is stale
+      emitCandidate(onCandidate, cfg, path, "waiting_for_copy", 0);
       continue;
     }
     cand.stableTicks += 1;
-    if (!cand.settled && cand.stableTicks < cfg.stableRequiredCount) continue;
+    if (!cand.settled && cand.stableTicks < cfg.stableRequiredCount) {
+      emitCandidate(onCandidate, cfg, path, "waiting_for_copy", cand.stableTicks);
+      continue;
+    }
 
     try {
+      emitCandidate(onCandidate, cfg, path, "checking_file", cfg.stableRequiredCount);
       await probe(cli, path);
       candidates.delete(path);
       ready.push(path);
@@ -196,7 +231,20 @@ export async function stepCandidates(
       }
     }
   }
-  for (const path of ready) await promote(db, path, onDiscovered);
+  for (const path of ready) {
+    await promote(db, path, onDiscovered);
+    emitCandidate(onCandidate, cfg, path, "done", cfg.stableRequiredCount);
+  }
+}
+
+function emitCandidate(
+  sink: ((progress: IncomingFileProgress) => void) | undefined,
+  cfg: IngestConfig,
+  path: string,
+  phase: IncomingFileProgress["phase"],
+  done: number,
+): void {
+  sink?.({ path, filename: basename(path), phase, done, total: cfg.stableRequiredCount });
 }
 
 /** Size-stable and (probably) probeable: fingerprint it and either re-link an existing row

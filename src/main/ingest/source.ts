@@ -72,12 +72,14 @@ export interface StabilityOptions {
   pollIntervalMs: number;
   requiredCount: number;
   signal?: AbortSignal;
+  onProgress?: (stable: number, required: number) => void;
 }
 
 /** Wait for consecutive identical size/mtime observations after a source-change race. */
 export async function waitForStableSource(path: string, o: StabilityOptions): Promise<void> {
   let prior = sourceVersion(path);
   let stable = 0;
+  o.onProgress?.(stable, o.requiredCount);
   while (stable < o.requiredCount) {
     await delay(o.pollIntervalMs, o.signal);
     const current = sourceVersion(path);
@@ -86,6 +88,7 @@ export async function waitForStableSource(path: string, o: StabilityOptions): Pr
       prior = current;
       stable = 0;
     }
+    o.onProgress?.(stable, o.requiredCount);
   }
 }
 

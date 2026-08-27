@@ -3,19 +3,21 @@ import {
   ArrowClockwise, ArrowDown, ArrowUp, FileX, FilmSlate, FolderOpen, Gear, Play, Users, Waveform,
 } from "@phosphor-icons/react";
 import {
-  api, onJobDone, onJobFailed, onJobProgress, onOverviewChanged, onRecordingDiscovered,
+  api, onJobDone, onJobFailed, onOverviewChanged, onRecordingDiscovered,
   PREVIEW_COUNT, previewUrl, thumbUrl,
 } from "@/ipc/client";
 import type { JobPhase, RecordingSummary, Status, WatchFolder } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
 import { countdownEta, dateLabel, durationLabel, etaLabel, hms, timeLabel } from "@/lib/format";
+import { jobActivity, jobPhaseOf } from "@/lib/activity";
+import { useActivities } from "@/lib/ActivityProvider";
 import { errorInfo } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useVirtual } from "@/lib/virtual";
 import { StatusChip } from "@/ui/StatusChip";
 import { EditableTitle } from "@/ui/EditableTitle";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { ActivityBar } from "@/components/activity-indicator";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -27,41 +29,25 @@ const COLS = 7;
 
 const TILE = "relative aspect-video w-24 shrink-0 overflow-hidden rounded-md border bg-muted";
 
-interface LiveProgress {
-  pct: number;
-  eta: number | null;
-  receivedAt: number;
-  mode: "full" | "transcribe" | "diarize";
-  phase: JobPhase;
-}
-
 function PipelineProgress({ status, pct, mode, phase, durationMs }: {
   status: Status;
   pct: number;
-  mode: LiveProgress["mode"];
+  mode: "full" | "transcribe" | "diarize";
   phase: JobPhase;
   durationMs: number | null;
 }) {
-  if (status === "transcribing" && phase === "detecting_speech") {
+  const activity = jobActivity(status, phase, mode, durationMs);
+  if (phase !== null || activity.indeterminate) {
     return (
       <div className="mt-2">
-        <div className="mb-1 text-[11px] text-muted-foreground">
-          Scanning {durationLabel(durationMs)} of audio before transcription
-        </div>
-        <div
-          className="h-1 overflow-hidden rounded-full bg-muted"
-          role="progressbar"
-          aria-label="Detecting speech before transcription"
-          aria-valuetext="Scanning the recording. This can take a few minutes."
-        >
-          <span className="progress-indeterminate block h-full w-1/3 rounded-full bg-primary" />
-        </div>
+        <div className="mb-1 truncate text-[11px] text-muted-foreground">{activity.label}</div>
+        <ActivityBar value={pct} indeterminate={activity.indeterminate} />
       </div>
     );
   }
 
   if (mode !== "full" || (status !== "transcribing" && status !== "diarizing")) {
-    return <Progress value={pct * 100} className="mt-2" />;
+    return <ActivityBar value={pct} className="mt-2" />;
   }
 
   const transcript = status === "diarizing" ? 1 : pct;
@@ -229,7 +215,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
   onOpenSettings: () => void;
 }) {
   const [rows, setRows] = useState<RecordingSummary[]>([]);
-  const [progress, setProgress] = useState<Record<number, LiveProgress>>({});
+  const { jobs: progress } = useActivities();
   const [etaClock, setEtaClock] = useState(() => Date.now());
   const [folders, setFolders] = useState<WatchFolder[]>([]);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -262,22 +248,6 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
     // recording through stages before the window finishes mounting; loading first leaves a
     // gap in which that transition is lost and the row keeps rendering the older DB status.
     const offs = [
-      // progress ticks are frequent — patch in place instead of refetching the list
-      onJobProgress((p) => {
-        setProgress((prev) => ({
-          ...prev,
-          [p.recording_id]: {
-            pct: p.pct,
-            eta: p.eta_ms,
-            receivedAt: Date.now(),
-            mode: p.mode,
-            phase: p.phase,
-          },
-        }));
-        setRows((prev) => prev.map((r) => (r.id === p.recording_id
-          ? { ...r, status: p.stage, stage_detail: p.phase }
-          : r)));
-      }),
       // terminal/new-row events are rare — a full refetch keeps duration/speaker_count/error correct
       onJobDone(load),
       onJobFailed(load),
@@ -289,7 +259,14 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
     return () => offs.forEach((off) => off());
   }, [load]);
 
-  const hasLiveEta = rows.some((r) => IN_FLIGHT.includes(r.status) && progress[r.id]?.eta != null);
+  useEffect(() => {
+    setRows((current) => current.map((row) => {
+      const live = progress[row.id];
+      return live ? { ...row, status: live.stage, stage_detail: live.phase } : row;
+    }));
+  }, [progress]);
+
+  const hasLiveEta = rows.some((r) => IN_FLIGHT.includes(r.status) && progress[r.id]?.eta_ms != null);
   useEffect(() => {
     if (!hasLiveEta) return undefined;
     const timer = window.setInterval(() => setEtaClock(Date.now()), 1_000);
@@ -402,7 +379,7 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                             pct={progress[r.id]?.pct ?? 0}
                             mode={progress[r.id]?.mode ?? "full"}
                             phase={progress[r.id]?.phase
-                              ?? (r.stage_detail === "detecting_speech" ? "detecting_speech" : null)}
+                              ?? jobPhaseOf(r.stage_detail)}
                             durationMs={r.duration_ms}
                           />
                         )}
@@ -446,13 +423,13 @@ export function RecordingsList({ onOpen, onOpenSettings }: {
                             status={r.status}
                             mode={progress[r.id]?.mode}
                             phase={progress[r.id]?.phase
-                              ?? (r.stage_detail === "detecting_speech" ? "detecting_speech" : null)}
+                              ?? jobPhaseOf(r.stage_detail)}
                           />
                         </div>
-                        {live && progress[r.id]?.eta != null && (
+                        {live && progress[r.id]?.eta_ms != null && (
                           <div className="mt-1 text-xs text-muted-foreground tabular-nums">
                             {etaLabel(countdownEta(
-                              progress[r.id].eta,
+                              progress[r.id].eta_ms,
                               progress[r.id].receivedAt,
                               etaClock,
                             ))}

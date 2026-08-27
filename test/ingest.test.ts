@@ -40,6 +40,7 @@ import {
   sweepMissing,
 } from "../src/main/ingest/watch";
 import { discover } from "../src/main/media/ffmpeg";
+import type { IncomingFileProgress } from "../src/shared/ipc";
 
 const root = mkdtempSync(join(tmpdir(), "unottr-ingest-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -204,6 +205,27 @@ describe("pcm cache names", () => {
 
 describe.skipIf(!haveFfmpeg)("candidate promotion", () => {
   const cfg = quick();
+
+  it("reports stability and probing before a watched file is promoted", async () => {
+    const path = join(dir, "incoming.mp4");
+    fixture(path);
+    const candidates: Candidates = new Map();
+    const progress: IncomingFileProgress[] = [];
+    relist(db, dir, cfg, candidates);
+
+    for (let i = 0; i < cfg.stableRequiredCount + 1; i++) {
+      await stepCandidates(db, cli, cfg, candidates, () => {}, (event) => progress.push(event));
+    }
+
+    expect(progress.map((event) => event.phase)).toEqual([
+      "waiting_for_copy",
+      "waiting_for_copy",
+      "checking_file",
+      "done",
+    ]);
+    expect(progress[1]).toMatchObject({ filename: "incoming.mp4", done: 1, total: 2 });
+    expect(rec.findByPath(db, path)).not.toBeNull();
+  });
 
   it("does not queue a file that is still being written", async () => {
     const whole = join(dir, "whole.mp4");
@@ -478,6 +500,12 @@ describe("queue", () => {
     await q.idle();
 
     expect(events[0]).toMatchObject({
+      kind: "queued",
+      recording_id: id,
+      stage: "transcribing",
+      mode: "transcribe",
+    });
+    expect(events[1]).toMatchObject({
       kind: "progress",
       recording_id: id,
       stage: "transcribing",
@@ -498,7 +526,10 @@ describe("queue", () => {
     await q.idle();
 
     expect(runs).toBe(3);
-    expect(events).toEqual([{ kind: "failed", recording_id: id, error: "probe_failed" }]);
+    expect(events).toEqual([
+      { kind: "queued", recording_id: id, stage: "discovered", mode: "full" },
+      { kind: "failed", recording_id: id, error: "probe_failed" },
+    ]);
     expect(rec.statusOf(db, id)).toBe("failed");
   });
 
@@ -514,7 +545,10 @@ describe("queue", () => {
     await q.idle();
 
     expect(runs).toBe(1);
-    expect(events).toEqual([{ kind: "failed", recording_id: id, error: "truncated" }]);
+    expect(events).toEqual([
+      { kind: "queued", recording_id: id, stage: "discovered", mode: "full" },
+      { kind: "failed", recording_id: id, error: "truncated" },
+    ]);
   });
 
   it("forces cpu and retries once on a gpu oom, then gives up", async () => {
@@ -602,7 +636,9 @@ describe("queue", () => {
     q.enqueue(id);
     await q.idle();
 
-    expect(events).toEqual([]);
+    expect(events).toEqual([
+      { kind: "queued", recording_id: id, stage: "discovered", mode: "full" },
+    ]);
     expect(rec.statusOf(db, id)).toBe("transcribing"); // reconciliation picks it back up
   });
 
@@ -627,7 +663,33 @@ describe("queue", () => {
     await q.idle();
 
     expect(runs).toBe(2);
-    expect(events).toEqual([{ kind: "done", recording_id: id }]);
+    expect(events[0]).toEqual({
+      kind: "queued",
+      recording_id: id,
+      stage: "discovered",
+      mode: "full",
+    });
+    expect(events.filter((event) => event.kind === "progress")).toEqual([
+      {
+        kind: "progress",
+        recording_id: id,
+        stage: "discovered",
+        pct: 0,
+        phase: "waiting_for_source",
+        eta_ms: null,
+        mode: "full",
+      },
+      {
+        kind: "progress",
+        recording_id: id,
+        stage: "discovered",
+        pct: 1,
+        phase: "waiting_for_source",
+        eta_ms: null,
+        mode: "full",
+      },
+    ]);
+    expect(events.at(-1)).toEqual({ kind: "done", recording_id: id });
     expect(db.select().from(recordings).where(eq(recordings.id, id)).get()?.attempts).toBe(0);
   });
 });

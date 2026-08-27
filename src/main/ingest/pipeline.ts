@@ -63,6 +63,8 @@ export interface DiarizeSpec {
   validate?: () => void | Promise<void>;
   engine?: DiarizationEngine;
   speakerLimitHit?: boolean;
+  /** Runs after compute and validation, before the speaker/segment transaction. */
+  onPersist?: () => void;
 }
 
 export interface SortformerSpec {
@@ -75,6 +77,7 @@ export interface SortformerSpec {
   threads: number;
   keepNames?: boolean;
   validate?: () => void | Promise<void>;
+  onPersist?: () => void;
 }
 
 export interface DiarizeReport {
@@ -217,6 +220,7 @@ export async function diarize(
   );
 
   await spec.validate?.();
+  spec.onPersist?.();
   const counts = persist(db, spec, out.labels, out.embeddings, loaded, out.assigned);
   progress(1);
 
@@ -258,6 +262,7 @@ export async function diarizeSortformer(
   const labels = Array.from({ length: count }, (_, i) => `Speaker ${i + 1}`);
   const assigned = assign(loaded.map((item) => item.seg), turns);
   await spec.validate?.();
+  spec.onPersist?.();
   const counts = persist(
     db,
     {

@@ -145,8 +145,22 @@ export interface RecordingSort {
   dir: "asc" | "desc";
 }
 
-/** Work inside a persisted pipeline stage that needs its own honest UI state. */
-export type JobPhase = "detecting_speech" | null;
+/** Slow work inside a persisted pipeline stage that needs its own honest UI state. */
+export type JobPhase =
+  | "queued"
+  | "waiting_for_source"
+  | "generating_previews"
+  | "preparing_audio"
+  | "mixing_tracks"
+  | "connecting_model"
+  | "downloading_model"
+  | "verifying_model"
+  | "detecting_speech"
+  | "detecting_mic_speech"
+  | "retrying_on_cpu"
+  | "retrying_with_smaller_model"
+  | "finishing"
+  | null;
 
 // main -> renderer events. pct is 0..1.
 export interface JobProgress {
@@ -169,6 +183,16 @@ export interface JobFailed {
 }
 export interface RecordingDiscovered {
   recording_id: number;
+}
+
+/** A watched file before it is safe to promote into the recordings table. */
+export interface IncomingFileProgress {
+  path: string;
+  filename: string;
+  phase: "waiting_for_copy" | "checking_file" | "done";
+  /** Stability checks completed. Zero while the file is still changing. */
+  done: number;
+  total: number;
 }
 
 export interface TranscriptChanged {
@@ -230,12 +254,28 @@ export interface BackfillEstimate {
   estimated_processing_ms: number;
 }
 
+export interface BackfillProgress {
+  folder_id: number;
+  done: number;
+  total: number;
+  phase: "fingerprinting" | "queueing" | "done";
+  error?: string;
+}
+
 export type ExportFormat = "txt" | "json" | "srt" | "vtt";
+
+export type ModelDownloadPhase =
+  | "connecting"
+  | "downloading"
+  | "verifying"
+  | "installing"
+  | "done";
 
 export interface ModelDownloadProgress {
   model: string; // tier name, or SUPPORT_MODELS — never a registry filename
   /** 0..1. Reaches 1 only once the file is verified and renamed into place, never mid-stream. */
   pct: number;
+  phase: ModelDownloadPhase;
   /** Set when the download stopped early — `cancelled`, or a download_failed reason. Terminal. */
   error?: string;
 }
@@ -392,6 +432,14 @@ export interface ProbeResult {
   model: string | null;
 }
 
+export interface ProbeProgress {
+  connection_id: number;
+  rungs: ProbeRung[];
+  active_step: ProbeStep;
+  /** The structured-output strategy currently being tried, when the probe reached that point. */
+  strategy: Strategy | null;
+}
+
 export interface AiConnection {
   id: number;
   label: string;
@@ -486,6 +534,11 @@ export interface OverviewProgress {
   recording_id: number;
   part: number;
   total: number;
+}
+
+export interface AskProgress {
+  request_id: string;
+  phase: "searching" | "asking_model" | "checking_answer" | "saving";
 }
 
 // Ask. Threads keep a fixed scope so a follow-up cannot silently search a different corpus.

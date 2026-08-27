@@ -3,19 +3,21 @@ import {
   CheckCircle, Download, FolderOpen, FolderSimplePlus, HardDrives, Plus, StopCircle, Trash,
   Warning, X,
 } from "@phosphor-icons/react";
-import { api, onModelDownloadProgress, os } from "@/ipc/client";
+import { api, os } from "@/ipc/client";
 import type {
-  BackfillEstimate, DiskUsage, ModelInfo, Person, Resolved, Settings as SettingsT, SupportModels,
+  BackfillEstimate, DiskUsage, ModelDownloadProgress, ModelInfo, Person, Resolved, Settings as SettingsT, SupportModels,
   WatchFolder,
 } from "@/ipc/types";
 import { SUPPORT_MODELS } from "@/ipc/types";
 import { bytesLabel, durationLabel } from "@/lib/format";
+import { modelPhaseLabel } from "@/lib/activity";
+import { useActivities } from "@/lib/ActivityProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
-import { Progress } from "@/components/ui/progress";
+import { ActivityBar, ActivityLine, ActivityMark } from "@/components/activity-indicator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -34,17 +36,13 @@ const TIERS: { tier: string; label: string }[] = [
   { tier: "small", label: "Small" },
 ];
 
-const omit = <T,>(map: Record<string, T>, key: string): Record<string, T> =>
-  Object.fromEntries(Object.entries(map).filter(([k]) => k !== key));
-
 export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boolean) => void }) {
   const [settings, setSettings] = useState<SettingsT | null>(null);
   const [folders, setFolders] = useState<WatchFolder[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [disk, setDisk] = useState<DiskUsage | null>(null);
   const [detected, setDetected] = useState<Resolved | null>(null);
-  const [progressByTier, setProgressByTier] = useState<Record<string, number>>({});
-  const [errorByTier, setErrorByTier] = useState<Record<string, string>>({});
+  const { modelDownloads, runAction } = useActivities();
   const [autostartOn, setAutostartOn] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [support, setSupport] = useState<SupportModels | null>(null);
@@ -66,25 +64,12 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
     os.getAutostart().then(setAutostartOn).catch(() => {});
   }, [loadFolders, loadModels, loadDisk, loadPeople, loadSupport]);
 
-  useEffect(
-    () =>
-      onModelDownloadProgress((p) => {
-        if (p.error) {
-          // drop the progress entry or the row stays stuck offering Cancel
-          setProgressByTier((prev) => omit(prev, p.model));
-          const error = p.error;
-          setErrorByTier((prev) => ({
-            ...prev,
-            [p.model]: error === "cancelled" ? "Download cancelled." : error,
-          }));
-          return;
-        }
-        setErrorByTier((prev) => omit(prev, p.model));
-        setProgressByTier((prev) => ({ ...prev, [p.model]: p.pct }));
-        if (p.pct >= 1) { loadModels(); loadDisk(); loadSupport(); }
-      }),
-    [loadModels, loadDisk, loadSupport],
-  );
+  useEffect(() => {
+    if (!Object.values(modelDownloads).some((item) => item.phase === "done" && !item.error)) return;
+    loadModels();
+    loadDisk();
+    loadSupport();
+  }, [modelDownloads, loadModels, loadDisk, loadSupport]);
 
   async function setSetting(key: string, value: string) {
     const s = await api.setSetting(key, value);
@@ -143,8 +128,7 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
           models={models}
           activeTier={settings.model_tier}
           disk={disk}
-          progressByTier={progressByTier}
-          errorByTier={errorByTier}
+          downloads={modelDownloads}
           support={support}
           onTierChange={(tier) => setSetting("model_tier", tier)}
           onDownload={(tier) => api.downloadModel(tier)}
@@ -163,7 +147,21 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
           onChange={(v) => setSetting("diarize_threshold", v.toFixed(2))}
         />
 
-        <AdvancedCard settings={settings} onChange={setSetting} onClearCache={() => api.clearCache()} />
+        <AdvancedCard
+          settings={settings}
+          onChange={setSetting}
+          onClearCache={() => runAction(
+            {
+              id: "clear-cache",
+              label: "Clearing audio cache",
+              detail: "Removing temporary decoded audio.",
+            },
+            async () => {
+              await api.clearCache();
+              loadDisk();
+            },
+          )}
+        />
       </div>
     </div>
   );
@@ -383,6 +381,11 @@ function FolderRow({ folder, onChange }: { folder: WatchFolder; onChange: () => 
   const [rule, setRule] = useState(parsed);
   const [estimate, setEstimate] = useState<BackfillEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [backfillError, setBackfillError] = useState<string | null>(null);
+  const { backfills } = useActivities();
+  const backfill = backfills[folder.id];
+  const backfillBusy = confirming || (backfill != null && backfill.phase !== "done" && !backfill.error);
 
   useEffect(() => setRule(parseTrackRule(folder.track_rule)), [folder.track_rule]);
 
@@ -401,8 +404,16 @@ function FolderRow({ folder, onChange }: { folder: WatchFolder; onChange: () => 
   }
 
   async function confirmBackfill() {
-    await api.startBackfill(folder.id);
-    setEstimate(null);
+    setConfirming(true);
+    setBackfillError(null);
+    try {
+      await api.startBackfill(folder.id);
+      setEstimate(null);
+    } catch (reason) {
+      setBackfillError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setConfirming(false);
+    }
   }
 
   return (
@@ -414,7 +425,7 @@ function FolderRow({ folder, onChange }: { folder: WatchFolder; onChange: () => 
         />
         <span className="min-w-0 flex-1 truncate text-sm">{folder.path}</span>
         <Button size="xs" variant="outline" onClick={startEstimate} disabled={estimating}>
-          <FolderSimplePlus />Backfill
+          {estimating ? <><ActivityMark />Scanning folder</> : <><FolderSimplePlus />Backfill</>}
         </Button>
         <Button
           size="icon-xs"
@@ -432,10 +443,27 @@ function FolderRow({ folder, onChange }: { folder: WatchFolder; onChange: () => 
             {" "}· est. {durationLabel(estimate.estimated_processing_ms)} to process
           </span>
           <div className="flex shrink-0 gap-2">
-            <Button size="xs" variant="ghost" onClick={() => setEstimate(null)}>Cancel</Button>
-            <Button size="xs" onClick={confirmBackfill}>Confirm</Button>
+            <Button size="xs" variant="ghost" disabled={backfillBusy} onClick={() => setEstimate(null)}>Cancel</Button>
+            <Button size="xs" disabled={backfillBusy} onClick={confirmBackfill}>
+              {backfillBusy && <ActivityMark />}
+              {backfillBusy ? "Adding recordings" : "Confirm"}
+            </Button>
           </div>
         </div>
+      )}
+      {backfillBusy && (
+        <ActivityLine
+          className="mt-2 rounded-md bg-muted/50 px-3 py-2"
+          label={backfill?.phase === "queueing" ? "Adding recordings to the queue" : "Checking existing files"}
+          detail={backfill && backfill.total > 0 ? `${backfill.done} of ${backfill.total}` : "Starting scan"}
+          value={backfill && backfill.total > 0 ? backfill.done / backfill.total : 0}
+          indeterminate={!backfill || backfill.total === 0}
+        />
+      )}
+      {(backfillError || backfill?.error) && (
+        <p className="mt-2 text-xs text-destructive" role="alert">
+          {backfillError ?? backfill?.error}
+        </p>
       )}
 
       <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
@@ -480,22 +508,23 @@ function FolderRow({ folder, onChange }: { folder: WatchFolder; onChange: () => 
 }
 
 function ModelCard({
-  models, activeTier, disk, progressByTier, errorByTier, support, onTierChange, onDownload,
+  models, activeTier, disk, downloads, support, onTierChange, onDownload,
   onCancel, onDownloadSupport,
 }: {
   models: ModelInfo[];
   activeTier: string;
   disk: DiskUsage | null;
-  progressByTier: Record<string, number>;
-  errorByTier: Record<string, string>;
+  downloads: Record<string, ModelDownloadProgress>;
   support: SupportModels | null;
   onTierChange: (tier: string) => void;
   onDownload: (tier: string) => void;
   onCancel: (tier: string) => void;
   onDownloadSupport: () => void;
 }) {
-  const supportPct = progressByTier[SUPPORT_MODELS];
-  const supportBusy = supportPct != null && supportPct < 1;
+  const supportDownload = downloads[SUPPORT_MODELS];
+  const supportBusy = supportDownload != null
+    && supportDownload.phase !== "done"
+    && !supportDownload.error;
   const recovery = models.find((m) => m.recovery);
   return (
     <Card>
@@ -506,8 +535,8 @@ function ModelCard({
       <CardContent className="flex flex-col gap-3">
         {TIERS.map(({ tier, label }) => {
           const info = models.find((m) => m.tier === tier);
-          const pct = progressByTier[tier];
-          const downloading = pct != null && pct < 1;
+          const download = downloads[tier];
+          const downloading = download != null && download.phase !== "done" && !download.error;
           return (
             <div key={tier} className="flex items-center gap-3 rounded-lg border p-3">
               <input
@@ -522,9 +551,21 @@ function ModelCard({
                   {info?.downloaded && <Badge variant="outline"><CheckCircle />downloaded</Badge>}
                 </div>
                 {info && <div className="text-xs text-muted-foreground">{bytesLabel(info.size)}</div>}
-                {downloading && <Progress value={pct * 100} className="mt-1.5" />}
-                {!downloading && errorByTier[tier] && (
-                  <div className="mt-1 text-xs text-destructive">{errorByTier[tier]}</div>
+                {downloading && (
+                  <div className="mt-1.5">
+                    <div className="mb-1 text-[11px] text-muted-foreground">
+                      {modelPhaseLabel(download.phase)}
+                    </div>
+                    <ActivityBar
+                      value={download.pct}
+                      indeterminate={download.phase !== "downloading"}
+                    />
+                  </div>
+                )}
+                {!downloading && download?.error && (
+                  <div className="mt-1 text-xs text-destructive">
+                    {download.error === "cancelled" ? "Download cancelled." : download.error}
+                  </div>
                 )}
               </div>
               {downloading ? (
@@ -553,9 +594,21 @@ function ModelCard({
                 ? `Voice activity and speaker models, plus ${recovery.name} for offline recovery.`
                 : "Voice activity, segmentation and embedding. Every recording needs all three."}
             </div>
-            {supportBusy && <Progress value={supportPct * 100} className="mt-1.5" />}
-            {!supportBusy && errorByTier[SUPPORT_MODELS] && (
-              <div className="mt-1 text-xs text-destructive">{errorByTier[SUPPORT_MODELS]}</div>
+            {supportBusy && supportDownload && (
+              <div className="mt-1.5">
+                <div className="mb-1 text-[11px] text-muted-foreground">
+                  {modelPhaseLabel(supportDownload.phase)}
+                </div>
+                <ActivityBar
+                  value={supportDownload.pct}
+                  indeterminate={supportDownload.phase !== "downloading"}
+                />
+              </div>
+            )}
+            {!supportBusy && supportDownload?.error && (
+              <div className="mt-1 text-xs text-destructive">
+                {supportDownload.error === "cancelled" ? "Download cancelled." : supportDownload.error}
+              </div>
             )}
           </div>
           <Button
@@ -715,7 +768,7 @@ function AdvancedCard({ settings, onChange, onClearCache }: {
       </CardContent>
       <CardFooter className="justify-between">
         <Button size="xs" variant="outline" onClick={clearCache} disabled={clearing}>
-          <Trash />Clear cache
+          {clearing ? <><ActivityMark />Clearing cache</> : <><Trash />Clear cache</>}
         </Button>
         <Button size="xs" variant="outline" onClick={openLogFolder}>
           <FolderOpen />Open log folder

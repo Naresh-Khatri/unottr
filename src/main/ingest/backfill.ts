@@ -43,19 +43,31 @@ export async function scan(
  * fingerprint — a moved file re-links instead). Returns the ids of freshly discovered rows;
  * re-linked files are not reprocessed, so they are not included.
  */
-export async function confirm(db: Db, folder: string, cfg: IngestConfig): Promise<number[]> {
+export async function confirm(
+  db: Db,
+  folder: string,
+  cfg: IngestConfig,
+  onProgress?: (done: number, total: number) => void,
+): Promise<number[]> {
   const discovered: number[] = [];
-  for (const path of matching(folder, cfg)) {
-    if (findByPath(db, path) !== null) continue;
+  const paths = matching(folder, cfg);
+  onProgress?.(0, paths.length);
+  for (const [index, path] of paths.entries()) {
+    if (findByPath(db, path) !== null) {
+      onProgress?.(index + 1, paths.length);
+      continue;
+    }
     let fp: Awaited<ReturnType<typeof compute>>;
     try {
       fp = await compute(path);
     } catch {
+      onProgress?.(index + 1, paths.length);
       continue; // vanished between scan and confirm
     }
     const existing = findByFingerprint(db, fp.size, fp.head, fp.tail);
     if (existing !== null) relink(db, existing, path);
     else discovered.push(insertDiscovered(db, path, fp.size, fp.head, fp.tail));
+    onProgress?.(index + 1, paths.length);
   }
   return discovered;
 }

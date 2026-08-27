@@ -2,6 +2,7 @@
 // emits the 05-ipc-contract.md event shapes. The caller maps them onto `events.*`.
 
 import type { Db } from "../db/client";
+import type { IncomingFileProgress } from "../../shared/ipc";
 import type { FfmpegCli } from "../media/ffmpeg";
 import { modelsDir as defaultModelsDir, pcmCacheDir, thumbsCacheDir } from "../paths";
 import {
@@ -22,6 +23,7 @@ export interface ServiceOptions {
   db: Db;
   cli: FfmpegCli;
   onEvent: (event: IngestEvent) => void;
+  onCandidate?: (progress: IncomingFileProgress) => void;
   cacheDir?: string;
   thumbsDir?: string;
   modelsDir?: string;
@@ -84,6 +86,7 @@ export class IngestService {
         o.onEvent({ kind: "discovered", recording_id: id });
         queue.enqueue(id);
       },
+      onCandidate: o.onCandidate,
     });
     watcher.start();
 

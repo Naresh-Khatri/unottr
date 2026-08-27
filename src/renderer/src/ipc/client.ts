@@ -2,9 +2,9 @@
 // cheap writes are real. The pipeline commands (retry, backfill, models, cache) reach the
 // main process and get a "not implemented until 08.x" error until their sub-phase lands.
 import type {
-  AskScope, AskThread, AskThreadSummary, AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, DiskUsage, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
+  AskProgress, AskScope, AskThread, AskThreadSummary, AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, BackfillProgress, DiskUsage, IncomingFileProgress, JobDone, JobFailed, JobProgress, ModelDownloadProgress,
   ModelInfo, OverviewChanged, OverviewPayload, OverviewProgress, Person, ProbeResult, RecordingDetail,
-  RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit,
+  ProbeProgress, RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit,
   Settings, SupportModels, SystemStats, TaskStatus, WatchFolder,
   TerminologyApplyResult, TerminologyImportResult, TerminologyRule, TerminologyRuleInput,
   TranscriptChanged,
@@ -86,6 +86,8 @@ export const api = {
     USE_MOCK ? mockCommands.support_models() : invoke("support_models"),
   downloadSupportModels: (): Promise<void> =>
     USE_MOCK ? mockCommands.download_support_models() : invoke("download_support_models"),
+  modelDownloadStatus: (): Promise<ModelDownloadProgress[]> =>
+    USE_MOCK ? mockCommands.model_download_status() : invoke("model_download_status"),
   detectedDevice: (): Promise<Resolved> =>
     USE_MOCK ? mockCommands.detected_device() : invoke("detected_device"),
   diskUsage: (): Promise<DiskUsage> =>
@@ -214,6 +216,10 @@ export function onRecordingDiscovered(cb: (p: RecordingDiscovered) => void): () 
   if (USE_MOCK) return mockEvents.recording_discovered(cb);
   return listen<RecordingDiscovered>("recording_discovered", cb);
 }
+export function onIncomingFileProgress(cb: (p: IncomingFileProgress) => void): () => void {
+  if (USE_MOCK) return mockEvents.incoming_file_progress(cb);
+  return listen<IncomingFileProgress>("incoming_file_progress", cb);
+}
 export function onTranscriptChanged(cb: (p: TranscriptChanged) => void): () => void {
   if (USE_MOCK) return mockEvents.transcript_changed(cb);
   return listen<TranscriptChanged>("transcript_changed", cb);
@@ -221,6 +227,18 @@ export function onTranscriptChanged(cb: (p: TranscriptChanged) => void): () => v
 export function onModelDownloadProgress(cb: (p: ModelDownloadProgress) => void): () => void {
   if (USE_MOCK) return mockEvents.model_download_progress(cb);
   return listen<ModelDownloadProgress>("model_download_progress", cb);
+}
+export function onBackfillProgress(cb: (p: BackfillProgress) => void): () => void {
+  if (USE_MOCK) return mockEvents.backfill_progress(cb);
+  return listen<BackfillProgress>("backfill_progress", cb);
+}
+export function onProbeProgress(cb: (p: ProbeProgress) => void): () => void {
+  if (USE_MOCK) return mockEvents.probe_progress(cb);
+  return listen<ProbeProgress>("probe_progress", cb);
+}
+export function onAskProgress(cb: (p: AskProgress) => void): () => void {
+  if (USE_MOCK) return mockEvents.ask_progress(cb);
+  return listen<AskProgress>("ask_progress", cb);
 }
 export function onOverviewChanged(cb: (p: OverviewChanged) => void): () => void {
   if (USE_MOCK) return mockEvents.overview_changed(cb);

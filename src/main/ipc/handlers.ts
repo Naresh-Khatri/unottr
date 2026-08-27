@@ -1,9 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdir, rm } from "node:fs/promises";
 import { BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import type {
   AskScope,
   AiConnectionInput,
   ModelInfo,
+  ModelDownloadPhase,
+  ModelDownloadProgress,
   RecordingFilter,
   RecordingSort,
   SupportModels,
@@ -49,8 +52,38 @@ import {
 import { logsDir, pcmCacheDir } from "../paths";
 import { sampleHardware } from "../system/stats";
 
-/** Live model downloads by tier (plus SUPPORT_MODELS), so cancelling has something to abort. */
-const downloads = new Map<string, AbortController>();
+interface DownloadEntry {
+  controller: AbortController;
+  status: ModelDownloadProgress;
+}
+
+/** Live model downloads stay queryable so navigation never erases their UI state. */
+const downloads = new Map<string, DownloadEntry>();
+
+function publishDownload(
+  model: string,
+  entry: DownloadEntry,
+  patch: Partial<Pick<ModelDownloadProgress, "pct" | "phase" | "error">>,
+): void {
+  if (downloads.get(model) !== entry) return;
+  entry.status = { ...entry.status, ...patch };
+  events.modelDownloadProgress(entry.status);
+}
+
+function beginDownload(model: string): DownloadEntry | null {
+  const running = downloads.get(model);
+  if (running) {
+    events.modelDownloadProgress(running.status);
+    return null;
+  }
+  const entry: DownloadEntry = {
+    controller: new AbortController(),
+    status: { model, pct: 0, phase: "connecting" },
+  };
+  downloads.set(model, entry);
+  events.modelDownloadProgress(entry.status);
+  return entry;
+}
 
 /** Sortformer is useful only when both the staged Vulkan runtime and a hardware GPU exist. */
 const supportsFastDiarization = (): boolean => sortformerRuntime() !== null && gpus().length > 0;
@@ -299,6 +332,7 @@ const handlers: Record<string, Handler> = {
         scope: askDb.normalizeScope((a?.scope as AskScope | undefined) ?? askDb.emptyScope()),
         question: str(a?.question) ?? "",
         signal: controller.signal,
+        onProgress: (phase) => events.askProgress({ request_id: requestId, phase }),
       });
     } finally {
       if (asking.get(requestId) === controller) asking.delete(requestId);
@@ -352,7 +386,14 @@ const handlers: Record<string, Handler> = {
 
   async ai_connection_test(a) {
     const row = requireConnection(a);
-    return probe(db(), row);
+    return probe(db(), row, undefined, (rungs, activeStep, strategy) => {
+      events.probeProgress({
+        connection_id: row.id,
+        rungs,
+        active_step: activeStep,
+        strategy,
+      });
+    });
   },
 
   /**
@@ -502,9 +543,45 @@ const handlers: Record<string, Handler> = {
   /** Scans and confirms in one shot — the explicit-confirmation requirement is satisfied by
    *  the user clicking the button that invokes this in the first place. */
   async start_backfill(a) {
-    const folder = requireFolder(requireId(a, "folder_id"));
-    for (const id of await backfill.confirm(db(), folder.path, defaultIngestConfig())) {
-      ingest()?.enqueue(id);
+    const folderId = requireId(a, "folder_id");
+    const folder = requireFolder(folderId);
+    try {
+      const ids = await backfill.confirm(
+        db(),
+        folder.path,
+        defaultIngestConfig(),
+        (done, total) => events.backfillProgress({
+          folder_id: folderId,
+          done,
+          total,
+          phase: "fingerprinting",
+        }),
+      );
+      events.backfillProgress({
+        folder_id: folderId,
+        done: 0,
+        total: ids.length,
+        phase: "queueing",
+      });
+      for (const [index, id] of ids.entries()) {
+        ingest()?.enqueue(id);
+        events.backfillProgress({
+          folder_id: folderId,
+          done: index + 1,
+          total: ids.length,
+          phase: "queueing",
+        });
+      }
+      events.backfillProgress({
+        folder_id: folderId,
+        done: ids.length,
+        total: ids.length,
+        phase: "done",
+      });
+    } catch (reason) {
+      const error = reason instanceof Error ? reason.message : String(reason);
+      events.backfillProgress({ folder_id: folderId, done: 0, total: 0, phase: "done", error });
+      throw reason;
     }
   },
 
@@ -540,6 +617,9 @@ const handlers: Record<string, Handler> = {
     };
   },
 
+  model_download_status: (): ModelDownloadProgress[] =>
+    [...downloads.values()].map((entry) => entry.status),
+
   /**
    * Same fire-and-forget shape as `download_model`, under the reserved `support` key. Fetched
    * one after another and reported as a single byte-weighted bar — there is no tier to pick
@@ -550,17 +630,20 @@ const handlers: Record<string, Handler> = {
     const includeSortformer = supportsFastDiarization();
     const total =
       specs.reduce((n, m) => n + m.size, 0) + (includeSortformer ? SORTFORMER.size : 0);
-    const ac = new AbortController();
-    downloads.set(SUPPORT_MODELS, ac);
+    const entry = beginDownload(SUPPORT_MODELS);
+    if (!entry) return;
+    const ac = entry.controller;
 
     void (async () => {
       let done = 0;
       for (const spec of specs) {
         await ensure(spec, {
           signal: ac.signal,
+          onPhase: (phase) => {
+            if (phase !== "done") publishDownload(SUPPORT_MODELS, entry, { phase });
+          },
           onProgress: (pct) =>
-            events.modelDownloadProgress({
-              model: SUPPORT_MODELS,
+            publishDownload(SUPPORT_MODELS, entry, {
               // the last one's terminal 1 is the only 1 the ui may see
               pct: Math.min((done + pct * spec.size) / total, 0.999),
             }),
@@ -570,23 +653,25 @@ const handlers: Record<string, Handler> = {
       if (includeSortformer) {
         await ensureSortformer({
           signal: ac.signal,
+          onPhase: (phase) => {
+            if (phase !== "done") publishDownload(SUPPORT_MODELS, entry, { phase });
+          },
           onProgress: (pct) =>
-            events.modelDownloadProgress({
-              model: SUPPORT_MODELS,
+            publishDownload(SUPPORT_MODELS, entry, {
               pct: Math.min((done + pct * SORTFORMER.size) / total, 0.999),
             }),
         });
       }
-      events.modelDownloadProgress({ model: SUPPORT_MODELS, pct: 1 });
+      publishDownload(SUPPORT_MODELS, entry, { pct: 1, phase: "done" });
     })()
       .catch((e: unknown) => {
         console.warn("support model download did not complete:", e);
-        if (downloads.get(SUPPORT_MODELS) !== ac) return;
+        if (downloads.get(SUPPORT_MODELS) !== entry) return;
         const error = isCancelled(e) ? "cancelled" : e instanceof Error ? e.message : String(e);
-        events.modelDownloadProgress({ model: SUPPORT_MODELS, pct: 0, error });
+        publishDownload(SUPPORT_MODELS, entry, { pct: 0, phase: "done", error });
       })
       .finally(() => {
-        if (downloads.get(SUPPORT_MODELS) === ac) downloads.delete(SUPPORT_MODELS);
+        if (downloads.get(SUPPORT_MODELS) === entry) downloads.delete(SUPPORT_MODELS);
       });
   },
 
@@ -605,33 +690,35 @@ const handlers: Record<string, Handler> = {
     const spec = catalog.findWhisper(name);
     if (!spec) throw new Error(`model ${name} not registered`);
 
-    const ac = new AbortController();
-    downloads.set(tier, ac);
+    const entry = beginDownload(tier);
+    if (!entry) return;
+    const ac = entry.controller;
     void ensure(spec, {
       signal: ac.signal,
-      onProgress: (pct) => events.modelDownloadProgress({ model: tier, pct }),
+      onPhase: (phase: ModelDownloadPhase) => publishDownload(tier, entry, { phase }),
+      onProgress: (pct) => publishDownload(tier, entry, { pct }),
     })
       .catch((e: unknown) => {
         console.warn(`model download did not complete (${tier}):`, e);
         // a later call took over this tier; its progress is the one the ui is watching
-        if (downloads.get(tier) !== ac) return;
+        if (downloads.get(tier) !== entry) return;
         const error = isCancelled(e) ? "cancelled" : e instanceof Error ? e.message : String(e);
-        events.modelDownloadProgress({ model: tier, pct: 0, error });
+        publishDownload(tier, entry, { pct: 0, phase: "done", error });
       })
       .finally(() => {
         // a later call already replaced us; leave its controller alone
-        if (downloads.get(tier) === ac) downloads.delete(tier);
+        if (downloads.get(tier) === entry) downloads.delete(tier);
       });
   },
 
   cancel_model_download(a) {
-    downloads.get(str(a?.tier) ?? "")?.abort();
+    downloads.get(str(a?.tier) ?? "")?.controller.abort();
   },
 
-  clear_cache() {
+  async clear_cache() {
     const dir = pcmCacheDir();
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir, { recursive: true });
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { recursive: true });
   },
 
   // -------------------------------------------------------------- os / native ui

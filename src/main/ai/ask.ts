@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import type { AskScope, AskThread } from "../../shared/ipc";
+import type { AskProgress, AskScope, AskThread } from "../../shared/ipc";
 import type { Db } from "../db/client";
 import * as askDb from "../db/ask";
 import type { CitationRef, StoredAnswer } from "../db/ask";
@@ -84,7 +84,13 @@ interface OverviewHit {
 /** One complete Ask turn. Persistence lands only after a grounded answer is ready. */
 export async function send(
   db: Db,
-  input: { threadId: number | null; scope: AskScope; question: string; signal?: AbortSignal },
+  input: {
+    threadId: number | null;
+    scope: AskScope;
+    question: string;
+    signal?: AbortSignal;
+    onProgress?: (phase: AskProgress["phase"]) => void;
+  },
 ): Promise<AskThread> {
   const question = input.question.replace(/\s+/g, " ").trim();
   if (!question) throw new Error("ask a question first");
@@ -99,6 +105,7 @@ export async function send(
       throw new Error("this thread has a different scope; start a new thread to change it");
     }
 
+    input.onProgress?.("searching");
     const retrieval = retrieve(db, question, threadScope);
     const prior = askDb.history(db, threadId);
 
@@ -117,6 +124,7 @@ export async function send(
         usedRecordings: 0,
       };
     } else {
+      input.onProgress?.("asking_model");
       const conn = requireConnection(db);
       const built = buildPrompt(question, prior, retrieval.sources);
       const deadline = input.signal
@@ -128,6 +136,7 @@ export async function send(
         answer = await call(conn, built, deadline, "");
       } catch (error) {
         if (!isShapeError(error)) throw error;
+        input.onProgress?.("checking_answer");
         answer = await call(
           conn,
           built,
@@ -147,6 +156,7 @@ export async function send(
       stored = groundAnswer(answer.object, retrieval);
     }
 
+    input.onProgress?.("saving");
     askDb.saveExchange(db, threadId, question, stored, provider, model);
     const thread = askDb.get(db, threadId);
     if (!thread) throw new Error(`thread ${threadId} disappeared while saving`);

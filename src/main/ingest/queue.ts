@@ -10,8 +10,10 @@ import {
   failOrRetry,
   forceCpuOf,
   resetForSourceChange,
+  setStatus,
   setForceCpu,
   setWhisperFallback,
+  statusOf,
   whisperFallbackOf,
 } from "../db/recordings";
 import { PipelineError, err, isCancelled } from "../errors";
@@ -20,6 +22,12 @@ import { SourceChangedError, waitForStableSource } from "./source";
 
 export type IngestEvent =
   | { kind: "discovered"; recording_id: number }
+  | {
+      kind: "queued";
+      recording_id: number;
+      stage: Status;
+      mode: "full" | "transcribe" | "diarize";
+    }
   | {
       kind: "progress";
       recording_id: number;
@@ -75,6 +83,13 @@ export class Queue {
     if (this.controller.signal.aborted || this.known.has(id)) return;
     this.known.add(id);
     this.pending.push({ id, spec });
+    const mode = modeOf(spec);
+    this.o.onEvent({
+      kind: "queued",
+      recording_id: id,
+      stage: mode === "transcribe" ? "transcribing" : mode === "diarize" ? "diarizing" : "discovered",
+      mode,
+    });
     this.pump();
   }
 
@@ -105,9 +120,7 @@ export class Queue {
   private async runJob(id: number, spec: JobSpec): Promise<void> {
     const { db, maxAttempts, run, onEvent } = this.o;
     const signal = this.controller.signal;
-    const mode = spec.kind === "rediarize"
-      ? "diarize"
-      : spec.kind === "retranscribe" ? "transcribe" : "full";
+    const mode = modeOf(spec);
 
     // a re-diarize runs against a recording that is already done: it must not be able to park
     // that row as failed, retry it, or switch its device — it just reports and leaves
@@ -152,11 +165,21 @@ export class Queue {
 
         if (e instanceof SourceChangedError) {
           resetForSourceChange(db, id);
+          setStatus(db, id, "discovered", "waiting_for_source");
           try {
             await waitForStableSource(e.path, {
               pollIntervalMs: this.o.sourcePollIntervalMs ?? 2_000,
               requiredCount: this.o.sourceStableCount ?? 15,
               signal,
+              onProgress: (stable, required) => onEvent({
+                kind: "progress",
+                recording_id: id,
+                stage: "discovered",
+                pct: required > 0 ? stable / required : 0,
+                phase: "waiting_for_source",
+                eta_ms: null,
+                mode,
+              }),
             });
             continue;
           } catch (waitError) {
@@ -175,12 +198,30 @@ export class Queue {
             whisperFallback = "small-metal";
             setWhisperFallback(db, id, whisperFallback);
             console.warn(`recording ${id} retrying model=small backend=metal fallback=metal_oom`);
+            onEvent({
+              kind: "progress",
+              recording_id: id,
+              stage: statusOf(db, id) ?? "transcribing",
+              pct: 0,
+              phase: "retrying_with_smaller_model",
+              eta_ms: null,
+              mode,
+            });
             continue;
           }
           if (!appleSilicon && !forcedCpu) {
             forcedCpu = true;
             setForceCpu(db, id, true);
             console.warn(`recording ${id} retrying backend=cpu fallback=gpu_oom`);
+            onEvent({
+              kind: "progress",
+              recording_id: id,
+              stage: statusOf(db, id) ?? "transcribing",
+              pct: 0,
+              phase: "retrying_on_cpu",
+              eta_ms: null,
+              mode,
+            });
             continue;
           }
         }
@@ -199,3 +240,6 @@ export class Queue {
 /** `bounded` gets `maxAttempts` tries; the other two policies park on the first failure. */
 const parks = (e: PipelineError, attempts: number, maxAttempts: number): boolean =>
   e.retryPolicy !== "bounded" || attempts >= maxAttempts;
+
+const modeOf = (spec: JobSpec): "full" | "transcribe" | "diarize" =>
+  spec.kind === "rediarize" ? "diarize" : spec.kind === "retranscribe" ? "transcribe" : "full";

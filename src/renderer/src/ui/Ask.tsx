@@ -9,7 +9,7 @@ import {
   Trash,
   WarningCircle,
 } from "@phosphor-icons/react";
-import { api } from "@/ipc/client";
+import { api, onAskProgress } from "@/ipc/client";
 import type {
   AiConnection,
   AskCitation,
@@ -17,6 +17,7 @@ import type {
   AskScope,
   AskThread,
   AskThreadSummary,
+  AskProgress,
   Person,
   RecordingSummary,
 } from "@/ipc/types";
@@ -57,6 +58,13 @@ const STARTERS = [
   "What should I follow up on?",
 ];
 
+const ASK_PHASE_LABEL: Record<AskProgress["phase"], string> = {
+  searching: "Searching {scope}",
+  asking_model: "Asking the model",
+  checking_answer: "Checking the answer",
+  saving: "Saving the answer",
+};
+
 export function Ask({
   initialRecordingId,
   selectedThreadId,
@@ -82,6 +90,7 @@ export function Ask({
   const [draft, setDraft] = useState("");
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [askPhase, setAskPhase] = useState<AskProgress["phase"]>("searching");
   const [error, setError] = useState<string | null>(null);
   const [sourceMessageId, setSourceMessageId] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -128,6 +137,10 @@ export function Ask({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadSearch]);
 
+  useEffect(() => onAskProgress((progress) => {
+    if (progress.request_id === requestId) setAskPhase(progress.phase);
+  }), [requestId]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [thread?.messages.length, pendingQuestion]);
@@ -142,6 +155,7 @@ export function Ask({
     if (!text || requestId) return;
     const id = crypto.randomUUID();
     setRequestId(id);
+    setAskPhase("searching");
     setPendingQuestion(text);
     setDraft("");
     setError(null);
@@ -332,7 +346,7 @@ export function Ask({
                   <>
                     <UserBubble text={pendingQuestion} />
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Spinner /> Searching {scopeLabel.toLocaleLowerCase()}
+                      <Spinner /> {ASK_PHASE_LABEL[askPhase].replace("{scope}", scopeLabel.toLocaleLowerCase())}
                     </div>
                   </>
                 )}

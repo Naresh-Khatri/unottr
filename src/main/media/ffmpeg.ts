@@ -170,6 +170,7 @@ export interface ThumbnailOptions {
   thumb: string;
   previews: string[];
   signal?: AbortSignal;
+  onProgress?: (pct: number) => void;
 }
 
 /**
@@ -196,8 +197,14 @@ export async function extractThumbnails(
     })),
   ];
 
+  let completed = 0;
+  o.onProgress?.(0);
   for (const t of targets) {
-    if (existsSync(t.out)) continue;
+    if (existsSync(t.out)) {
+      completed += 1;
+      o.onProgress?.(completed / targets.length);
+      continue;
+    }
     throwIfAborted(o.signal);
     try {
       await grabFrame(cli, path, t.at, t.width, t.out, o.signal);
@@ -205,6 +212,8 @@ export async function extractThumbnails(
       if (isCancelled(e)) throw e;
       console.warn(`thumbnail frame failed for ${path} at ${t.at}s: ${String(e)}`);
     }
+    completed += 1;
+    o.onProgress?.(completed / targets.length);
   }
 }
 

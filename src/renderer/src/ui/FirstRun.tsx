@@ -6,8 +6,10 @@ import { api, onModelDownloadProgress, os } from "@/ipc/client";
 import type { AiAgentDiscovery, AiConnection, BackfillEstimate, ModelInfo, SupportModels, WatchFolder } from "@/ipc/types";
 import { SUPPORT_MODELS } from "@/ipc/types";
 import { bytesLabel, durationLabel } from "@/lib/format";
+import { modelPhaseLabel } from "@/lib/activity";
+import { useActivities } from "@/lib/ActivityProvider";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { ActivityBar, ActivityLine, ActivityMark } from "@/components/activity-indicator";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { InstalledAgentSetup } from "./AiConnections";
 
@@ -33,9 +35,12 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
   const [estimate, setEstimate] = useState<BackfillEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [backfillStarted, setBackfillStarted] = useState(false);
+  const [confirmingBackfill, setConfirmingBackfill] = useState(false);
+  const [backfillError, setBackfillError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [agents, setAgents] = useState<AiAgentDiscovery[] | null>(null);
   const [connections, setConnections] = useState<AiConnection[]>([]);
+  const { modelDownloads, backfills } = useActivities();
 
   useEffect(() => {
     api.listModels().then((available) => {
@@ -100,6 +105,9 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
   const setupMissingBytes = selectedMissingBytes + (support?.missing_bytes ?? 0);
   const setupBusy = downloading || supportBusy;
   const setupReady = modelReady && supportReady;
+  const modelDownload = modelDownloads[tier];
+  const supportDownload = modelDownloads[SUPPORT_MODELS];
+  const backfill = folder ? backfills[folder.id] : undefined;
 
   async function pickFolder() {
     const picked = await os.pickFolder();
@@ -139,8 +147,16 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
 
   async function confirmBackfill() {
     if (!folder) return;
-    await api.startBackfill(folder.id);
-    setBackfillStarted(true);
+    setConfirmingBackfill(true);
+    setBackfillError(null);
+    try {
+      await api.startBackfill(folder.id);
+      setBackfillStarted(true);
+    } catch (reason) {
+      setBackfillError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setConfirmingBackfill(false);
+    }
   }
 
   async function finish() {
@@ -223,14 +239,24 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
                 <>
                   {downloading && (
                     <div className="flex flex-col gap-1">
-                      <span className="text-xs text-muted-foreground">{tierInfo?.name}</span>
-                      <Progress value={pct * 100} />
+                      <span className="text-xs text-muted-foreground">
+                        {tierInfo?.name} · {modelPhaseLabel(modelDownload?.phase ?? "connecting")}
+                      </span>
+                      <ActivityBar
+                        value={modelDownload?.pct ?? pct}
+                        indeterminate={modelDownload?.phase !== "downloading"}
+                      />
                     </div>
                   )}
                   {supportBusy && (
                     <div className="flex flex-col gap-1">
-                      <span className="text-xs text-muted-foreground">Support models</span>
-                      <Progress value={supportPct * 100} />
+                      <span className="text-xs text-muted-foreground">
+                        Support models · {modelPhaseLabel(supportDownload?.phase ?? "connecting")}
+                      </span>
+                      <ActivityBar
+                        value={supportDownload?.pct ?? supportPct}
+                        indeterminate={supportDownload?.phase !== "downloading"}
+                      />
                     </div>
                   )}
                   {!setupBusy && (
@@ -297,8 +323,26 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
                     {" "}· {durationLabel(estimate.total_duration_ms)} total
                     {" "}· est. {durationLabel(estimate.estimated_processing_ms)} to process
                   </span>
-                  {estimate.count > 0 && <Button onClick={confirmBackfill}>Confirm and queue</Button>}
+                  {estimate.count > 0 && (
+                    <Button disabled={confirmingBackfill} onClick={confirmBackfill}>
+                      {confirmingBackfill && <ActivityMark />}
+                      {confirmingBackfill ? "Adding recordings" : "Confirm and queue"}
+                    </Button>
+                  )}
                 </div>
+              )}
+              {confirmingBackfill && (
+                <ActivityLine
+                  label={backfill?.phase === "queueing" ? "Adding recordings to the queue" : "Checking existing files"}
+                  detail={backfill && backfill.total > 0 ? `${backfill.done} of ${backfill.total}` : "Starting scan"}
+                  value={backfill && backfill.total > 0 ? backfill.done / backfill.total : 0}
+                  indeterminate={!backfill || backfill.total === 0}
+                />
+              )}
+              {(backfillError || backfill?.error) && (
+                <p className="text-sm text-destructive" role="alert">
+                  {backfillError ?? backfill?.error}
+                </p>
               )}
               {backfillStarted && (
                 <p className="flex items-center gap-1.5 text-sm text-primary">
@@ -329,7 +373,9 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
           {step < steps.length - 1 ? (
             <Button
               size="sm"
-              disabled={(current === "Folder" && !folder) || (current === "Model" && !setupReady)}
+              disabled={(current === "Folder" && !folder)
+                || (current === "Model" && !setupReady)
+                || (current === "Backfill" && confirmingBackfill)}
               onClick={() => setStep((s) => s + 1)}
             >
               Next<ArrowRight />

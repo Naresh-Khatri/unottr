@@ -6,6 +6,7 @@ import { createReadStream, statSync } from "node:fs";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { err } from "../errors";
+import type { ModelDownloadPhase } from "../../shared/ipc";
 import { modelsDir } from "../paths";
 import type { ModelSpec } from "./catalog";
 import { url } from "./catalog";
@@ -34,6 +35,7 @@ export function locate(spec: ModelSpec, dir: string = modelsDir()): string {
 export interface EnsureOptions {
   dir?: string;
   onProgress?: (pct: number) => void;
+  onPhase?: (phase: ModelDownloadPhase) => void;
   signal?: AbortSignal;
 }
 
@@ -51,6 +53,7 @@ export async function ensure(spec: ModelSpec, o: EnsureOptions = {}): Promise<st
   if (isPresent(spec, dir)) {
     // nothing to do, but still report done — silence here hangs a caller waiting on progress
     o.onProgress?.(1);
+    o.onPhase?.("done");
     return final;
   }
   if (o.signal?.aborted) throw err.cancelled();
@@ -59,6 +62,7 @@ export async function ensure(spec: ModelSpec, o: EnsureOptions = {}): Promise<st
   const part = `${final}.part`;
   await download(spec, part, { ...o, onProgress: streaming });
 
+  o.onPhase?.("verifying");
   const digest = await sha256File(part);
   if (digest !== spec.sha256) {
     // a wrong file that stays on disk gets "resumed" forever; kill it now
@@ -66,8 +70,10 @@ export async function ensure(spec: ModelSpec, o: EnsureOptions = {}): Promise<st
     throw err.download(spec.name, `checksum mismatch (got ${digest})`);
   }
 
+  o.onPhase?.("installing");
   await rename(part, final);
   o.onProgress?.(1);
+  o.onPhase?.("done");
   return final;
 }
 
@@ -83,6 +89,7 @@ async function download(spec: ModelSpec, part: string, o: EnsureOptions): Promis
 
   let res: Response;
   try {
+    o.onPhase?.("connecting");
     res = await fetch(url(spec), have > 0 ? { headers: { Range: `bytes=${have}-` } } : {});
   } catch (e) {
     throw err.download(spec.name, e instanceof Error ? e.message : String(e));
@@ -93,6 +100,7 @@ async function download(spec: ModelSpec, part: string, o: EnsureOptions): Promis
   if (res.status !== 200 && !resuming) throw err.download(spec.name, `http ${res.status}`);
   if (!resuming) have = 0;
   if (!res.body) throw err.download(spec.name, "empty response body");
+  o.onPhase?.("downloading");
 
   const file = await open(part, have > 0 ? "r+" : "w");
   let written = have;

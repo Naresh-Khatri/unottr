@@ -9,6 +9,8 @@ import { api, onJobDone, onJobFailed, onJobProgress, onTranscriptChanged, os } f
 import type { ExportFormat, Person, RecordingDetail, Segment, Speaker } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
 import { hms } from "@/lib/format";
+import { jobActivity, jobPhaseOf } from "@/lib/activity";
+import { useActivities } from "@/lib/ActivityProvider";
 import { canPlayContainer } from "@/lib/media";
 import { speakerPalette, type SpeakerPalette } from "@/lib/speakerColor";
 import { useVirtual } from "@/lib/virtual";
@@ -23,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LoadingState } from "@/components/ui/loading-state";
+import { ActivityLine } from "@/components/activity-indicator";
 import { cn } from "@/lib/utils";
 
 type Item =
@@ -55,6 +58,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
   const [actionsOpen, setActionsOpen] = useState(false);
   const [tab, setTab] = useState<string>(initialTab);
   const [activeJob, setActiveJob] = useState<"transcribing" | "diarizing" | null>(null);
+  const { jobs } = useActivities();
   const [jobError, setJobError] = useState<string | null>(null);
   const [gpu, setGpu] = useState<boolean | null>(null);
   const userScrolling = useRef(false);
@@ -152,6 +156,13 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
     || detail?.recording.status === "extracting"
     || detail?.recording.status === "transcribing"
     || detail?.recording.status === "merging";
+  const liveJob = jobs[id];
+  const currentJobView = detail ? jobActivity(
+    liveJob?.stage ?? detail.recording.status,
+    liveJob?.phase ?? jobPhaseOf(detail.recording.stage_detail),
+    liveJob?.mode ?? (activeJob === "transcribing" ? "transcribe" : activeJob === "diarizing" ? "diarize" : "full"),
+    detail.recording.duration_ms,
+  ) : null;
   const matches = useMemo(() => {
     if (!q) return [] as number[];
     return (detail?.segments ?? []).filter((s) => s.text.toLowerCase().includes(q)).map((s) => s.id);
@@ -494,8 +505,13 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                     </span>
                   </div>
                 )}
-                {activeJob === "transcribing" && (
-                  <span className="text-xs text-muted-foreground">Retranscribing text…</span>
+                {activeJob && currentJobView && (
+                  <ActivityLine
+                    label={currentJobView.label}
+                    detail={currentJobView.detail}
+                    value={liveJob?.pct ?? 0}
+                    indeterminate={currentJobView.indeterminate}
+                  />
                 )}
                 {jobError && <span className="text-xs text-destructive">{jobError}</span>}
               </CardContent>
@@ -512,8 +528,8 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
               <Card className="h-full min-h-0 overflow-hidden p-0">
                 {transcriptPending ? (
                   <LoadingState
-                    label={activeJob === "transcribing" ? "Retranscribing recording" : transcriptLoadingLabel(detail.recording.status)}
-                    description="Transcript generation is in progress. Fresh text will appear here when it is ready."
+                    label={currentJobView?.label ?? transcriptLoadingLabel(detail.recording.status)}
+                    description={currentJobView?.detail ?? "Fresh text will appear here when it is ready."}
                     className="h-full"
                   />
                 ) : items.length === 0 ? (
