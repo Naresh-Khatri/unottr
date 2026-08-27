@@ -3,12 +3,9 @@ import {
   ArrowSquareOut,
   Check,
   Copy,
-  FunnelSimple,
   MagnifyingGlass,
-  PaperPlaneTilt,
   Plus,
   Quotes,
-  Stop,
   Trash,
   WarningCircle,
 } from "@phosphor-icons/react";
@@ -24,6 +21,7 @@ import type {
   RecordingSummary,
 } from "@/ipc/types";
 import { dateLabel, hms } from "@/lib/format";
+import { blankScope, describeScope } from "@/lib/askScope";
 import { cn } from "@/lib/utils";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import {
@@ -39,17 +37,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -60,14 +48,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
-
-const blankScope = (): AskScope => ({
-  recording_ids: [],
-  person_ids: [],
-  date_from: null,
-  date_to: null,
-});
+import { AskComposer } from "./AskComposer";
 
 const STARTERS = [
   "What decisions were made?",
@@ -102,7 +83,6 @@ export function Ask({
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [scopeOpen, setScopeOpen] = useState(false);
   const [sourceMessageId, setSourceMessageId] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -193,7 +173,6 @@ export function Ask({
     setScope(nextScope);
     setDraft("");
     setError(null);
-    setScopeOpen(false);
     setSourceMessageId(null);
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   }
@@ -330,36 +309,7 @@ export function Ask({
               </button>
             )}
           </div>
-          <Badge variant="outline" className="hidden sm:inline-flex">
-            {activeConnection?.label ?? "No AI provider"}
-          </Badge>
-          <Button variant="outline" size="sm" className="max-w-56" onClick={() => setScopeOpen(true)}>
-            <FunnelSimple /> <span className="truncate">{scopeLabel}</span>
-          </Button>
         </header>
-
-        <Dialog open={scopeOpen} onOpenChange={setScopeOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Search scope</DialogTitle>
-              <DialogDescription>Choose which completed recordings Ask can search.</DialogDescription>
-            </DialogHeader>
-            <ScopeForm
-              scope={scope}
-              locked={thread !== null}
-              recordings={recordings}
-              people={people}
-              onChange={setScope}
-            />
-            <DialogFooter>
-              {thread ? (
-                <Button onClick={() => newThread(scope)}><Plus /> Start a new thread</Button>
-              ) : (
-                <Button onClick={() => setScopeOpen(false)}>Done</Button>
-              )}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 py-8 sm:px-8 sm:py-12">
@@ -429,38 +379,23 @@ export function Ask({
                 )}
               </Alert>
             )}
-            <Card className="gap-2 py-2">
-              <CardContent className="px-2">
-                <Textarea
-                  ref={textareaRef}
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void send();
-                    }
-                  }}
-                  placeholder="Ask about a decision, person, or topic"
-                  disabled={requestId !== null}
-                  className="max-h-40 min-h-16 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
-                />
-                <div className="flex items-center justify-between gap-3 px-1 pt-2">
-                  <span className="truncate text-xs text-muted-foreground">
-                    {scopeLabel} · {activeConnection?.label ?? "Choose an AI provider in Settings"}
-                  </span>
-                  {requestId ? (
-                    <Button variant="outline" size="sm" onClick={() => void api.askCancel(requestId)}>
-                      <Stop weight="fill" /> Stop
-                    </Button>
-                  ) : (
-                    <Button size="sm" disabled={!draft.trim()} onClick={() => void send()}>
-                      Ask <PaperPlaneTilt weight="fill" />
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <AskComposer
+              scope={scope}
+              onScopeChange={setScope}
+              locked={thread !== null}
+              recordings={recordings}
+              people={people}
+              connections={connections}
+              onActivateConnection={(id) => void api.aiConnectionActivate(id).then(setConnections)}
+              onOpenSettings={onOpenSettings}
+              onNewThread={() => newThread(scope)}
+              draft={draft}
+              onDraftChange={setDraft}
+              onSend={() => void send()}
+              onStop={() => requestId && void api.askCancel(requestId)}
+              busy={requestId !== null}
+              textareaRef={textareaRef}
+            />
           </div>
         </div>
       </section>
@@ -614,132 +549,6 @@ function SourceCard({ citation, index, onOpen }: {
   );
 }
 
-function ScopeForm({ scope, locked, recordings, people, onChange }: {
-  scope: AskScope;
-  locked: boolean;
-  recordings: RecordingSummary[];
-  people: Person[];
-  onChange: (scope: AskScope) => void;
-}) {
-  const selectedRecordings = new Set(scope.recording_ids);
-  const selectedPeople = new Set(scope.person_ids);
-  const updateIds = (key: "recording_ids" | "person_ids", id: number, checked: boolean) => {
-    const current = new Set(scope[key]);
-    if (checked) current.add(id);
-    else current.delete(id);
-    onChange({ ...scope, [key]: [...current] });
-  };
-
-  if (locked) {
-    return (
-      <Alert>
-        <AlertDescription>
-          This thread keeps its original scope. Start a new thread before changing recordings, people, or dates.
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
-  return (
-    <div className="space-y-5">
-      <div className="space-y-2">
-        <Label>Recordings</Label>
-        <Button
-          type="button"
-          variant={!scope.recording_ids.length ? "secondary" : "outline"}
-          size="sm"
-          onClick={() => onChange({ ...scope, recording_ids: [] })}
-        >
-          Entire library
-        </Button>
-        <ScrollArea className="h-40 rounded-lg border">
-          <div className="space-y-1 p-3">
-            {recordings.map((recording) => {
-              const id = `ask-recording-${recording.id}`;
-              return (
-                <Label key={recording.id} htmlFor={id} className="justify-between py-1 font-normal">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Checkbox
-                      id={id}
-                      checked={selectedRecordings.has(recording.id)}
-                      onCheckedChange={(checked) => updateIds("recording_ids", recording.id, checked === true)}
-                    />
-                    <span className="truncate">{recording.title ?? recording.filename}</span>
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {dateLabel(recording.recorded_at ?? recording.created_at)}
-                  </span>
-                </Label>
-              );
-            })}
-          </div>
-        </ScrollArea>
-      </div>
-
-      {!!people.length && (
-        <div className="space-y-2">
-          <Label>People</Label>
-          <div className="flex max-h-24 flex-wrap gap-2 overflow-y-auto">
-            {people.map((person) => {
-              const active = selectedPeople.has(person.id);
-              return (
-                <Button
-                  type="button"
-                  key={person.id}
-                  variant={active ? "secondary" : "outline"}
-                  size="sm"
-                  onClick={() => updateIds("person_ids", person.id, !active)}
-                >
-                  {person.name}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <Label>Meeting dates</Label>
-        <div className="grid grid-cols-2 gap-3">
-          <Label className="block text-xs font-normal text-muted-foreground">
-            From
-            <Input
-              type="date"
-              value={toDateInput(scope.date_from)}
-              onChange={(event) => onChange({ ...scope, date_from: fromDateInput(event.target.value, false) })}
-              className="mt-1"
-            />
-          </Label>
-          <Label className="block text-xs font-normal text-muted-foreground">
-            Through
-            <Input
-              type="date"
-              value={toDateInput(scope.date_to)}
-              onChange={(event) => onChange({ ...scope, date_to: fromDateInput(event.target.value, true) })}
-              className="mt-1"
-            />
-          </Label>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function describeScope(scope: AskScope, recordings: RecordingSummary[], people: Person[]): string {
-  const parts: string[] = [];
-  if (!scope.recording_ids.length) parts.push("Library");
-  else if (scope.recording_ids.length === 1) {
-    const recording = recordings.find((row) => row.id === scope.recording_ids[0]);
-    parts.push(recording?.title ?? recording?.filename ?? "1 recording");
-  } else parts.push(`${scope.recording_ids.length} recordings`);
-
-  if (scope.person_ids.length === 1) {
-    parts.push(people.find((person) => person.id === scope.person_ids[0])?.name ?? "1 person");
-  } else if (scope.person_ids.length > 1) parts.push(`${scope.person_ids.length} people`);
-  if (scope.date_from || scope.date_to) parts.push("date filtered");
-  return parts.join(" · ");
-}
-
 function uniqueCitations(message: AskMessage): AskCitation[] {
   const seen = new Set<string>();
   return message.blocks.flatMap((block) => block.citations).filter((citation) => {
@@ -761,16 +570,6 @@ function relativeDate(unix: number): string {
   if (days === 1) return "Yesterday";
   if (days < 7) return `${days} days ago`;
   return dateLabel(unix);
-}
-
-function toDateInput(unix: number | null): string {
-  return unix ? new Date(unix * 1_000).toISOString().slice(0, 10) : "";
-}
-
-function fromDateInput(value: string, through: boolean): number | null {
-  if (!value) return null;
-  const date = new Date(`${value}T${through ? "23:59:59" : "00:00:00"}`);
-  return Math.floor(date.getTime() / 1_000);
 }
 
 function cleanError(reason: unknown): string {
