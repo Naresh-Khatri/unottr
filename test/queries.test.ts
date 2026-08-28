@@ -101,6 +101,8 @@ describe("getRecording", () => {
     if (!detail) return;
 
     expect(detail.recording.container).toBe("mov,mp4,m4a");
+    expect(detail.recording.transcription_duration_ms).toBe(88400);
+    expect(detail.recording.diarization_duration_ms).toBe(26900);
     expect(detail.speakers).toHaveLength(2);
     expect(detail.segments).toHaveLength(4);
     expect(detail.segments[0].words[0].text).toBe("Yeah,");

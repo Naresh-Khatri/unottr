@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { createPortal } from "react-dom";
 import {
   ArrowClockwise, ArrowLeft, ArrowSquareOut, CaretDown, CaretUp, Check, Copy, DotsThree, Export,
-  MagnifyingGlass, ChatCircleDots, PencilSimple, Sparkle, UsersThree, VideoCameraSlash,
+  MagnifyingGlass, ChatCircleDots, PencilSimple, Sparkle, Timer, UsersThree, VideoCameraSlash,
   WarningCircle,
 } from "@phosphor-icons/react";
 import { api, onJobDone, onJobFailed, onJobProgress, onTranscriptChanged, os } from "@/ipc/client";
@@ -516,6 +516,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
                 {jobError && <span className="text-xs text-destructive">{jobError}</span>}
               </CardContent>
             </Card>
+            <ProcessingDuration detail={detail} />
           </div>
 
           <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-2">
@@ -632,6 +633,41 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
       )}
     </div>
   );
+}
+
+function ProcessingDuration({ detail }: { detail: RecordingDetail }) {
+  const transcription = detail.recording.transcription_duration_ms;
+  const diarization = detail.recording.diarization_duration_ms;
+  if (transcription === null && diarization === null) return null;
+
+  const total = (transcription ?? 0) + (diarization ?? 0);
+  return (
+    <Card className="border-dashed">
+      <CardContent className="flex items-center gap-3 py-2.5">
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <Timer className="size-3.5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium">Processing time</p>
+          <p className="text-[11px] text-muted-foreground">Completed compute time for this recording</p>
+        </div>
+        <div className="grid shrink-0 grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-right text-[11px] tabular-nums">
+          <span className="text-muted-foreground">Transcription</span>
+          <span>{processingTimeLabel(transcription)}</span>
+          <span className="text-muted-foreground">Diarization</span>
+          <span>{processingTimeLabel(diarization)}</span>
+          <span className="border-t pt-0.5 text-muted-foreground">Total</span>
+          <span className="border-t pt-0.5 font-medium">{processingTimeLabel(total)}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function processingTimeLabel(ms: number | null): string {
+  if (ms === null) return "—";
+  if (ms < 1000) return "<1s";
+  return hms(ms);
 }
 
 function transcriptLoadingLabel(status: RecordingDetail["recording"]["status"]): string {

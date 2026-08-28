@@ -39,6 +39,8 @@ export function seed(db: Db): void {
         fpTail: Buffer.from([0xbb]),
         container: "mov,mp4,m4a",
         durationMs: 2130000,
+        transcriptionDurationMs: 88400,
+        diarizationDurationMs: 26900,
         recordedAt: 1759754411,
         status: "done",
         lastChunkIdx: 71,

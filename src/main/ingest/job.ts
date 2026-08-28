@@ -6,6 +6,7 @@
 
 import { availableParallelism } from "node:os";
 import { dirname, join, parse } from "node:path";
+import { eq } from "drizzle-orm";
 import type { JobPhase, ModelDownloadPhase, Status } from "../../shared/ipc";
 import { DEFAULT_THRESHOLD } from "../../worker/cluster";
 import type { Db } from "../db/client";
@@ -19,6 +20,7 @@ import {
   whisperFallbackOf,
 } from "../db/recordings";
 import * as stageRates from "../db/stage-rates";
+import { recordings } from "../db/schema";
 import * as terminology from "../db/terminology";
 import { findByPath as folderByPath } from "../db/watch-folders";
 import { err, isCancelled } from "../errors";
@@ -213,10 +215,15 @@ export async function processRecording(
     (f) => report("transcribing", f),
     signal,
   );
+  const transcriptionDurationMs = Date.now() - startedTranscribe;
   assertSourceVersion(path, source);
+  db.update(recordings)
+    .set({ transcriptionDurationMs })
+    .where(eq(recordings.id, id))
+    .run();
   // a resumed run's wall covers only the chunks it actually ran, so it is not a measurement
   if (transcribed.resumedFrom === 0) {
-    stageRates.record(db, keys.transcribing, Date.now() - startedTranscribe, probed.duration_ms ?? 0);
+    stageRates.record(db, keys.transcribing, transcriptionDurationMs, probed.duration_ms ?? 0);
   }
 
   if (options.diarize === false) {
@@ -271,7 +278,12 @@ export async function processRecording(
   );
   if (finalFingerprint) setFingerprint(db, id, finalFingerprint);
   terminology.applyToRecording(db, id);
-  stageRates.record(db, actualDiarizeKey, Date.now() - startedDiarize, probed.duration_ms ?? 0);
+  const diarizationDurationMs = Date.now() - startedDiarize;
+  db.update(recordings)
+    .set({ diarizationDurationMs })
+    .where(eq(recordings.id, id))
+    .run();
+  stageRates.record(db, actualDiarizeKey, diarizationDurationMs, probed.duration_ms ?? 0);
 }
 
 /** The tracks the compute stages read. Cached pcm is reused as-is, which is what makes a
@@ -431,7 +443,12 @@ export async function rediarizeRecording(
       signal,
     );
     terminology.applyToRecording(db, id);
-    stageRates.record(db, actualKey, Date.now() - started, probed.duration_ms ?? 0);
+    const diarizationDurationMs = Date.now() - started;
+    db.update(recordings)
+      .set({ diarizationDurationMs })
+      .where(eq(recordings.id, id))
+      .run();
+    stageRates.record(db, actualKey, diarizationDurationMs, probed.duration_ms ?? 0);
   } catch (e) {
     setStatus(db, id, was);
     throw e;

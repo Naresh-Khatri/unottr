@@ -35,6 +35,8 @@ const SUMMARY_COLUMNS = {
   created_at: recordings.createdAt,
   recorded_at: recordings.recordedAt,
   duration_ms: recordings.durationMs,
+  transcription_duration_ms: recordings.transcriptionDurationMs,
+  diarization_duration_ms: recordings.diarizationDurationMs,
   status: recordings.status,
   stage_detail: recordings.stageDetail,
   error: recordings.error,
@@ -51,6 +53,8 @@ type SummaryRow = {
   created_at: number;
   recorded_at: number | null;
   duration_ms: number | null;
+  transcription_duration_ms: number | null;
+  diarization_duration_ms: number | null;
   status: string;
   stage_detail: string | null;
   error: string | null;

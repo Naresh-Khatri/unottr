@@ -68,6 +68,10 @@ export interface RecordingSummary {
   created_at: number; // unix seconds; when the recording entered the library
   recorded_at: number | null; // unix seconds
   duration_ms: number | null;
+  /** Wall-clock compute time for the most recently completed transcription run. */
+  transcription_duration_ms: number | null;
+  /** Wall-clock compute time for the most recently completed diarization run. */
+  diarization_duration_ms: number | null;
   status: Status;
   stage_detail: string | null;
   error: string | null; // typed-error slug when status=failed

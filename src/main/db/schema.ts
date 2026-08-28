@@ -32,6 +32,10 @@ export const recordings = sqliteTable(
     fpTail: blob("fp_tail", { mode: "buffer" }).notNull(),
     container: text("container"),
     durationMs: integer("duration_ms"),
+    /** Wall-clock compute time for the most recently completed transcription run. */
+    transcriptionDurationMs: integer("transcription_duration_ms"),
+    /** Wall-clock compute time for the most recently completed diarization run. */
+    diarizationDurationMs: integer("diarization_duration_ms"),
     recordedAt: integer("recorded_at"),
     status: text("status").$type<Status>().notNull(),
     stageDetail: text("stage_detail"),
