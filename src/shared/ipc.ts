@@ -59,6 +59,24 @@ export interface Person {
   role: string | null; // free text; frames AI task generation, never filters it
 }
 
+/** A confirmed speaker cluster that contributed to a person's voiceprint. */
+export interface PersonVoiceSampleReference {
+  id: number;
+  recording_id: number;
+  recording_title: string;
+  speaker_id: number | null; // null after a re-diarization replaces the original speaker row
+  speaker_label: string;
+  recorded_at: number | null;
+  captured_at: number;
+  available: boolean;
+}
+
+export interface PersonDetails extends Person {
+  sample_references: PersonVoiceSampleReference[];
+  /** Samples created before source tracking existed, or whose recording was later removed. */
+  unreferenced_samples: number;
+}
+
 export interface RecordingSummary {
   id: number;
   path: string;

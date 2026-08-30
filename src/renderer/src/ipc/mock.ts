@@ -25,6 +25,7 @@ import type {
   OverviewPayload,
   ProbeProgress,
   Person,
+  PersonDetails,
   RecordingDetail,
   RecordingDiscovered,
   RecordingFilter,
@@ -251,6 +252,25 @@ export const mockCommands = {
   },
 
   list_people: () => wait(people.slice()),
+  person_details(id: number): Promise<PersonDetails> {
+    const person = people.find((item) => item.id === id)!;
+    return wait({
+      ...person,
+      sample_references: [
+        {
+          id: 1,
+          recording_id: 9001,
+          recording_title: "Q4 roadmap trade-offs",
+          speaker_id: 9101,
+          speaker_label: "Speaker 1",
+          recorded_at: 1759754411,
+          captured_at: 1787468400,
+          available: true,
+        },
+      ],
+      unreferenced_samples: Math.max(0, person.samples - 1),
+    });
+  },
   terminology_list: () => wait(terminologyRules.map((rule) => ({ ...rule }))),
   terminology_add(input: TerminologyRuleInput): Promise<TerminologyRule> {
     const ts = Math.floor(Date.now() / 1000);

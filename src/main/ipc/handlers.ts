@@ -234,6 +234,7 @@ const handlers: Record<string, Handler> = {
   // ----------------------------------------------------------------------- people
 
   list_people: () => peopleDb.list(db()),
+  person_details: (a) => peopleDb.details(db(), requireId(a, "id")),
   rename_person: (a) => peopleDb.rename(db(), requireId(a, "id"), str(a?.name) ?? ""),
   /** Drops the voiceprint too, so a bad match stops spreading. */
   forget_person: (a) => peopleDb.forget(db(), requireId(a, "id")),

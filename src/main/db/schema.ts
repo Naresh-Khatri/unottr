@@ -106,6 +106,28 @@ export const speakers = sqliteTable(
   (t) => [unique().on(t.recordingId, t.label), index("idx_speakers_person").on(t.personId)],
 );
 
+/** A confirmed speaker centroid that contributed to a person's running voiceprint. */
+export const personVoiceSamples = sqliteTable(
+  "person_voice_samples",
+  {
+    id: integer("id").primaryKey(),
+    personId: integer("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    recordingId: integer("recording_id")
+      .notNull()
+      .references(() => recordings.id, { onDelete: "cascade" }),
+    /** May disappear when a recording is re-diarized; the recording and label remain useful. */
+    speakerId: integer("speaker_id").references(() => speakers.id, { onDelete: "set null" }),
+    speakerLabel: text("speaker_label").notNull(),
+    capturedAt: integer("captured_at").notNull(),
+  },
+  (t) => [
+    index("idx_person_voice_samples_person").on(t.personId, t.capturedAt),
+    index("idx_person_voice_samples_recording").on(t.recordingId),
+  ],
+);
+
 export const segments = sqliteTable(
   "segments",
   {

@@ -23,6 +23,11 @@ export interface SpeakerPalette {
   slotOf: (sid: number | null) => number | null;
 }
 
+/** The stable identity colour used when a person is shown without a recording's speaker row. */
+export function personColor(personId: number): string {
+  return uiColor(HUES[hash(`p${personId}`) % HUES.length]);
+}
+
 /**
  * A speaker's slot is derived from their identity, not their position in the list, so a
  * merge, a rename or a re-diarize doesn't reshuffle everyone's colour. A speaker linked to a

@@ -91,6 +91,16 @@ describe("naming a speaker", () => {
     expect(person).toMatchObject({ name: "Priya", samples: 1, recordings: 1 });
     expect(row(id)).toMatchObject({ personId: person.id, displayName: null });
     expect([...fromBlob(db.select().from(people).get()!.embedding!)]).toEqual([1, 0]);
+    expect(p.details(db, person.id)).toMatchObject({
+      unreferenced_samples: 0,
+      sample_references: [{
+        recording_id: 1,
+        recording_title: "1.mp4",
+        speaker_id: id,
+        speaker_label: "Speaker 1",
+        available: true,
+      }],
+    });
   });
 
   it("folds a second recording's cluster into the same person, matched by name", () => {
@@ -107,6 +117,33 @@ describe("naming a speaker", () => {
     p.nameSpeaker(db, id, "Ghost");
     expect(row(id)).toMatchObject({ displayName: "Ghost", personId: null });
     expect(p.list(db)).toEqual([]);
+  });
+
+  it("keeps a sample's recording reference after its speaker row is replaced", () => {
+    const id = speaker("Speaker 1", unit(1, 0));
+    p.nameSpeaker(db, id, "Priya");
+    const person = p.list(db)[0];
+
+    db.delete(speakers).where(eq(speakers.id, id)).run();
+
+    expect(p.details(db, person.id).sample_references[0]).toMatchObject({
+      recording_id: 1,
+      speaker_id: null,
+      speaker_label: "Speaker 1",
+    });
+  });
+
+  it("reports voice samples captured before source tracking as unreferenced", () => {
+    const id = speaker("Speaker 1", unit(1, 0));
+    p.nameSpeaker(db, id, "Priya");
+    const person = p.list(db)[0];
+    db.update(people).set({ samples: 3 }).where(eq(people.id, person.id)).run();
+
+    expect(p.details(db, person.id)).toMatchObject({
+      samples: 3,
+      unreferenced_samples: 2,
+      sample_references: [expect.objectContaining({ recording_id: 1 })],
+    });
   });
 
   it("clears both halves on an empty name", () => {

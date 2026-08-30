@@ -3,13 +3,14 @@
 // against. Naming a speaker is the only thing that enrolls — an auto-match never feeds itself
 // back, so one bad match cannot poison a voiceprint.
 
+import { basename } from "node:path";
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
-import type { Person } from "../../shared/ipc";
+import type { Person, PersonDetails } from "../../shared/ipc";
 import { isEmbedded, normalize } from "../../worker/cluster";
 import type { Db } from "./client";
 import { fromBlob, toBlob } from "./embedding";
 import { now } from "./recordings";
-import { people, speakers } from "./schema";
+import { people, personVoiceSamples, recordings, speakers } from "./schema";
 
 /** Drizzle's transaction handle — same query surface as {@link Db}, different class. */
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -128,6 +129,40 @@ export function list(db: Conn): Person[] {
     .map((p) => ({ ...p, is_me: p.is_me !== 0 }));
 }
 
+export function details(db: Conn, personId: number): PersonDetails {
+  const person = list(db).find((item) => item.id === personId);
+  if (!person) throw new Error(`no person with id ${personId}`);
+
+  const sampleReferences = db
+    .select({
+      id: personVoiceSamples.id,
+      recording_id: personVoiceSamples.recordingId,
+      path: recordings.path,
+      title: sql<string | null>`coalesce(${recordings.title}, ${recordings.aiTitle})`,
+      speaker_id: personVoiceSamples.speakerId,
+      speaker_label: personVoiceSamples.speakerLabel,
+      recorded_at: sql<number>`coalesce(${recordings.recordedAt}, ${recordings.createdAt})`,
+      captured_at: personVoiceSamples.capturedAt,
+      available: recordings.available,
+    })
+    .from(personVoiceSamples)
+    .innerJoin(recordings, eq(recordings.id, personVoiceSamples.recordingId))
+    .where(eq(personVoiceSamples.personId, personId))
+    .orderBy(desc(personVoiceSamples.capturedAt), desc(personVoiceSamples.id))
+    .all()
+    .map(({ path, title, available, ...reference }) => ({
+      ...reference,
+      recording_title: (title ?? basename(path)) || path,
+      available: available !== 0,
+    }));
+
+  return {
+    ...person,
+    sample_references: sampleReferences,
+    unreferenced_samples: Math.max(0, person.samples - sampleReferences.length),
+  };
+}
+
 // -------------------------------------------------------------------------------- writes
 
 /** Get or create by folded name. Casing follows whatever the user typed most recently. */
@@ -157,7 +192,12 @@ export function upsertByName(db: Conn, rawName: string): number {
 export function nameSpeaker(db: Db, speakerId: number, rawName: string): void {
   db.transaction((tx) => {
     const speaker = tx
-      .select({ id: speakers.id, embedding: speakers.embedding })
+      .select({
+        id: speakers.id,
+        recordingId: speakers.recordingId,
+        label: speakers.label,
+        embedding: speakers.embedding,
+      })
       .from(speakers)
       .where(eq(speakers.id, speakerId))
       .get();
@@ -176,7 +216,11 @@ export function nameSpeaker(db: Db, speakerId: number, rawName: string): void {
     }
 
     const personId = upsertByName(tx, name);
-    enroll(tx, personId, centroid);
+    enroll(tx, personId, centroid, {
+      recordingId: speaker.recordingId,
+      speakerId: speaker.id,
+      speakerLabel: speaker.label,
+    });
     tx.update(speakers).set({ displayName: null, personId }).where(eq(speakers.id, speakerId)).run();
   });
 }
@@ -186,7 +230,12 @@ export function nameSpeaker(db: Db, speakerId: number, rawName: string): void {
  * take its old contribution back out — a running mean has no history to subtract — so a
  * mis-naming is undone by forgetting the person, not by renaming the speaker.
  */
-export function enroll(db: Conn, personId: number, centroid: Float32Array): void {
+export function enroll(
+  db: Conn,
+  personId: number,
+  centroid: Float32Array,
+  source?: { recordingId: number; speakerId: number; speakerLabel: string },
+): void {
   const row = db
     .select({ embedding: people.embedding, samples: people.samples })
     .from(people)
@@ -199,6 +248,17 @@ export function enroll(db: Conn, personId: number, centroid: Float32Array): void
     .set({ embedding: toBlob(next), samples: row.samples + 1, updatedAt: now() })
     .where(eq(people.id, personId))
     .run();
+  if (source) {
+    db.insert(personVoiceSamples)
+      .values({
+        personId,
+        recordingId: source.recordingId,
+        speakerId: source.speakerId,
+        speakerLabel: source.speakerLabel,
+        capturedAt: now(),
+      })
+      .run();
+  }
 }
 
 /** Rename globally: every recording this person appears in follows, past and future. */

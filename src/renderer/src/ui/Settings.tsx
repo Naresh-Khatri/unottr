@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CheckCircle, Download, FolderOpen, FolderSimplePlus, HardDrives, Plus, SpeakerHigh, StopCircle, Trash,
-  Warning, X,
+  CheckCircle, Download, FolderOpen, FolderSimplePlus, HardDrives, MagnifyingGlass, Plus,
+  SpeakerHigh, StopCircle, Trash, Warning, Waveform, X,
 } from "@phosphor-icons/react";
 import { api, os } from "@/ipc/client";
 import type {
-  BackfillEstimate, DiskUsage, ModelDownloadProgress, ModelInfo, Person, Resolved, Settings as SettingsT, SupportModels,
-  TtsVoiceId, TtsVoiceStatus,
+  BackfillEstimate, DiskUsage, ModelDownloadProgress, ModelInfo, Person, PersonDetails as PersonDetailsT,
+  Resolved, Settings as SettingsT, SupportModels, TtsVoiceId, TtsVoiceStatus,
   WatchFolder,
 } from "@/ipc/types";
 import { SUPPORT_MODELS, ttsVoiceDownloadId } from "@/ipc/types";
-import { bytesLabel, durationLabel } from "@/lib/format";
+import { bytesLabel, dateLabel, durationLabel, timeLabel } from "@/lib/format";
 import { modelPhaseLabel } from "@/lib/activity";
+import { personColor } from "@/lib/speakerColor";
 import { askSpeech, type AskSpeechState } from "@/lib/askSpeech";
 import { useActivities } from "@/lib/ActivityProvider";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,13 @@ import { ActivityBar, ActivityLine, ActivityMark } from "@/components/activity-i
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/ui/loading-state";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
 } from "@/components/ui/card";
@@ -40,6 +48,11 @@ const TIERS: { tier: string; label: string }[] = [
 
 const SPEECH_TEST_ID = -1;
 const SPEECH_TEST_TEXT = "Hello. This is how Ask answers will sound.";
+const PEOPLE_SORT_LABELS = {
+  recordings: "Most recordings",
+  name: "Name",
+  newest: "Recently added",
+} as const;
 
 export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boolean) => void }) {
   const [settings, setSettings] = useState<SettingsT | null>(null);
@@ -329,102 +342,404 @@ function SpeechCard({
  * voiceprint, which is how a wrong auto-match gets undone.
  */
 function PeopleCard({ people, onChange }: { people: Person[]; onChange: () => void }) {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"recordings" | "name" | "newest">("recordings");
+
+  const visiblePeople = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    return people
+      .filter((person) => !needle
+        || person.name.toLocaleLowerCase().includes(needle)
+        || person.role?.toLocaleLowerCase().includes(needle))
+      .sort((a, b) => {
+        if (a.is_me !== b.is_me) return a.is_me ? -1 : 1;
+        if (sort === "name") return a.name.localeCompare(b.name);
+        if (sort === "newest") return b.created_at - a.created_at;
+        return b.recordings - a.recordings || a.name.localeCompare(b.name);
+      });
+  }, [people, query, sort]);
+  const selectedPerson = people.find((person) => person.id === selectedId) ?? null;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>People</CardTitle>
-        <CardDescription>
-          Naming a speaker teaches the app that voice, and later recordings label them
-          automatically.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {people.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nobody yet — name a speaker on a transcript to start.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {people.map((p) => <PersonRow key={p.id} person={p} onChange={onChange} />)}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>People</CardTitle>
+          <CardDescription>
+            Named voices are recognized automatically in future recordings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {people.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nobody yet — name a speaker on a transcript to start.
+            </p>
+          ) : (
+            <>
+              {people.length > 8 && (
+                <div className="flex gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <MagnifyingGlass
+                      aria-hidden="true"
+                      className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <Input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Search people"
+                      aria-label="Search people"
+                      className="pl-8"
+                    />
+                  </div>
+                  <Select value={sort} onValueChange={(value) => setSort(value as typeof sort)}>
+                    <SelectTrigger className="w-40" aria-label="Sort people">
+                      <SelectValue>{(value) => PEOPLE_SORT_LABELS[value as typeof sort]}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="recordings">Most recordings</SelectItem>
+                      <SelectItem value="name">Name</SelectItem>
+                      <SelectItem value="newest">Recently added</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {visiblePeople.length === 0 ? (
+                <p className="py-5 text-center text-sm text-muted-foreground">
+                  No people match "{query.trim()}".
+                </p>
+              ) : (
+                <div
+                  className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-2"
+                  role="list"
+                >
+                  {visiblePeople.map((person) => (
+                    <div key={person.id} className="min-w-0 overflow-hidden rounded-lg border bg-card" role="listitem">
+                      <PersonTile
+                        person={person}
+                        selected={selectedId === person.id}
+                        onSelect={() => setSelectedId(person.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+      {selectedPerson && (
+        <PersonSheet
+          person={selectedPerson}
+          open
+          onOpenChange={(open) => { if (!open) setSelectedId(null); }}
+          onChange={onChange}
+          onForgotten={() => { setSelectedId(null); onChange(); }}
+        />
+      )}
+    </>
   );
 }
 
-function PersonRow({ person, onChange }: { person: Person; onChange: () => void }) {
+function PersonTile({ person, selected, onSelect }: {
+  person: Person;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-haspopup="dialog"
+      onClick={onSelect}
+      className={`flex min-h-18 w-full items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset motion-reduce:transition-none ${selected ? "bg-muted/70" : ""}`}
+    >
+      <span
+        aria-hidden="true"
+        className="flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+        style={{
+          color: personColor(person.id),
+          backgroundColor: "color-mix(in oklch, currentColor 14%, transparent)",
+        }}
+      >
+        {personInitials(person.name)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">{person.name}</span>
+          {person.is_me && <Badge variant="secondary">You</Badge>}
+        </span>
+        {person.is_me && person.role && (
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground">{person.role}</span>
+        )}
+        <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+          <span className="whitespace-nowrap">
+            {person.recordings === 1 ? "1 recording" : `${person.recordings} recordings`}
+          </span>
+          <span className="whitespace-nowrap" title={person.samples === 0 ? "No voiceprint yet" : undefined}>
+            {person.samples === 0
+              ? "No voiceprint"
+              : `${person.samples} ${person.samples === 1 ? "sample" : "samples"}`}
+          </span>
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function PersonSheet({ person, open, onOpenChange, onChange, onForgotten }: {
+  person: Person;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChange: () => void;
+  onForgotten: () => void;
+}) {
   const [draft, setDraft] = useState(person.name);
   const [role, setRole] = useState(person.role ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [details, setDetails] = useState<PersonDetailsT | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(true);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [confirmForget, setConfirmForget] = useState(false);
+  const [forgetting, setForgetting] = useState(false);
 
   useEffect(() => setDraft(person.name), [person.name]);
   useEffect(() => setRole(person.role ?? ""), [person.role]);
 
+  const loadDetails = useCallback(async () => {
+    setLoadingDetails(true);
+    try {
+      setDetails(await api.personDetails(person.id));
+      setDetailsError(null);
+    } catch (e) {
+      setDetailsError(String(e));
+    } finally {
+      setLoadingDetails(false);
+    }
+  }, [person.id]);
+
+  useEffect(() => {
+    if (open) void loadDetails();
+  }, [loadDetails, open]);
+
   async function commit() {
     const name = draft.trim();
     if (!name || name === person.name) { setDraft(person.name); return; }
-    try { await api.renamePerson(person.id, name); setError(null); onChange(); }
+    try {
+      await api.renamePerson(person.id, name);
+      setError(null);
+      onChange();
+      void loadDetails();
+    }
     catch (e) { setError(String(e)); setDraft(person.name); }
   }
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border p-3">
-      <div className="flex items-center gap-2">
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-            if (e.key === "Escape") { setDraft(person.name); e.currentTarget.blur(); }
-          }}
-          className="h-8 w-full max-w-56"
-        />
-        <span className="flex-1 text-xs text-muted-foreground">
-          {person.recordings === 1 ? "1 recording" : `${person.recordings} recordings`}
-          {person.samples === 0 && " · no voiceprint yet"}
-        </span>
-        {error && <span className="text-xs text-destructive">{error}</span>}
-        <Button
-          size="xs"
-          variant="ghost"
-          title="Forget this voice — their speakers go back to unnamed"
-          onClick={async () => { await api.forgetPerson(person.id); onChange(); }}
-        >
-          <Trash />Forget
-        </Button>
-      </div>
-
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <label className="flex items-center gap-1.5">
-          <input
-            type="radio" name="is-me" checked={person.is_me} className="size-3.5 accent-primary"
-            onChange={async () => { await api.personSetMe(person.id); onChange(); }}
-          />
-          This is me
-        </label>
-        {person.is_me && (
-          <>
-            <span>·</span>
-            <Input
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              onBlur={async () => {
-                if (role.trim() !== (person.role ?? "")) {
-                  await api.personSetRole(person.id, role.trim());
-                  onChange();
-                }
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md"
+      >
+        <SheetHeader className="border-b pr-12">
+          <div className="flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+              style={{
+                color: personColor(person.id),
+                backgroundColor: "color-mix(in oklch, currentColor 14%, transparent)",
               }}
-              onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-              placeholder="your role, e.g. engineering manager"
-              className="h-6 w-full max-w-72 text-xs"
-            />
-          </>
-        )}
-      </div>
-    </div>
+            >
+              {personInitials(person.name)}
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <SheetTitle className="truncate">{person.name}</SheetTitle>
+                {person.is_me && <Badge variant="secondary">You</Badge>}
+              </div>
+              <SheetDescription>
+                {person.recordings === 1 ? "1 recording" : `${person.recordings} recordings`}
+                {person.role ? ` · ${person.role}` : ""}
+              </SheetDescription>
+            </div>
+          </div>
+        </SheetHeader>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <section aria-labelledby={`person-profile-${person.id}`}>
+            <h3 id={`person-profile-${person.id}`} className="mb-3 text-sm font-medium">Profile</h3>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`person-name-${person.id}`}>Name</Label>
+              <Input
+                id={`person-name-${person.id}`}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onBlur={commit}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape") { setDraft(person.name); event.currentTarget.blur(); }
+                }}
+              />
+            </div>
+            {person.is_me ? (
+              <div className="mt-3 flex flex-col gap-1.5">
+                <Label htmlFor={`person-role-${person.id}`}>Your role</Label>
+                <Input
+                  id={`person-role-${person.id}`}
+                  value={role}
+                  onChange={(event) => setRole(event.target.value)}
+                  onBlur={async () => {
+                    if (role.trim() === (person.role ?? "")) return;
+                    try {
+                      await api.personSetRole(person.id, role.trim());
+                      setError(null);
+                      onChange();
+                      void loadDetails();
+                    } catch (e) {
+                      setError(String(e));
+                      setRole(person.role ?? "");
+                    }
+                  }}
+                  onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+                  placeholder="e.g. Engineering manager"
+                />
+                <p className="text-xs text-muted-foreground">Your role helps rank tasks generated from meetings.</p>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-lg bg-muted/60 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Is this you?</p>
+                    <p className="text-xs text-muted-foreground">Tasks assigned to this speaker will count as yours.</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        await api.personSetMe(person.id);
+                        setError(null);
+                        onChange();
+                        void loadDetails();
+                      } catch (e) {
+                        setError(String(e));
+                      }
+                    }}
+                  >
+                    Mark as me
+                  </Button>
+                </div>
+              </div>
+            )}
+            {error && <p className="mt-2 text-xs text-destructive" role="alert">{error}</p>}
+          </section>
+
+          <section className="mt-6 border-t pt-5" aria-labelledby={`voice-samples-${person.id}`}>
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <h3 id={`voice-samples-${person.id}`} className="text-sm font-medium">Voice samples</h3>
+              <Badge variant="outline">{details?.samples ?? person.samples}</Badge>
+            </div>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Confirmed recordings used to recognize this voice in future meetings.
+            </p>
+
+            {loadingDetails ? (
+              <LoadingState label="Loading sample references" className="min-h-28" />
+            ) : detailsError ? (
+              <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+                <p>{detailsError}</p>
+                <Button size="xs" variant="outline" className="mt-2" onClick={() => void loadDetails()}>
+                  Try again
+                </Button>
+              </div>
+            ) : details && (
+              <>
+                {details.sample_references.length > 0 ? (
+                  <div className="overflow-hidden rounded-lg border">
+                    {details.sample_references.map((reference, index) => (
+                      <div
+                        key={reference.id}
+                        className={`flex gap-3 p-3 ${index > 0 ? "border-t" : ""}`}
+                      >
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                          <Waveform aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="truncate text-sm font-medium">{reference.recording_title}</p>
+                            {!reference.available && <Badge variant="outline">Source missing</Badge>}
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {reference.speaker_label} · {dateLabel(reference.recorded_at ?? reference.captured_at)}
+                          </p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Captured {dateLabel(reference.captured_at)} at {timeLabel(reference.captured_at)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : details.unreferenced_samples === 0 ? (
+                  <p className="rounded-lg bg-muted/60 p-3 text-sm text-muted-foreground">
+                    No confirmed voice samples yet.
+                  </p>
+                ) : null}
+
+                {details.unreferenced_samples > 0 && (
+                  <p className="mt-3 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
+                    {details.unreferenced_samples} older {details.unreferenced_samples === 1 ? "sample has" : "samples have"}
+                    {" "}no recording reference because source tracking was added later.
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+
+          <div className="mt-6 border-t pt-4">
+            <Button variant="destructive" onClick={() => setConfirmForget(true)}>
+              <Trash />Forget person
+            </Button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Removes the voiceprint. Recordings and transcripts stay intact.
+            </p>
+          </div>
+        </div>
+
+        <AlertDialog open={confirmForget} onOpenChange={setConfirmForget}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Forget {person.name}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Their voiceprint will be removed and their speakers will return to unnamed. Recordings and transcripts stay intact.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={forgetting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                disabled={forgetting}
+                onClick={async () => {
+                  setForgetting(true);
+                  try {
+                    await api.forgetPerson(person.id);
+                    onForgotten();
+                  } finally {
+                    setForgetting(false);
+                  }
+                }}
+              >
+                {forgetting ? "Forgetting" : "Forget person"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </SheetContent>
+    </Sheet>
   );
+}
+
+function personInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  const initials = words.length === 1 ? words[0].slice(0, 2) : `${words[0][0]}${words.at(-1)![0]}`;
+  return initials.toLocaleUpperCase();
 }
 
 function GeneralCard({ settings, autostartOn, onAutostartChange, onCloseToTrayChange }: {

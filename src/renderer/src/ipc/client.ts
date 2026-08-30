@@ -3,7 +3,7 @@
 // main process and get a "not implemented until 08.x" error until their sub-phase lands.
 import type {
   AskProgress, AskScope, AskThread, AskThreadSummary, AiAgentDiscovery, AiConnection, AiConnectionInput, AiPreset, AiSettings, BackfillEstimate, BackfillProgress, DiskUsage, IncomingFileProgress, JobDone, JobFailed, JobProgress, LibraryRefreshResult, ModelDownloadProgress,
-  ModelInfo, OverviewChanged, OverviewPayload, OverviewProgress, Person, ProbeResult, RecordingDetail,
+  ModelInfo, OverviewChanged, OverviewPayload, OverviewProgress, Person, PersonDetails, ProbeResult, RecordingDetail,
   ProbeProgress, RecordingDiscovered, RecordingFilter, RecordingSort, RecordingSummary, Resolved, SearchHit,
   Settings, SupportModels, SystemStats, TaskStatus, WatchFolder,
   TerminologyApplyResult, TerminologyImportResult, TerminologyRule, TerminologyRuleInput,
@@ -45,6 +45,8 @@ export const api = {
     USE_MOCK ? mockCommands.rediarize(recording_id, speakers) : invoke("rediarize", { recording_id, speakers }),
   listPeople: (): Promise<Person[]> =>
     USE_MOCK ? mockCommands.list_people() : invoke("list_people"),
+  personDetails: (id: number): Promise<PersonDetails> =>
+    USE_MOCK ? mockCommands.person_details(id) : invoke("person_details", { id }),
   terminologyRules: (): Promise<TerminologyRule[]> =>
     USE_MOCK ? mockCommands.terminology_list() : invoke("terminology_list"),
   terminologyAdd: (input: TerminologyRuleInput): Promise<TerminologyRule> =>
