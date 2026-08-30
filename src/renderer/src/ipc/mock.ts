@@ -757,6 +757,10 @@ const MOCK_VOICES: Array<Omit<TtsVoiceStatus, "state" | "installed_bytes">> = [
   { voice_id: "en_US-norman-medium", display_name: "Norman", language: "English (US)", download_bytes: 67_203_672 },
   { voice_id: "en_US-ljspeech-medium", display_name: "LJSpeech", language: "English (US)", download_bytes: 67_169_893 },
   { voice_id: "en_US-lessac-medium", display_name: "Lessac", language: "English (US)", download_bytes: 67_230_653 },
+  { voice_id: "en_US-kristin-medium", display_name: "Kristin", language: "English (US)", download_bytes: 67_259_230 },
+  { voice_id: "en_US-amy-medium", display_name: "Amy", language: "English (US)", download_bytes: 67_223_746 },
+  { voice_id: "en_GB-cori-medium", display_name: "Cori", language: "English (UK)", download_bytes: 67_257_412 },
+  { voice_id: "en_GB-alan-medium", display_name: "Alan", language: "English (UK)", download_bytes: 67_220_121 },
 ];
 const ttsVoiceInstalled = new Set<TtsVoiceId>();
 

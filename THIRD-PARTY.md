@@ -43,7 +43,8 @@ separate notice file ships, per MIT's terms (this file *is* the notice).
 
 ## sherpa-onnx — Apache License 2.0
 
-Speaker diarization (segmentation + embedding + clustering primitives, decision #9).
+CPU speaker diarization, the voiceprint pass used after GPU diarization, and local Ask speech
+(segmentation, embedding, clustering, and VITS primitives, decision #9 and Phase 13).
 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) is Apache-2.0, as are its
 `sherpa-onnx-node` bindings and the host-specific Linux x64 or Darwin arm64 prebuild bundled
 in each app (which carries ONNX Runtime, also MIT). The rejoin/prune clustering on top (see
@@ -88,6 +89,10 @@ into the model cache on first run / on demand (decision #16), same as any other 
 | `vits-piper-en_US-norman-medium` | Optional local speech for completed Ask answers | [sherpa-onnx TTS models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models), converted from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/norman/medium) | MIT model; model card identifies its LibriVox training recordings as public domain |
 | `vits-piper-en_US-ljspeech-medium` | Optional local speech for completed Ask answers | [sherpa-onnx TTS models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models), converted from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/ljspeech/medium) | MIT model; model card identifies LJSpeech as public domain |
 | `vits-piper-en_US-lessac-medium` | Optional local speech for completed Ask answers | [sherpa-onnx TTS models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models), converted from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/lessac/medium) | MIT model; recordings are from the Lessac Blizzard 2013 dataset under its separate dataset terms |
+| `vits-piper-en_US-kristin-medium` | Optional local US English speech | [sherpa-onnx TTS models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models), converted from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/kristin/medium) | MIT model; model card identifies its LibriVox training recordings as public domain |
+| `vits-piper-en_US-amy-medium` | Optional local US English speech | [sherpa-onnx TTS models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models), converted from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/amy/medium) | MIT model; model card points to the Mycroft Mimic 3 voice source |
+| `vits-piper-en_GB-cori-medium` | Optional local UK English speech | [sherpa-onnx TTS models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models), converted from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_GB/cori/medium) | MIT model; model card identifies its LibriVox training recordings as public domain |
+| `vits-piper-en_GB-alan-medium` | Optional local UK English speech | [sherpa-onnx TTS models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models), converted from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_GB/alan/medium) | MIT model; model card points to the Mycroft Mimic 3 voice source |
 
 The Norman archive is pinned to
 `https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-norman-medium.tar.bz2`
@@ -97,6 +102,14 @@ The LJSpeech archive is 67,169,893 bytes with SHA-256
 `3dfb4b759d8be032a4903a9538d128b0fda2a06ab1de6cbc2d93a97e2dd83dba`.
 The Lessac archive is 67,230,653 bytes with SHA-256
 `9e3febfacf0abf4270172d2958bcec246032b7e88efc2720840cc80c93de334e`.
+The Kristin archive is 67,259,230 bytes with SHA-256
+`c2206f572df2956c50b1ae3367eebce3853c663e890cba8048cd62b1e4dbe6c7`.
+The Amy archive is 67,223,746 bytes with SHA-256
+`9a5d1fc497f85e8022b785bff5f8105203b1e33099ee6265203efc70b0cb0264`.
+The Cori archive is 67,257,412 bytes with SHA-256
+`49c9a5361bbdd95d7ca9687c4de11e5908481f65e7c7c368960df79949fdac2b`.
+The Alan archive is 67,220,121 bytes with SHA-256
+`a48d4017da0f77668b27bed63fe6e04dd64c6397e1fadad4f460efb0ef7c9012`.
 
 pyannote's own segmentation-3.0 weights carry an additional gated-access research notice
 on Hugging Face for the original (non-ONNX) upload; the ONNX export used here is what

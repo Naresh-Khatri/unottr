@@ -274,6 +274,10 @@ export const TTS_VOICE_IDS = [
   "en_US-norman-medium",
   "en_US-ljspeech-medium",
   "en_US-lessac-medium",
+  "en_US-kristin-medium",
+  "en_US-amy-medium",
+  "en_GB-cori-medium",
+  "en_GB-alan-medium",
 ] as const;
 export type TtsVoiceId = (typeof TTS_VOICE_IDS)[number];
 export const DEFAULT_TTS_VOICE_ID: TtsVoiceId = "en_US-lessac-medium";

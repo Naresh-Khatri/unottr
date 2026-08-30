@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TTS_VOICES, validateArchiveEntry, voiceById } from "../src/main/tts/voice";
+import { TTS_VOICE_IDS } from "../src/shared/ipc";
 
 const NORMAN = "en_US-norman-medium";
 
@@ -13,8 +14,17 @@ describe("TTS voice archive", () => {
     }
   });
 
-  it("registers three pinned voices", () => {
-    expect(TTS_VOICES.map((voice) => voice.displayName)).toEqual(["Norman", "LJSpeech", "Lessac"]);
+  it("registers the pinned voice catalog", () => {
+    expect(TTS_VOICES.map((voice) => voice.id)).toEqual(TTS_VOICE_IDS);
+    expect(TTS_VOICES.map((voice) => voice.displayName)).toEqual([
+      "Norman",
+      "LJSpeech",
+      "Lessac",
+      "Kristin",
+      "Amy",
+      "Cori",
+      "Alan",
+    ]);
     expect(() => voiceById("unknown")).toThrow(/unknown TTS voice/);
   });
 
