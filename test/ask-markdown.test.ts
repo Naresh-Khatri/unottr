@@ -51,4 +51,27 @@ Prioritize **expense analysis**:
     expect(html).not.toContain("tracking-pixel");
     expect(html).toContain("Image omitted: Private chart");
   });
+
+  it("marks the active spoken sentence without flattening Markdown", () => {
+    const html = renderToStaticMarkup(createElement(
+      AskMarkdown,
+      { activeSentenceIndex: 1 },
+      "## Next step\n\nShip the **weekly report** now.",
+    ));
+
+    expect(html).toContain("<strong");
+    expect(html).toContain('data-spoken-sentence="true"');
+    expect(html).toContain(">weekly report</mark>");
+  });
+
+  it("does not count code as spoken words", () => {
+    const html = renderToStaticMarkup(createElement(
+      AskMarkdown,
+      { activeSentenceIndex: 0 },
+      "Read `privateCall()` before continuing.",
+    ));
+
+    expect(html).toContain("<code");
+    expect(html).toContain(">before continuing</mark>");
+  });
 });

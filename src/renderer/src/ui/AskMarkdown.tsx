@@ -1,6 +1,7 @@
 import type { ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { askSpeechSentences, askSpeechWords } from "../lib/askSpeechText";
 import { cn } from "../lib/utils";
 
 const markdownComponents = {
@@ -87,12 +88,104 @@ const markdownComponents = {
   ),
 };
 
-export function AskMarkdown({ children }: { children: string }) {
+export function AskMarkdown({ children, activeSentenceIndex = null }: {
+  children: string;
+  activeSentenceIndex?: number | null;
+}) {
+  const sentences = activeSentenceIndex === null ? [] : askSpeechSentences(children);
+  const sentenceWords = sentences.map((sentence) => askSpeechWords(sentence));
+  const activeWordStart = sentenceWords
+    .slice(0, activeSentenceIndex ?? 0)
+    .reduce((total, words) => total + words.length, 0);
+  const activeWordEnd = activeWordStart + (sentenceWords[activeSentenceIndex ?? -1]?.length ?? 0);
+  const rehypePlugins = activeWordEnd <= activeWordStart
+    ? []
+    : [highlightSpokenSentence(sentenceWords.flat(), activeWordStart, activeWordEnd)];
+
   return (
     <div className="min-w-0 text-sm text-pretty">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={markdownComponents}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={rehypePlugins}
+        skipHtml
+        components={markdownComponents}
+      >
         {children}
       </ReactMarkdown>
     </div>
   );
+}
+
+interface MarkdownNode {
+  type: string;
+  value?: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  children?: MarkdownNode[];
+}
+
+const UNSPOKEN_ELEMENTS = new Set(["code", "pre", "table"]);
+const WORD_PATTERN = /[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu;
+
+function highlightSpokenSentence(spokenWords: string[], activeWordStart: number, activeWordEnd: number) {
+  return () => (tree: unknown) => {
+    let spokenIndex = 0;
+
+    const visit = (parent: MarkdownNode) => {
+      if (!parent.children) return;
+      for (let index = 0; index < parent.children.length; index += 1) {
+        const node = parent.children[index];
+        if (node.type === "element" && node.tagName && UNSPOKEN_ELEMENTS.has(node.tagName)) continue;
+        if (node.type !== "text" || node.value === undefined) {
+          visit(node);
+          continue;
+        }
+
+        const activeMatches: RegExpMatchArray[] = [];
+        for (const match of node.value.matchAll(WORD_PATTERN)) {
+          const rendered = normalizeWord(match[0]);
+          let matchedIndex = -1;
+          for (let lookahead = spokenIndex; lookahead < Math.min(spokenWords.length, spokenIndex + 9); lookahead += 1) {
+            if (normalizeWord(spokenWords[lookahead]) === rendered) {
+              matchedIndex = lookahead;
+              break;
+            }
+          }
+          if (matchedIndex < 0) continue;
+          spokenIndex = matchedIndex + 1;
+          if (matchedIndex >= activeWordStart && matchedIndex < activeWordEnd) activeMatches.push(match);
+        }
+
+        const firstMatch = activeMatches[0];
+        const lastMatch = activeMatches.at(-1);
+        if (!firstMatch || firstMatch.index === undefined || !lastMatch || lastMatch.index === undefined) continue;
+        const activeStart = firstMatch.index;
+        const activeEnd = lastMatch.index + lastMatch[0].length;
+        const before = node.value.slice(0, activeStart);
+        const activeText = node.value.slice(activeStart, activeEnd);
+        const after = node.value.slice(activeEnd);
+        parent.children.splice(index, 1,
+          ...(before ? [{ type: "text", value: before } satisfies MarkdownNode] : []),
+          {
+            type: "element",
+            tagName: "mark",
+            properties: {
+              className: ["rounded-[0.2em]", "bg-foreground/10", "text-foreground"],
+              "aria-current": "true",
+              "data-spoken-sentence": "true",
+            },
+            children: [{ type: "text", value: activeText }],
+          },
+          ...(after ? [{ type: "text", value: after } satisfies MarkdownNode] : []),
+        );
+        index += before ? 1 : 0;
+      }
+    };
+
+    visit(tree as MarkdownNode);
+  };
+}
+
+function normalizeWord(word: string): string {
+  return word.replace(/’/g, "'").toLocaleLowerCase();
 }

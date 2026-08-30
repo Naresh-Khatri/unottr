@@ -7,6 +7,13 @@ export interface AskSpeechState {
   lastMessageId: number | null;
   status: "idle" | "loading" | "playing" | "error";
   error: string | null;
+  activeSentenceIndex: number | null;
+}
+
+interface TimedSentence {
+  index: number;
+  start: number;
+  end: number;
 }
 
 class AskSpeechController {
@@ -15,6 +22,7 @@ class AskSpeechController {
     lastMessageId: null,
     status: "idle",
     error: null,
+    activeSentenceIndex: null,
   };
   private readonly listeners = new Set<(state: AskSpeechState) => void>();
   private context: AudioContext | null = null;
@@ -22,6 +30,8 @@ class AskSpeechController {
   private sources = new Set<AudioBufferSourceNode>();
   private nextStart = 0;
   private synthesisDone = false;
+  private sentenceTimeline: TimedSentence[] = [];
+  private trackingFrame: number | null = null;
 
   constructor() {
     onTtsEvent((event) => this.handle(event));
@@ -49,11 +59,13 @@ class AskSpeechController {
     this.requestId = requestId;
     this.synthesisDone = false;
     this.nextStart = 0;
+    this.sentenceTimeline = [];
     this.update({
       activeMessageId: messageId,
       lastMessageId: this.state.lastMessageId,
       status: "loading",
       error: null,
+      activeSentenceIndex: null,
     });
 
     try {
@@ -71,6 +83,8 @@ class AskSpeechController {
     this.requestId = null;
     this.synthesisDone = false;
     this.nextStart = 0;
+    this.sentenceTimeline = [];
+    this.stopTracking();
     for (const source of this.sources) {
       try { source.stop(); } catch { /* already ended */ }
     }
@@ -81,6 +95,7 @@ class AskSpeechController {
         lastMessageId: messageId,
         status: "idle",
         error: null,
+        activeSentenceIndex: null,
       });
     }
     void api.ttsStop().catch(() => {});
@@ -101,10 +116,10 @@ class AskSpeechController {
       this.finishIfSilent();
       return;
     }
-    this.schedule(event.samples, event.sample_rate);
+    this.schedule(event.samples, event.sample_rate, event.sequence);
   }
 
-  private schedule(samples: Float32Array, sampleRate: number): void {
+  private schedule(samples: Float32Array, sampleRate: number, sequence: number): void {
     if (!this.context || samples.length === 0 || sampleRate <= 0) return;
     const buffer = this.context.createBuffer(1, samples.length, sampleRate);
     buffer.getChannelData(0).set(samples);
@@ -113,6 +128,7 @@ class AskSpeechController {
     source.connect(this.context.destination);
     const start = Math.max(this.context.currentTime + 0.02, this.nextStart);
     this.nextStart = start + buffer.duration;
+    this.sentenceTimeline.push({ index: sequence, start, end: this.nextStart });
     this.sources.add(source);
     source.onended = () => {
       this.sources.delete(source);
@@ -120,17 +136,20 @@ class AskSpeechController {
     };
     source.start(start);
     this.update({ ...this.state, status: "playing", error: null });
+    this.startTracking();
   }
 
   private finishIfSilent(): void {
     if (!this.synthesisDone || this.sources.size > 0 || this.state.activeMessageId === null) return;
     const messageId = this.state.activeMessageId;
     this.requestId = null;
+    this.stopTracking();
     this.update({
       activeMessageId: null,
       lastMessageId: messageId,
       status: "idle",
       error: null,
+      activeSentenceIndex: null,
     });
   }
 
@@ -141,12 +160,35 @@ class AskSpeechController {
       try { source.stop(); } catch { /* already ended */ }
     }
     this.sources.clear();
+    this.stopTracking();
     this.update({
       activeMessageId: null,
       lastMessageId: messageId ?? this.state.lastMessageId,
       status: "error",
       error: message,
+      activeSentenceIndex: null,
     });
+  }
+
+  private startTracking(): void {
+    if (this.trackingFrame !== null) return;
+    const track = () => {
+      this.trackingFrame = null;
+      if (!this.context || this.requestId === null) return;
+      const now = this.context.currentTime;
+      const active = this.sentenceTimeline.find((sentence) => now >= sentence.start && now < sentence.end)?.index ?? null;
+      if (active !== this.state.activeSentenceIndex) {
+        this.update({ ...this.state, activeSentenceIndex: active });
+      }
+      this.trackingFrame = window.requestAnimationFrame(track);
+    };
+    this.trackingFrame = window.requestAnimationFrame(track);
+  }
+
+  private stopTracking(): void {
+    if (this.trackingFrame === null) return;
+    window.cancelAnimationFrame(this.trackingFrame);
+    this.trackingFrame = null;
   }
 
   private update(state: AskSpeechState): void {

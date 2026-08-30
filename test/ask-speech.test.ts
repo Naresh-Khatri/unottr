@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   askSpeechSentences,
   askSpeechText,
+  askSpeechWords,
   MAX_SPEECH_SENTENCE_CHARACTERS,
 } from "../src/renderer/src/lib/askSpeechText";
 
@@ -55,5 +56,15 @@ Open https://example.com/private or ![chart](chart.png) when ready.
 
   it("returns no work for answers containing only code", () => {
     expect(askSpeechSentences("```js\nalert('hello')\n```" )).toEqual([]);
+  });
+
+  it("returns spoken words in playback order", () => {
+    expect(askSpeechWords("## Next step\n\nShip **today's report** [1].")).toEqual([
+      "Next",
+      "step",
+      "Ship",
+      "today's",
+      "report",
+    ]);
   });
 });

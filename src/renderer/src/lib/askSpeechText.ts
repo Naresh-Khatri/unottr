@@ -5,6 +5,7 @@ export const MAX_SPEECH_SENTENCES = 120;
 const TERMINAL_PUNCTUATION = /[.!?]["']?$/;
 const TABLE_DIVIDER = /^\s*\|?\s*:?-{3,}/;
 const REFERENCE_DEFINITION = /^\s*\[\^?[\w-]+\]:\s+\S+/;
+const SPOKEN_WORD = /[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu;
 
 /** Convert answer Markdown into prose suitable for local speech synthesis. */
 export function askSpeechText(markdown: string): string {
@@ -68,6 +69,11 @@ export function askSpeechSentences(markdown: string, locale = "en-US"): string[]
     .flatMap((sentence) => boundSentence(sentence, MAX_SPEECH_SENTENCE_CHARACTERS))
     .filter(Boolean)
     .slice(0, MAX_SPEECH_SENTENCES);
+}
+
+/** The words spoken for an Ask answer, in playback order. */
+export function askSpeechWords(markdown: string, locale = "en-US"): string[] {
+  return askSpeechSentences(markdown, locale).flatMap((sentence) => sentence.match(SPOKEN_WORD) ?? []);
 }
 
 function cleanLine(rawLine: string): string {

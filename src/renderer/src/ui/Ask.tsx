@@ -27,6 +27,7 @@ import type {
 import { dateLabel, hms } from "@/lib/format";
 import { blankScope, describeScope } from "@/lib/askScope";
 import { askSpeech, type AskSpeechState } from "@/lib/askSpeech";
+import { askSpeechSentences } from "@/lib/askSpeechText";
 import { cn } from "@/lib/utils";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import {
@@ -513,38 +514,56 @@ function Message({
   onRead: () => void;
   onStop: () => void;
 }) {
+  const messageRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (speech.activeMessageId !== message.id || speech.activeSentenceIndex === null) return;
+    messageRef.current
+      ?.querySelector<HTMLElement>('[data-spoken-sentence="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [message.id, speech.activeMessageId, speech.activeSentenceIndex]);
+
   if (message.role === "user") return <UserBubble text={message.text} />;
 
   const sources = uniqueCitations(message);
   const speaking = speech.activeMessageId === message.id
     && (speech.status === "loading" || speech.status === "playing");
+  let sentenceOffset = 0;
   return (
-    <article className="space-y-3">
+    <article ref={messageRef} className="space-y-3">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <Quotes /> Ask
         {message.provider && <span className="font-normal">with {message.provider}</span>}
       </div>
       <div className="space-y-4">
-        {message.blocks.map((block, index) => (
-          <div key={index} className="space-y-2">
-            <AskMarkdown>{block.text}</AskMarkdown>
-            {!!block.citations.length && (
-              <div className="flex flex-wrap items-center gap-1" aria-label="Sources for this part of the answer">
-                {block.citations.map((citation) => {
-                  const sourceNumber = Math.max(1, sources.findIndex((source) => sameCitation(source, citation)) + 1);
-                  return (
-                    <CitationMarker
-                      key={`${citation.kind}-${citation.segment_id ?? citation.task_id}-${sourceNumber}`}
-                      citation={citation}
-                      number={sourceNumber}
-                      onOpen={onCitation}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ))}
+        {message.blocks.map((block, index) => {
+          const blockSentenceCount = askSpeechSentences(block.text).length;
+          const activeSentenceIndex = speaking && speech.activeSentenceIndex !== null
+            && speech.activeSentenceIndex >= sentenceOffset
+            && speech.activeSentenceIndex < sentenceOffset + blockSentenceCount
+            ? speech.activeSentenceIndex - sentenceOffset
+            : null;
+          sentenceOffset += blockSentenceCount;
+          return (
+            <div key={index} className="space-y-2">
+              <AskMarkdown activeSentenceIndex={activeSentenceIndex}>{block.text}</AskMarkdown>
+              {!!block.citations.length && (
+                <div className="flex flex-wrap items-center gap-1" aria-label="Sources for this part of the answer">
+                  {block.citations.map((citation) => {
+                    const sourceNumber = Math.max(1, sources.findIndex((source) => sameCitation(source, citation)) + 1);
+                    return (
+                      <CitationMarker
+                        key={`${citation.kind}-${citation.segment_id ?? citation.task_id}-${sourceNumber}`}
+                        citation={citation}
+                        number={sourceNumber}
+                        onOpen={onCitation}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="flex flex-wrap items-center gap-1">
         {!!sources.length && (
