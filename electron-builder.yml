@@ -76,7 +76,7 @@ mac:
       arch: [arm64]
     - target: zip
       arch: [arm64]
-  minimumSystemVersion: 13.0.0
+  minimumSystemVersion: 15.0.0
   category: public.app-category.utilities
   icon: resources/icons/icon.icns
   identity: "-"

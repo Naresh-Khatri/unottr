@@ -1,8 +1,8 @@
 # Releasing unottr
 
 Pushing an annotated semantic-version tag starts the release workflow. It builds the Linux
-x64 AppImage and the Apple Silicon Mac zip, then publishes both files and their SHA-256
-checksums on one GitHub Release.
+x64 AppImage and the Apple Silicon Mac zip for macOS 15 or later, then publishes both files
+and their SHA-256 checksums on one GitHub Release.
 
 The Mac build is ad-hoc signed and not notarized. This is intentional. No Apple Developer
 Program account or GitHub signing secrets are required.

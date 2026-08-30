@@ -129,7 +129,7 @@ jobs:
   macos:
     name: Build macOS arm64 zip
     needs: validate
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Check out tagged commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -239,7 +239,7 @@ jobs:
             echo "## Downloads"
             echo
             echo "- Linux x64: download the \`.AppImage\`, make it executable, and run it."
-            echo "- Apple Silicon Mac: download the \`-arm64.zip\` and move \`unottr.app\` to Applications."
+            echo "- Apple Silicon Mac (macOS 15 or later): download the \`-arm64.zip\` and move \`unottr.app\` to Applications."
             echo "- The Mac app is ad-hoc signed and not notarized. Control-click it and choose Open the first time."
             echo "- Use the matching \`.sha256\` file to verify a download."
             echo
