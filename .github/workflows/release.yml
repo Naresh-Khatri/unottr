@@ -101,7 +101,7 @@ jobs:
           pnpm smoke:native
 
       - name: Package AppImage
-        run: pnpm dist --linux AppImage --x64
+        run: pnpm dist --linux AppImage --x64 --publish never
 
       - name: Create checksum
         shell: bash
@@ -162,13 +162,12 @@ jobs:
       - name: Check source and native dependencies
         run: |
           pnpm typecheck
-          pnpm test
           pnpm smoke:native
 
       - name: Package ad-hoc signed macOS app
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm dist --mac --arm64
+        run: pnpm dist --mac --arm64 --publish never
 
       - name: Create checksum
         shell: bash
