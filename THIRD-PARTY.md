@@ -65,6 +65,13 @@ The Apple Silicon build also bundles
 [`apple-silicon-metrics`](https://github.com/levibuzolic/apple-silicon-metrics) (MIT) for
 sudo-less CPU and GPU temperature, usage, and power readings.
 
+## VoiceOrbs — MIT
+
+The speech settings picker adapts the Iridescent Flow shader from
+[VoiceOrbs](https://github.com/amunozdev/voiceorbs). The component is vendored as source,
+trimmed to the states used by unottr, and does not add a runtime dependency. Original work
+copyright 2026 Alexis Munoz.
+
 ## Provider brand marks — trademarks of their owners
 
 `src/renderer/src/ui/icons/providers/*.svg` are provider and harness marks downloaded with

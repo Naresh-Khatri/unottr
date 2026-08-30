@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle, Download, FolderOpen, FolderSimplePlus, HardDrives, MagnifyingGlass, Plus,
-  SpeakerHigh, StopCircle, Trash, Warning, Waveform, X,
+  CaretLeft, CaretRight, CheckCircle, Download, FolderOpen, FolderSimplePlus, HardDrives,
+  LockSimple, MagnifyingGlass, Plus, SpeakerHigh, StopCircle, Trash, Warning, Waveform, X,
 } from "@phosphor-icons/react";
 import { api, os } from "@/ipc/client";
 import type {
@@ -14,7 +14,9 @@ import { bytesLabel, dateLabel, durationLabel, timeLabel } from "@/lib/format";
 import { modelPhaseLabel } from "@/lib/activity";
 import { personColor } from "@/lib/speakerColor";
 import { askSpeech, type AskSpeechState } from "@/lib/askSpeech";
+import { voicePresentation } from "@/lib/voicePresentation";
 import { useActivities } from "@/lib/ActivityProvider";
+import { VoiceOrb, type VoiceOrbState } from "@/components/voice-orb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,7 +49,6 @@ const TIERS: { tier: string; label: string }[] = [
 ];
 
 const SPEECH_TEST_ID = -1;
-const SPEECH_TEST_TEXT = "Hello. This is how Ask answers will sound.";
 const PEOPLE_SORT_LABELS = {
   recordings: "Most recordings",
   name: "Name",
@@ -152,7 +153,6 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
           selectedVoiceId={settings.tts_voice_id}
           download={modelDownloads[ttsVoiceDownloadId(settings.tts_voice_id)]}
           onVoiceChange={async (voiceId) => {
-            askSpeech.stop();
             await setSetting("tts_voice_id", voiceId);
           }}
           onEnabledChange={(enabled) => {
@@ -220,7 +220,7 @@ function SpeechCard({
   voices: TtsVoiceStatus[];
   selectedVoiceId: TtsVoiceId;
   download: ModelDownloadProgress | undefined;
-  onVoiceChange: (voiceId: TtsVoiceId) => void;
+  onVoiceChange: (voiceId: TtsVoiceId) => Promise<void>;
   onEnabledChange: (enabled: boolean) => void;
   onDownload: (voiceId: TtsVoiceId) => void;
   onCancel: (voiceId: TtsVoiceId) => void;
@@ -228,13 +228,30 @@ function SpeechCard({
 }) {
   const [removing, setRemoving] = useState(false);
   const [speech, setSpeech] = useState<AskSpeechState>(() => askSpeech.snapshot());
-  const voice = voices.find((item) => item.voice_id === selectedVoiceId) ?? null;
+  const [activeVoiceId, setActiveVoiceId] = useState<TtsVoiceId>(selectedVoiceId);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const selectionRequest = useRef(0);
+  const voice = voices.find((item) => item.voice_id === activeVoiceId) ?? null;
+  const selectedIndex = voices.findIndex((item) => item.voice_id === activeVoiceId);
   const installed = voice?.state === "installed";
   const downloading = download != null && download.phase !== "done" && !download.error;
   const testing = speech.activeMessageId === SPEECH_TEST_ID;
   const testError = speech.status === "error" && speech.lastMessageId === SPEECH_TEST_ID
     ? speech.error
     : null;
+  const presentation = voice ? voicePresentation(voice.voice_id) : null;
+  const previewLine = presentation?.previewLine ?? "Hello. This is how Ask answers will sound.";
+  const orbState: VoiceOrbState = testError
+    ? "error"
+    : testing && speech.status === "playing"
+      ? "speaking"
+      : testing
+        ? "thinking"
+        : downloading
+          ? "connecting"
+          : "idle";
+
+  useEffect(() => setActiveVoiceId(selectedVoiceId), [selectedVoiceId]);
 
   useEffect(() => {
     const unsubscribe = askSpeech.subscribe(setSpeech);
@@ -244,85 +261,224 @@ function SpeechCard({
     };
   }, []);
 
+  async function selectVoice(voiceId: TtsVoiceId) {
+    const nextVoice = voices.find((item) => item.voice_id === voiceId);
+    if (!nextVoice) return;
+    const request = ++selectionRequest.current;
+    askSpeech.stop();
+    setActiveVoiceId(voiceId);
+    setSelectionError(null);
+    try {
+      await onVoiceChange(voiceId);
+      if (selectionRequest.current !== request || nextVoice.state !== "installed") return;
+      await askSpeech.speak(SPEECH_TEST_ID, voicePresentation(nextVoice.voice_id).previewLine);
+    } catch (error) {
+      if (selectionRequest.current !== request) return;
+      setActiveVoiceId(selectedVoiceId);
+      setSelectionError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function moveVoice(offset: number) {
+    if (voices.length === 0) return;
+    const current = selectedIndex < 0 ? 0 : selectedIndex;
+    const next = (current + offset + voices.length) % voices.length;
+    void selectVoice(voices[next].voice_id);
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Speech</CardTitle>
-        <CardDescription>Read completed Ask answers aloud on this device.</CardDescription>
+        <CardDescription>Choose the voice Ask uses to read answers aloud on this device.</CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <Select value={selectedVoiceId} onValueChange={(value) => onVoiceChange(value as TtsVoiceId)}>
-          <SelectTrigger aria-label="Speech voice"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {voices.map((item) => (
-              <SelectItem key={item.voice_id} value={item.voice_id}>
-                <span>{item.display_name}</span>
-                {item.state === "installed" && (
-                  <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
-                    <CheckCircle />Downloaded
+      <CardContent className="flex flex-col">
+        {voice && presentation ? (
+          <div
+            className="grid grid-cols-[2.25rem_minmax(0,1fr)_2.25rem] items-center gap-2 sm:gap-4"
+            role="group"
+            aria-roledescription="voice carousel"
+            aria-label="Speech voices"
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                moveVoice(-1);
+              }
+              if (event.key === "ArrowRight") {
+                event.preventDefault();
+                moveVoice(1);
+              }
+            }}
+          >
+            <Button
+              size="icon"
+              variant="outline"
+              className="size-9 rounded-full bg-muted/20"
+              aria-label="Previous voice"
+              onClick={() => moveVoice(-1)}
+            >
+              <CaretLeft />
+            </Button>
+
+            <div className="flex min-w-0 flex-col items-center gap-4 py-1 sm:flex-row sm:gap-6">
+              <div
+                className="relative shrink-0 rounded-full transition-[filter,opacity] duration-200 motion-reduce:transition-none"
+                style={!installed && !downloading ? {
+                  filter: "grayscale(.22) saturate(.72)",
+                  opacity: 0.78,
+                } : undefined}
+              >
+                <VoiceOrb
+                  state={orbState}
+                  size={152}
+                  colorFrom={presentation.colorFrom}
+                  colorTo={presentation.colorTo}
+                  label={`${voice.display_name} voice ${orbState}`}
+                />
+                {!installed && !downloading && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1/2 left-1/2 flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-card/75 text-foreground/75 ring-1 ring-foreground/10 backdrop-blur-[2px]"
+                  >
+                    <LockSimple weight="bold" className="size-4" />
                   </span>
                 )}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-sm font-medium">
-              {voice?.display_name ?? "English voice"}
-              {installed && <Badge variant="outline"><CheckCircle />downloaded</Badge>}
+              </div>
+              <div className="min-w-0 text-center sm:text-left">
+                <h3 className="text-2xl font-medium tracking-tight">{voice.display_name}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{presentation.tone}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {voice.language} · Medium · {bytesLabel(installed ? voice.installed_bytes : voice.download_bytes)} · CPU
+                </p>
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 sm:justify-start">
+                  {downloading ? (
+                    <Button size="xs" variant="outline" onClick={() => onCancel(activeVoiceId)}>
+                      <StopCircle />Cancel
+                    </Button>
+                  ) : installed ? (
+                    <>
+                      <Badge variant="outline"><CheckCircle />Downloaded</Badge>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={removing}
+                        onClick={async () => {
+                          setRemoving(true);
+                          try { await onRemove(activeVoiceId); } finally { setRemoving(false); }
+                        }}
+                      >
+                        <Trash />{removing ? "Removing" : "Remove"}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="xs" variant="outline" onClick={() => onDownload(activeVoiceId)}>
+                      <Download />Download voice
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {voice?.language ?? "English (US)"}
-              {voice ? ` · ${bytesLabel(installed ? voice.installed_bytes : voice.download_bytes)}` : ""}
-              {" · CPU"}
-            </p>
-          </div>
-          {downloading ? (
-            <Button size="xs" variant="outline" onClick={() => onCancel(selectedVoiceId)}><StopCircle />Cancel</Button>
-          ) : installed ? (
-            <div className="flex items-center gap-2">
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={removing}
-                onClick={() => testing
-                  ? askSpeech.stop()
-                  : void askSpeech.speak(SPEECH_TEST_ID, SPEECH_TEST_TEXT)}
-              >
-                {testing ? <StopCircle /> : <SpeakerHigh />}
-                {testing ? "Stop" : "Test voice"}
-              </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={removing}
-                onClick={async () => {
-                  setRemoving(true);
-                  try { await onRemove(selectedVoiceId); } finally { setRemoving(false); }
-                }}
-              >
-                <Trash />{removing ? "Removing" : "Remove"}
-              </Button>
-            </div>
-          ) : (
-            <Button size="xs" variant="outline" onClick={() => onDownload(selectedVoiceId)} disabled={!voice}>
-              <Download />Download
+
+            <Button
+              size="icon"
+              variant="outline"
+              className="size-9 rounded-full bg-muted/20"
+              aria-label="Next voice"
+              onClick={() => moveVoice(1)}
+            >
+              <CaretRight />
             </Button>
-          )}
-        </div>
+          </div>
+        ) : (
+          <LoadingState label="Loading speech voices" className="min-h-44" />
+        )}
+
+        {voices.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2" aria-label="Choose a speech voice">
+            {voices.map((item) => {
+              const itemPresentation = voicePresentation(item.voice_id);
+              const isSelected = item.voice_id === activeVoiceId;
+              const itemInstalled = item.state === "installed";
+              return (
+                <button
+                  key={item.voice_id}
+                  type="button"
+                  aria-label={`${item.display_name}${itemInstalled ? ", downloaded" : ", not downloaded"}`}
+                  aria-pressed={isSelected}
+                  title={`${item.display_name}${itemInstalled ? " · Downloaded" : ""}`}
+                  className={`relative flex size-9 items-center justify-center rounded-full outline-none transition-[transform,opacity] duration-200 focus-visible:ring-3 focus-visible:ring-ring/50 motion-reduce:transition-none ${itemInstalled ? "hover:scale-105" : "opacity-75 hover:opacity-90"}`}
+                  onClick={() => void selectVoice(item.voice_id)}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`size-7 rounded-full transition-shadow duration-200 motion-reduce:transition-none ${isSelected ? "ring-2 ring-foreground ring-offset-2 ring-offset-card" : "ring-1 ring-foreground/10"}`}
+                    style={{
+                      background: `radial-gradient(circle at 30% 24%, rgba(255,255,255,.72), transparent 27%), conic-gradient(from 215deg, ${itemPresentation.colorFrom}, ${itemPresentation.colorTo}, ${itemPresentation.colorFrom}, ${itemPresentation.colorTo})`,
+                      filter: itemInstalled ? undefined : "grayscale(.4) saturate(.65) brightness(.92)",
+                    }}
+                  />
+                  {itemInstalled && (
+                    <CheckCircle
+                      aria-hidden="true"
+                      weight="fill"
+                      className="absolute -right-0.5 -bottom-0.5 size-3.5 rounded-full bg-card text-foreground"
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {downloading && download && (
-          <div>
-            <div className="mb-1 text-[11px] text-muted-foreground">{modelPhaseLabel(download.phase)}</div>
+          <div className="mt-4">
+            <div className="mb-1 text-[11px] text-muted-foreground">
+              {modelPhaseLabel(download.phase)} {voice?.display_name}
+            </div>
             <ActivityBar value={download.pct} indeterminate={download.phase !== "downloading"} />
           </div>
         )}
         {!downloading && download?.error && (
-          <p className="text-xs text-destructive">
+          <p className="mt-3 text-xs text-destructive" role="alert">
             {download.error === "cancelled" ? "Download cancelled." : download.error}
           </p>
         )}
-        {testError && <p className="text-xs text-destructive">Voice test failed: {testError}</p>}
+        {(selectionError || testError) && (
+          <p className="mt-3 text-xs text-destructive" role="alert">
+            Voice preview failed: {selectionError ?? testError}
+          </p>
+        )}
+
+        <div className="mt-4 flex min-h-12 items-center justify-between gap-3 border-t py-3" aria-live="polite">
+          <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+            {testing ? (
+              <>
+                <Waveform className="size-4 shrink-0" style={{ color: presentation?.colorTo }} />
+                <span className="truncate">
+                  {speech.status === "playing" ? `Previewing ${voice?.display_name}...` : `Preparing ${voice?.display_name}...`}
+                </span>
+              </>
+            ) : installed ? (
+              <><SpeakerHigh className="size-4 shrink-0" />Ready to preview</>
+            ) : (
+              <><Download className="size-4 shrink-0" />Download this voice to hear it</>
+            )}
+          </div>
+          {installed && (
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={removing}
+              onClick={() => testing
+                ? askSpeech.stop()
+                : void askSpeech.speak(SPEECH_TEST_ID, previewLine)}
+            >
+              {testing ? <StopCircle /> : <SpeakerHigh />}
+              {testing ? "Stop" : "Preview"}
+            </Button>
+          )}
+        </div>
+
         <div className="flex items-center justify-between border-t pt-3">
           <Label htmlFor="ask-speak-answers">Read Ask answers aloud</Label>
           <Switch
