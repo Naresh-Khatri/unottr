@@ -19,11 +19,13 @@ import { VideoPlayer } from "@/ui/VideoPlayer";
 import { EditableTitle } from "@/ui/EditableTitle";
 import { OverviewPanel } from "@/ui/Overview";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ActivityLine } from "@/components/activity-indicator";
 import { cn } from "@/lib/utils";
@@ -287,6 +289,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
 
   async function doCopy() {
     if (!detail) return;
+    setCopied(false);
     setCopyError(null);
     try {
       await api.copyTranscript(id, exportFormat);
@@ -335,15 +338,77 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
           <Button size="sm" disabled={!detail || transcriptPending} onClick={onAsk}>
             <ChatCircleDots />Ask
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            aria-label={`Export transcript as ${exportFormat.toUpperCase()}`}
-            disabled={!detail || transcriptPending || exporting}
-            onClick={doExport}
-          >
-            <Export />Export {exportFormat.toUpperCase()}
-          </Button>
+          <div className="relative">
+            <ButtonGroup aria-label="Copy and export transcript">
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-r-none!"
+                aria-label={copied
+                  ? `${exportFormat.toUpperCase()} transcript copied`
+                  : `Copy ${exportFormat.toUpperCase()} transcript to clipboard`}
+                disabled={!detail || transcriptPending}
+                onClick={doCopy}
+              >
+                {copied ? <Check /> : <Copy />}Copy {exportFormat.toUpperCase()}
+              </Button>
+              <Select
+                value={exportFormat}
+                disabled={!detail || transcriptPending}
+                onValueChange={(v) => {
+                  setExportFormat(v as ExportFormat);
+                  setCopied(false);
+                  setCopyError(null);
+                }}
+              >
+                <SelectTrigger
+                  size="sm"
+                  className="-ml-px w-7 min-w-7 rounded-none! px-1.5"
+                  aria-label={`Select transcript format, currently ${exportFormat.toUpperCase()}`}
+                >
+                  <span className="sr-only">{exportFormat.toUpperCase()}</span>
+                </SelectTrigger>
+                <SelectContent align="end" alignItemWithTrigger={false} className="w-auto min-w-24">
+                  {(["txt", "json", "srt", "vtt"] as const).map((format) => (
+                    <SelectItem key={format} value={format} className="text-xs">
+                      {format.toUpperCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="icon-sm"
+                      variant="outline"
+                      className="-ml-px rounded-l-none!"
+                      aria-label={`Export transcript as ${exportFormat.toUpperCase()}`}
+                      aria-busy={exporting}
+                      disabled={!detail || transcriptPending || exporting}
+                      onClick={doExport}
+                    />
+                  }
+                >
+                  <Export />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Export {exportFormat.toUpperCase()} file
+                </TooltipContent>
+              </Tooltip>
+            </ButtonGroup>
+            <span className="sr-only" role="status" aria-live="polite">
+              {copied ? `${exportFormat.toUpperCase()} transcript copied to clipboard` : ""}
+            </span>
+            {copyError && (
+              <p
+                role="alert"
+                className="absolute top-full right-0 z-20 mt-1 w-max max-w-xs rounded-md bg-popover px-2.5 py-1.5 text-xs text-destructive shadow-sm ring-1 ring-foreground/10"
+              >
+                Couldn’t copy transcript. {copyError}
+              </p>
+            )}
+          </div>
           <Popover open={actionsOpen} onOpenChange={setActionsOpen}>
             <PopoverTrigger
               render={<Button size="icon-sm" variant="ghost" aria-label="More transcript actions" />}
@@ -359,55 +424,7 @@ export function TranscriptView({ id, onBack, initialMs = 0, initialTab = "transc
               <div className="border-b px-3.5 py-3">
                 <h2 className="text-sm font-semibold tracking-tight">More actions</h2>
               </div>
-              <section aria-labelledby="output-actions-heading" className="p-3">
-                <div className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h3 id="output-actions-heading" className="text-xs font-semibold">Export and copy</h3>
-                    <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-                      Choose the transcript file format.
-                    </p>
-                  </div>
-                  <Select
-                    value={exportFormat}
-                    disabled={!detail || transcriptPending}
-                    onValueChange={(v) => {
-                      setExportFormat(v as ExportFormat);
-                      setCopied(false);
-                      setCopyError(null);
-                    }}
-                  >
-                    <SelectTrigger size="sm" className="min-w-16 text-xs" aria-label="Output format">
-                      <SelectValue>{(v) => String(v).toUpperCase()}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent
-                      align="end"
-                      alignItemWithTrigger={false}
-                      className="w-auto min-w-(--anchor-width)"
-                    >
-                      {(["txt", "json", "srt", "vtt"] as const).map((f) => (
-                        <SelectItem key={f} value={f} className="text-xs">{f.toUpperCase()}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="mt-2.5 w-full justify-start"
-                  disabled={!detail || transcriptPending}
-                  onClick={doCopy}
-                >
-                  {copied ? <Check /> : <Copy />}
-                  <span className="flex-1 text-left">{copied ? "Copied to clipboard" : "Copy transcript"}</span>
-                  <span className="font-mono text-[10px] font-medium text-muted-foreground">
-                    {exportFormat.toUpperCase()}
-                  </span>
-                </Button>
-                {copyError && (
-                  <p role="alert" className="px-2 pt-1 text-[11px] text-destructive">{copyError}</p>
-                )}
-              </section>
-              <div className="divide-y border-t">
+              <div className="divide-y">
                 <section aria-labelledby="retranscribe-heading" className="p-3">
                   <RetranscribeForm
                     disabled={!detail || detail.recording.status !== "done" || activeJob !== null}
