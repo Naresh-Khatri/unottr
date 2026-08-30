@@ -164,8 +164,11 @@ promise settlement. The copied-buffer result is then safe to send to the rendere
 
 Lessac is the default. Norman remains available because it was fast for the complete sentence,
 its model card identifies the LibriVox source recordings as public domain, and its male voice is a
-closer replacement for the Lessac preview used in the earlier Piper benchmark. The user can
-compare the benchmark previews in `tts-benchmark-report.html` before release.
+closer replacement for the Lessac preview used in the earlier Piper benchmark.
+
+Future Piper comparisons should run `pnpm benchmark:tts -- --model-dir DIR --voice-id ID
+--output-dir DIR --json FILE` and write the generated WAV and JSON files to a temporary directory
+outside the repository. Benchmark outputs are disposable and should not be committed.
 
 All three voices are pinned as selectable downloads. Each voice has independent status,
 download progress, verified installation, removal, and test playback. A missing selected voice
