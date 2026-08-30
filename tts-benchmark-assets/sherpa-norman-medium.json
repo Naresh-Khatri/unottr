@@ -1,0 +1,113 @@
+{
+  "recordedAt": "2026-08-30T09:52:16.483Z",
+  "voiceId": "sherpa-norman-medium",
+  "modelDir": "vits-piper-en_US-norman-medium",
+  "runtime": {
+    "sherpaVersion": "1.13.6",
+    "sherpaGitSha1": "1cb484af",
+    "sherpaGitDate": "Tue Aug 18 05:59:39 2026",
+    "onnxruntimeVersion": "1.27.1",
+    "node": "v23.11.1",
+    "platform": "linux",
+    "arch": "x64",
+    "cpu": "AMD Ryzen 5 3600 6-Core Processor",
+    "logicalCpus": 12,
+    "threads": 2
+  },
+  "load": {
+    "milliseconds": 1531.4,
+    "rssBeforeMiB": 61.6,
+    "rssAfterMiB": 161.4,
+    "rssDeltaMiB": 99.8
+  },
+  "firstResponse": {
+    "synthesisMs": 359,
+    "durationMs": 5566,
+    "rtf": 0.065,
+    "firstChunkMs": null,
+    "chunks": 0,
+    "samples": 122731,
+    "sampleRate": 22050,
+    "rssMiB": 244.4
+  },
+  "warm": {
+    "runs": [
+      {
+        "synthesisMs": 328.8,
+        "durationMs": 5451.6,
+        "rtf": 0.06,
+        "firstChunkMs": null,
+        "chunks": 0,
+        "samples": 120208,
+        "sampleRate": 22050,
+        "rssMiB": 252.3
+      },
+      {
+        "synthesisMs": 322.7,
+        "durationMs": 5316.6,
+        "rtf": 0.061,
+        "firstChunkMs": null,
+        "chunks": 0,
+        "samples": 117232,
+        "sampleRate": 22050,
+        "rssMiB": 254.3
+      },
+      {
+        "synthesisMs": 342.5,
+        "durationMs": 5424.9,
+        "rtf": 0.063,
+        "firstChunkMs": null,
+        "chunks": 0,
+        "samples": 119620,
+        "sampleRate": 22050,
+        "rssMiB": 254.8
+      },
+      {
+        "synthesisMs": 327.1,
+        "durationMs": 5235.1,
+        "rtf": 0.062,
+        "firstChunkMs": null,
+        "chunks": 0,
+        "samples": 115435,
+        "sampleRate": 22050,
+        "rssMiB": 255.2
+      },
+      {
+        "synthesisMs": 310,
+        "durationMs": 5387,
+        "rtf": 0.058,
+        "firstChunkMs": null,
+        "chunks": 0,
+        "samples": 118784,
+        "sampleRate": 22050,
+        "rssMiB": 255.7
+      }
+    ],
+    "medianSynthesisMs": 327.1,
+    "medianRtf": 0.061
+  },
+  "streamingProbe": {
+    "synthesisMs": 505.2,
+    "durationMs": 7916.1,
+    "rtf": 0.064,
+    "firstChunkMs": 88.6,
+    "chunks": 2,
+    "samples": 174549,
+    "sampleRate": 22050,
+    "rssMiB": 331.9
+  },
+  "cancellation": {
+    "outcome": "resolved",
+    "elapsedMs": 839.9,
+    "synthesisMs": 839.8,
+    "durationMs": 12813.1,
+    "rtf": 0.066,
+    "firstChunkMs": 411.1,
+    "chunks": 1,
+    "samples": 282528,
+    "sampleRate": 22050,
+    "rssMiB": 379.9
+  },
+  "rssAfterRunsMiB": 381.6,
+  "previewPath": "tts-benchmark-assets/sherpa-norman-medium.wav"
+}

@@ -1,0 +1,113 @@
+{
+  "recordedAt": "2026-08-30T09:52:11.047Z",
+  "voiceId": "sherpa-ljspeech-medium",
+  "modelDir": "vits-piper-en_US-ljspeech-medium",
+  "runtime": {
+    "sherpaVersion": "1.13.6",
+    "sherpaGitSha1": "1cb484af",
+    "sherpaGitDate": "Tue Aug 18 05:59:39 2026",
+    "onnxruntimeVersion": "1.27.1",
+    "node": "v23.11.1",
+    "platform": "linux",
+    "arch": "x64",
+    "cpu": "AMD Ryzen 5 3600 6-Core Processor",
+    "logicalCpus": 12,
+    "threads": 2
+  },
+  "load": {
+    "milliseconds": 1397.3,
+    "rssBeforeMiB": 62,
+    "rssAfterMiB": 161.4,
+    "rssDeltaMiB": 99.3
+  },
+  "firstResponse": {
+    "synthesisMs": 401.5,
+    "durationMs": 6735.6,
+    "rtf": 0.06,
+    "firstChunkMs": null,
+    "chunks": 0,
+    "samples": 148521,
+    "sampleRate": 22050,
+    "rssMiB": 254.4
+  },
+  "warm": {
+    "runs": [
+      {
+        "synthesisMs": 407.7,
+        "durationMs": 6853.7,
+        "rtf": 0.059,
+        "firstChunkMs": null,
+        "chunks": 0,
+        "samples": 151123,
+        "sampleRate": 22050,
+        "rssMiB": 265.1
+      },
+      {
+        "synthesisMs": 388,
+        "durationMs": 6665.9,
+        "rtf": 0.058,
+        "firstChunkMs": null,
+        "chunks": 0,
+        "samples": 146982,
+        "sampleRate": 22050,
+        "rssMiB": 271.2
+      },
+      {
+        "synthesisMs": 363.1,
+        "durationMs": 6745.4,
+        "rtf": 0.054,
+        "firstChunkMs": null,
+        "chunks": 0,
+        "samples": 148736,
+        "sampleRate": 22050,
+        "rssMiB": 271.2
+      },
+      {
+        "synthesisMs": 374.3,
+        "durationMs": 6768.6,
+        "rtf": 0.055,
+        "firstChunkMs": null,
+        "chunks": 0,
+        "samples": 149248,
+        "sampleRate": 22050,
+        "rssMiB": 271.9
+      },
+      {
+        "synthesisMs": 407.6,
+        "durationMs": 7079.4,
+        "rtf": 0.058,
+        "firstChunkMs": null,
+        "chunks": 0,
+        "samples": 156100,
+        "sampleRate": 22050,
+        "rssMiB": 272.5
+      }
+    ],
+    "medianSynthesisMs": 388,
+    "medianRtf": 0.058
+  },
+  "streamingProbe": {
+    "synthesisMs": 602.8,
+    "durationMs": 9235.7,
+    "rtf": 0.065,
+    "firstChunkMs": 107.6,
+    "chunks": 2,
+    "samples": 203647,
+    "sampleRate": 22050,
+    "rssMiB": 351.2
+  },
+  "cancellation": {
+    "outcome": "resolved",
+    "elapsedMs": 916.1,
+    "synthesisMs": 916,
+    "durationMs": 15480.4,
+    "rtf": 0.059,
+    "firstChunkMs": 445.4,
+    "chunks": 1,
+    "samples": 341343,
+    "sampleRate": 22050,
+    "rssMiB": 391.1
+  },
+  "rssAfterRunsMiB": 392.5,
+  "previewPath": "tts-benchmark-assets/sherpa-ljspeech-medium.wav"
+}
