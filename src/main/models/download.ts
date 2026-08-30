@@ -60,7 +60,13 @@ export async function ensure(spec: ModelSpec, o: EnsureOptions = {}): Promise<st
 
   await mkdir(dir, { recursive: true });
   const part = `${final}.part`;
-  await download(spec, part, { ...o, onProgress: streaming });
+  let completePart = false;
+  try {
+    completePart = statSync(part).size === spec.size;
+  } catch {
+    completePart = false;
+  }
+  if (!completePart) await download(spec, part, { ...o, onProgress: streaming });
 
   o.onPhase?.("verifying");
   const digest = await sha256File(part);
@@ -90,14 +96,21 @@ async function download(spec: ModelSpec, part: string, o: EnsureOptions): Promis
   let res: Response;
   try {
     o.onPhase?.("connecting");
-    res = await fetch(url(spec), have > 0 ? { headers: { Range: `bytes=${have}-` } } : {});
+    res = await fetch(url(spec), {
+      headers: have > 0 ? { Range: `bytes=${have}-` } : undefined,
+      signal: o.signal,
+    });
   } catch (e) {
+    if (o.signal?.aborted) throw err.cancelled();
     throw err.download(spec.name, e instanceof Error ? e.message : String(e));
   }
 
   // 200 to a range request = server ignored it, so the bytes start at zero again
   const resuming = res.status === 206;
   if (res.status !== 200 && !resuming) throw err.download(spec.name, `http ${res.status}`);
+  if (resuming && !res.headers.get("content-range")?.startsWith(`bytes ${have}-`)) {
+    throw err.download(spec.name, "invalid content-range for resumed download");
+  }
   if (!resuming) have = 0;
   if (!res.body) throw err.download(spec.name, "empty response body");
   o.onPhase?.("downloading");

@@ -300,6 +300,8 @@ describe("settings", () => {
       device: "auto",
       diarize_threshold: null,
       close_to_tray: true,
+      ask_speak_answers: true,
+      tts_voice_id: "en_US-lessac-medium",
       tray_available: true,
       first_run_complete: false,
     });
@@ -324,6 +326,10 @@ describe("settings", () => {
     expect(settingsDb.validate("diarize_threshold", "1.5")).not.toBeNull();
     expect(settingsDb.validate("diarize_threshold", "")).not.toBeNull();
     expect(settingsDb.validate("ffmpeg_path", "")).toBeNull();
+    expect(settingsDb.validate("ask_speak_answers", "1")).toBeNull();
+    expect(settingsDb.validate("ask_speak_answers", "yes")).not.toBeNull();
+    expect(settingsDb.validate("tts_voice_id", "en_US-ljspeech-medium")).toBeNull();
+    expect(settingsDb.validate("tts_voice_id", "unknown")).not.toBeNull();
     expect(settingsDb.validate("nope", "1")).not.toBeNull();
   });
 });

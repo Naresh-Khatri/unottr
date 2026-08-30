@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  CheckCircle, Download, FolderOpen, FolderSimplePlus, HardDrives, Plus, StopCircle, Trash,
+  CheckCircle, Download, FolderOpen, FolderSimplePlus, HardDrives, Plus, SpeakerHigh, StopCircle, Trash,
   Warning, X,
 } from "@phosphor-icons/react";
 import { api, os } from "@/ipc/client";
 import type {
   BackfillEstimate, DiskUsage, ModelDownloadProgress, ModelInfo, Person, Resolved, Settings as SettingsT, SupportModels,
+  TtsVoiceId, TtsVoiceStatus,
   WatchFolder,
 } from "@/ipc/types";
-import { SUPPORT_MODELS } from "@/ipc/types";
+import { SUPPORT_MODELS, ttsVoiceDownloadId } from "@/ipc/types";
 import { bytesLabel, durationLabel } from "@/lib/format";
 import { modelPhaseLabel } from "@/lib/activity";
+import { askSpeech, type AskSpeechState } from "@/lib/askSpeech";
 import { useActivities } from "@/lib/ActivityProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +38,9 @@ const TIERS: { tier: string; label: string }[] = [
   { tier: "small", label: "Small" },
 ];
 
+const SPEECH_TEST_ID = -1;
+const SPEECH_TEST_TEXT = "Hello. This is how Ask answers will sound.";
+
 export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boolean) => void }) {
   const [settings, setSettings] = useState<SettingsT | null>(null);
   const [folders, setFolders] = useState<WatchFolder[]>([]);
@@ -46,12 +51,14 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
   const [autostartOn, setAutostartOn] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [support, setSupport] = useState<SupportModels | null>(null);
+  const [voices, setVoices] = useState<TtsVoiceStatus[]>([]);
 
   const loadFolders = useCallback(() => { api.listWatchFolders().then(setFolders); }, []);
   const loadModels = useCallback(() => { api.listModels().then(setModels); }, []);
   const loadDisk = useCallback(() => { api.diskUsage().then(setDisk); }, []);
   const loadPeople = useCallback(() => { api.listPeople().then(setPeople); }, []);
   const loadSupport = useCallback(() => { api.supportModels().then(setSupport); }, []);
+  const loadVoices = useCallback(() => { api.ttsVoiceCatalog().then(setVoices); }, []);
 
   useEffect(() => {
     api.getSettings().then((s) => { setSettings(s); onFfmpegChange?.(s.ffmpeg_ok); });
@@ -60,16 +67,18 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
     loadDisk();
     loadPeople();
     loadSupport();
+    loadVoices();
     api.detectedDevice().then(setDetected);
     os.getAutostart().then(setAutostartOn).catch(() => {});
-  }, [loadFolders, loadModels, loadDisk, loadPeople, loadSupport]);
+  }, [loadFolders, loadModels, loadDisk, loadPeople, loadSupport, loadVoices]);
 
   useEffect(() => {
     if (!Object.values(modelDownloads).some((item) => item.phase === "done" && !item.error)) return;
     loadModels();
     loadDisk();
     loadSupport();
-  }, [modelDownloads, loadModels, loadDisk, loadSupport]);
+    loadVoices();
+  }, [modelDownloads, loadModels, loadDisk, loadSupport, loadVoices]);
 
   async function setSetting(key: string, value: string) {
     const s = await api.setSetting(key, value);
@@ -124,6 +133,30 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
 
         <AiCard />
 
+        <SpeechCard
+          enabled={settings.ask_speak_answers}
+          voices={voices}
+          selectedVoiceId={settings.tts_voice_id}
+          download={modelDownloads[ttsVoiceDownloadId(settings.tts_voice_id)]}
+          onVoiceChange={async (voiceId) => {
+            askSpeech.stop();
+            await setSetting("tts_voice_id", voiceId);
+          }}
+          onEnabledChange={(enabled) => {
+            if (!enabled) askSpeech.stop();
+            return setSetting("ask_speak_answers", enabled ? "1" : "0");
+          }}
+          onDownload={(voiceId) => api.downloadTtsVoice(voiceId)}
+          onCancel={(voiceId) => api.cancelTtsVoiceDownload(voiceId)}
+          onRemove={async (voiceId) => {
+            askSpeech.stop();
+            await api.removeTtsVoice(voiceId);
+            setSettings(await api.getSettings());
+            loadVoices();
+            loadDisk();
+          }}
+        />
+
         <ModelCard
           models={models}
           activeTier={settings.model_tier}
@@ -164,6 +197,130 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
         />
       </div>
     </div>
+  );
+}
+
+function SpeechCard({
+  enabled, voices, selectedVoiceId, download, onVoiceChange, onEnabledChange, onDownload, onCancel, onRemove,
+}: {
+  enabled: boolean;
+  voices: TtsVoiceStatus[];
+  selectedVoiceId: TtsVoiceId;
+  download: ModelDownloadProgress | undefined;
+  onVoiceChange: (voiceId: TtsVoiceId) => void;
+  onEnabledChange: (enabled: boolean) => void;
+  onDownload: (voiceId: TtsVoiceId) => void;
+  onCancel: (voiceId: TtsVoiceId) => void;
+  onRemove: (voiceId: TtsVoiceId) => Promise<void>;
+}) {
+  const [removing, setRemoving] = useState(false);
+  const [speech, setSpeech] = useState<AskSpeechState>(() => askSpeech.snapshot());
+  const voice = voices.find((item) => item.voice_id === selectedVoiceId) ?? null;
+  const installed = voice?.state === "installed";
+  const downloading = download != null && download.phase !== "done" && !download.error;
+  const testing = speech.activeMessageId === SPEECH_TEST_ID;
+  const testError = speech.status === "error" && speech.lastMessageId === SPEECH_TEST_ID
+    ? speech.error
+    : null;
+
+  useEffect(() => {
+    const unsubscribe = askSpeech.subscribe(setSpeech);
+    return () => {
+      unsubscribe();
+      if (askSpeech.snapshot().activeMessageId === SPEECH_TEST_ID) askSpeech.stop();
+    };
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Speech</CardTitle>
+        <CardDescription>Read completed Ask answers aloud on this device.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Select value={selectedVoiceId} onValueChange={(value) => onVoiceChange(value as TtsVoiceId)}>
+          <SelectTrigger aria-label="Speech voice"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {voices.map((item) => (
+              <SelectItem key={item.voice_id} value={item.voice_id}>
+                <span>{item.display_name}</span>
+                {item.state === "installed" && (
+                  <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+                    <CheckCircle />Downloaded
+                  </span>
+                )}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-medium">
+              {voice?.display_name ?? "English voice"}
+              {installed && <Badge variant="outline"><CheckCircle />downloaded</Badge>}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {voice?.language ?? "English (US)"}
+              {voice ? ` · ${bytesLabel(installed ? voice.installed_bytes : voice.download_bytes)}` : ""}
+              {" · CPU"}
+            </p>
+          </div>
+          {downloading ? (
+            <Button size="xs" variant="outline" onClick={() => onCancel(selectedVoiceId)}><StopCircle />Cancel</Button>
+          ) : installed ? (
+            <div className="flex items-center gap-2">
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={removing}
+                onClick={() => testing
+                  ? askSpeech.stop()
+                  : void askSpeech.speak(SPEECH_TEST_ID, SPEECH_TEST_TEXT)}
+              >
+                {testing ? <StopCircle /> : <SpeakerHigh />}
+                {testing ? "Stop" : "Test voice"}
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={removing}
+                onClick={async () => {
+                  setRemoving(true);
+                  try { await onRemove(selectedVoiceId); } finally { setRemoving(false); }
+                }}
+              >
+                <Trash />{removing ? "Removing" : "Remove"}
+              </Button>
+            </div>
+          ) : (
+            <Button size="xs" variant="outline" onClick={() => onDownload(selectedVoiceId)} disabled={!voice}>
+              <Download />Download
+            </Button>
+          )}
+        </div>
+        {downloading && download && (
+          <div>
+            <div className="mb-1 text-[11px] text-muted-foreground">{modelPhaseLabel(download.phase)}</div>
+            <ActivityBar value={download.pct} indeterminate={download.phase !== "downloading"} />
+          </div>
+        )}
+        {!downloading && download?.error && (
+          <p className="text-xs text-destructive">
+            {download.error === "cancelled" ? "Download cancelled." : download.error}
+          </p>
+        )}
+        {testError && <p className="text-xs text-destructive">Voice test failed: {testError}</p>}
+        <div className="flex items-center justify-between border-t pt-3">
+          <Label htmlFor="ask-speak-answers">Read Ask answers aloud</Label>
+          <Switch
+            id="ask-speak-answers"
+            checked={installed && enabled}
+            disabled={!installed}
+            onCheckedChange={onEnabledChange}
+          />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

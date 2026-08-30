@@ -8,6 +8,7 @@ import type {
   Settings, SupportModels, SystemStats, TaskStatus, WatchFolder,
   TerminologyApplyResult, TerminologyImportResult, TerminologyRule, TerminologyRuleInput,
   TranscriptChanged,
+  TtsEvent, TtsSpeakInput, TtsVoiceId, TtsVoiceStatus,
 } from "./types";
 import { mockCommands, mockEvents } from "./mock";
 
@@ -100,6 +101,22 @@ export const api = {
     USE_MOCK ? mockCommands.download_model(tier) : invoke("download_model", { tier }),
   cancelModelDownload: (tier: string): Promise<void> =>
     USE_MOCK ? mockCommands.cancel_model_download(tier) : invoke("cancel_model_download", { tier }),
+  ttsVoiceStatus: (): Promise<TtsVoiceStatus> =>
+    USE_MOCK ? mockCommands.tts_voice_status() : invoke("tts_voice_status"),
+  ttsVoiceCatalog: (): Promise<TtsVoiceStatus[]> =>
+    USE_MOCK ? mockCommands.tts_voice_catalog() : invoke("tts_voice_catalog"),
+  downloadTtsVoice: (voiceId: TtsVoiceId): Promise<void> =>
+    USE_MOCK ? mockCommands.download_tts_voice(voiceId) : invoke("download_tts_voice", { voice_id: voiceId }),
+  cancelTtsVoiceDownload: (voiceId: TtsVoiceId): Promise<void> =>
+    USE_MOCK ? mockCommands.cancel_tts_voice_download(voiceId) : invoke("cancel_tts_voice_download", { voice_id: voiceId }),
+  removeTtsVoice: (voiceId: TtsVoiceId): Promise<void> =>
+    USE_MOCK ? mockCommands.remove_tts_voice(voiceId) : invoke("remove_tts_voice", { voice_id: voiceId }),
+  ttsWarm: (): Promise<void> =>
+    USE_MOCK ? mockCommands.tts_warm() : invoke("tts_warm"),
+  ttsSpeak: (input: TtsSpeakInput): Promise<void> =>
+    USE_MOCK ? mockCommands.tts_speak(input) : invoke("tts_speak", { ...input }),
+  ttsStop: (): Promise<void> =>
+    USE_MOCK ? mockCommands.tts_stop() : invoke("tts_stop"),
   clearCache: (): Promise<void> =>
     USE_MOCK ? mockCommands.clear_cache() : invoke("clear_cache"),
   getLogDir: (): Promise<string> =>
@@ -250,6 +267,11 @@ export function onOverviewChanged(cb: (p: OverviewChanged) => void): () => void 
 export function onOverviewProgress(cb: (p: OverviewProgress) => void): () => void {
   if (USE_MOCK) return mockEvents.overview_progress(cb);
   return listen<OverviewProgress>("overview_progress", cb);
+}
+
+export function onTtsEvent(cb: (event: TtsEvent) => void): () => void {
+  if (USE_MOCK) return mockEvents.tts_event(cb);
+  return listen<TtsEvent>("tts_event", cb);
 }
 
 function listen<T>(event: string, cb: (payload: T) => void): () => void {

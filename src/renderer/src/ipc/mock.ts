@@ -43,9 +43,13 @@ import type {
   TerminologyRule,
   TerminologyRuleInput,
   TranscriptChanged,
+  TtsEvent,
+  TtsSpeakInput,
+  TtsVoiceId,
+  TtsVoiceStatus,
   WatchFolder,
 } from "./types";
-import { SUPPORT_MODELS, type SupportModels } from "./types";
+import { SUPPORT_MODELS, ttsVoiceDownloadId, type SupportModels } from "./types";
 
 const speakers9001: Speaker[] = [
   { id: 9101, recording_id: 9001, label: "Speaker 1", display_name: "Priya", person_id: 1 },
@@ -327,6 +331,8 @@ export const mockCommands = {
       case "cache_dir": settings.cache_dir = value || null; break;
       case "autostart": settings.autostart = value === "1"; break;
       case "close_to_tray": settings.close_to_tray = value === "1"; break;
+      case "ask_speak_answers": settings.ask_speak_answers = value === "1"; break;
+      case "tts_voice_id": settings.tts_voice_id = value as TtsVoiceId; break;
       case "first_run_complete": settings.first_run_complete = value === "1"; break;
     }
     return wait({ ...settings });
@@ -413,6 +419,68 @@ export const mockCommands = {
     clearInterval(downloads.get(tier));
     downloads.delete(tier);
     emit("model_download_progress", { model: tier, pct: 0, phase: "done", error: "cancelled" });
+    return wait(undefined);
+  },
+  tts_voice_status: (): Promise<TtsVoiceStatus> => wait(mockVoiceStatus(settings.tts_voice_id)),
+  tts_voice_catalog: (): Promise<TtsVoiceStatus[]> => wait(MOCK_VOICES.map((voice) => mockVoiceStatus(voice.voice_id))),
+  download_tts_voice(voiceId: TtsVoiceId) {
+    const downloadId = ttsVoiceDownloadId(voiceId);
+    if (ttsVoiceInstalled.has(voiceId)) {
+      emit("model_download_progress", { model: downloadId, pct: 1, phase: "done" });
+      return wait(undefined);
+    }
+    let pct = 0;
+    clearInterval(downloads.get(downloadId));
+    downloads.set(downloadId, setInterval(() => {
+      pct = Math.min(0.999, pct + 0.1);
+      if (pct < 0.999) {
+        emit("model_download_progress", { model: downloadId, pct, phase: "downloading" });
+        return;
+      }
+      clearInterval(downloads.get(downloadId));
+      downloads.delete(downloadId);
+      ttsVoiceInstalled.add(voiceId);
+      emit("model_download_progress", { model: downloadId, pct: 1, phase: "done" });
+    }, 250));
+    return wait(undefined);
+  },
+  cancel_tts_voice_download(voiceId: TtsVoiceId) {
+    const downloadId = ttsVoiceDownloadId(voiceId);
+    clearInterval(downloads.get(downloadId));
+    downloads.delete(downloadId);
+    emit("model_download_progress", {
+      model: downloadId,
+      pct: 0,
+      phase: "done",
+      error: "cancelled",
+    });
+    return wait(undefined);
+  },
+  remove_tts_voice(voiceId: TtsVoiceId) {
+    ttsVoiceInstalled.delete(voiceId);
+    if (settings.tts_voice_id === voiceId) settings.ask_speak_answers = false;
+    return wait(undefined);
+  },
+  tts_warm() {
+    if (!ttsVoiceInstalled.has(settings.tts_voice_id)) return Promise.reject(new Error("speech voice is not downloaded"));
+    emit("tts_event", { type: "ready" });
+    return wait(undefined);
+  },
+  tts_speak(input: TtsSpeakInput) {
+    if (!ttsVoiceInstalled.has(settings.tts_voice_id)) return Promise.reject(new Error("speech voice is not downloaded"));
+    window.setTimeout(() => {
+      emit("tts_event", {
+        type: "audio",
+        request_id: input.request_id,
+        sequence: 0,
+        samples: new Float32Array(2_205),
+        sample_rate: 22_050,
+      });
+      emit("tts_event", { type: "done", request_id: input.request_id });
+    }, 50);
+    return wait(undefined);
+  },
+  tts_stop() {
     return wait(undefined);
   },
   clear_cache: () => wait(undefined),
@@ -638,6 +706,8 @@ const settings: Settings = {
   cache_dir: null,
   autostart: false,
   close_to_tray: true,
+  ask_speak_answers: true,
+  tts_voice_id: "en_US-lessac-medium",
   tray_available: true,
   first_run_complete: true,
   ffmpeg_ok: true,
@@ -663,6 +733,22 @@ let supportReady = false;
 const downloads = new Map<string, ReturnType<typeof setInterval>>();
 
 let mockLoad = 0;
+const MOCK_VOICES: Array<Omit<TtsVoiceStatus, "state" | "installed_bytes">> = [
+  { voice_id: "en_US-norman-medium", display_name: "Norman", language: "English (US)", download_bytes: 67_203_672 },
+  { voice_id: "en_US-ljspeech-medium", display_name: "LJSpeech", language: "English (US)", download_bytes: 67_169_893 },
+  { voice_id: "en_US-lessac-medium", display_name: "Lessac", language: "English (US)", download_bytes: 67_230_653 },
+];
+const ttsVoiceInstalled = new Set<TtsVoiceId>();
+
+function mockVoiceStatus(voiceId: TtsVoiceId): TtsVoiceStatus {
+  const voice = MOCK_VOICES.find((item) => item.voice_id === voiceId) ?? MOCK_VOICES[0];
+  const installed = ttsVoiceInstalled.has(voice.voice_id);
+  return {
+    ...voice,
+    state: installed ? "installed" : "missing",
+    installed_bytes: installed ? 81_529_932 : 0,
+  };
+}
 
 // A tiny event bus so the mock can push the same events the main process will.
 type Payloads = {
@@ -678,6 +764,7 @@ type Payloads = {
   overview_changed: OverviewChanged;
   overview_progress: OverviewProgress;
   probe_progress: ProbeProgress;
+  tts_event: TtsEvent;
 };
 
 const subscribers: { [K in keyof Payloads]: Set<(p: Payloads[K]) => void> } = {
@@ -693,6 +780,7 @@ const subscribers: { [K in keyof Payloads]: Set<(p: Payloads[K]) => void> } = {
   overview_changed: new Set(),
   overview_progress: new Set(),
   probe_progress: new Set(),
+  tts_event: new Set(),
 };
 
 function emit<K extends keyof Payloads>(event: K, payload: Payloads[K]): void {
@@ -724,6 +812,7 @@ export const mockEvents = {
   overview_changed: subscribe("overview_changed"),
   overview_progress: subscribe("overview_progress"),
   probe_progress: subscribe("probe_progress"),
+  tts_event: subscribe("tts_event"),
 };
 
 // Fake progress for recording 9002 so the live progress bar has something to render.

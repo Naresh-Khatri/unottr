@@ -15,7 +15,11 @@ export default defineConfig({
     build: {
       rollupOptions: {
         // the compute worker is a utilityProcess entry, not an import of main
-        input: { index: r("src/main/index.ts"), worker: r("src/worker/index.ts") },
+        input: {
+          index: r("src/main/index.ts"),
+          worker: r("src/worker/index.ts"),
+          "tts-worker": r("src/tts-worker/index.ts"),
+        },
         output: cjs,
       },
     },

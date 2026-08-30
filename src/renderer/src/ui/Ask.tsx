@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowSquareOut,
+  ArrowCounterClockwise,
   Check,
   Copy,
   MagnifyingGlass,
   Plus,
   Quotes,
+  SpeakerHigh,
+  StopCircle,
   Trash,
   WarningCircle,
 } from "@phosphor-icons/react";
@@ -23,6 +26,7 @@ import type {
 } from "@/ipc/types";
 import { dateLabel, hms } from "@/lib/format";
 import { blankScope, describeScope } from "@/lib/askScope";
+import { askSpeech, type AskSpeechState } from "@/lib/askSpeech";
 import { cn } from "@/lib/utils";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import {
@@ -97,6 +101,8 @@ export function Ask({
   const [titleDraft, setTitleDraft] = useState("");
   const [copied, setCopied] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AskThreadSummary | null>(null);
+  const [speakAnswers, setSpeakAnswers] = useState(false);
+  const [speech, setSpeech] = useState<AskSpeechState>(() => askSpeech.snapshot());
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -115,6 +121,16 @@ export function Ask({
     void loadThreads("");
     // Initial data belongs to the screen, not to later search changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => askSpeech.subscribe(setSpeech), []);
+
+  useEffect(() => {
+    void Promise.all([api.getSettings(), api.ttsVoiceStatus()]).then(([appSettings, voice]) => {
+      setSpeakAnswers(appSettings.ask_speak_answers);
+      if (appSettings.ask_speak_answers && voice.state === "installed") askSpeech.warm();
+    });
+    return () => askSpeech.stop();
   }, []);
 
   useEffect(() => {
@@ -153,6 +169,7 @@ export function Ask({
   async function send(question = draft) {
     const text = question.trim();
     if (!text || requestId) return;
+    askSpeech.stop();
     const id = crypto.randomUUID();
     setRequestId(id);
     setAskPhase("searching");
@@ -170,6 +187,13 @@ export function Ask({
       setScope(next.scope);
       setTitleDraft(next.title);
       onThreadChange(next.id);
+      const answer = next.messages.at(-1);
+      if (speakAnswers && answer?.role === "assistant") {
+        const voice = await api.ttsVoiceStatus();
+        if (voice.state === "installed") {
+          window.requestAnimationFrame(() => void askSpeech.speak(answer.id, answer.text));
+        }
+      }
       await loadThreads("");
     } catch (reason) {
       setDraft(text);
@@ -182,6 +206,7 @@ export function Ask({
   }
 
   function newThread(nextScope = blankScope()) {
+    askSpeech.stop();
     onThreadChange(null);
     setThread(null);
     setScope(nextScope);
@@ -224,6 +249,15 @@ export function Ask({
     window.setTimeout(() => setCopied(null), 1_500);
   }
 
+  async function readMessage(message: AskMessage) {
+    const voice = await api.ttsVoiceStatus();
+    if (voice.state !== "installed") {
+      onOpenSettings();
+      return;
+    }
+    await askSpeech.speak(message.id, message.text);
+  }
+
   return (
     <div className="flex h-full min-h-0 bg-background">
       <aside className="flex w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
@@ -251,7 +285,10 @@ export function Ask({
                 <Button
                   variant={item.id === thread?.id ? "secondary" : "ghost"}
                   className="h-auto min-w-0 flex-1 justify-start px-2.5 py-2 text-left"
-                  onClick={() => onThreadChange(item.id)}
+                  onClick={() => {
+                    askSpeech.stop();
+                    onThreadChange(item.id);
+                  }}
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-xs font-medium">{item.title}</span>
@@ -338,8 +375,14 @@ export function Ask({
                     copied={copied === message.id}
                     onSources={() => setSourceMessageId(message.id)}
                     onCopy={(withSources) => void copyMessage(message, withSources)}
-                    onCitation={onOpenCitation}
+                    onCitation={(recordingId, ms) => {
+                      askSpeech.stop();
+                      onOpenCitation(recordingId, ms);
+                    }}
                     onFollowUp={(question) => void send(question)}
+                    speech={speech}
+                    onRead={() => void readMessage(message)}
+                    onStop={() => askSpeech.stop()}
                   />
                 ))}
                 {pendingQuestion && (
@@ -372,7 +415,10 @@ export function Ask({
                     key={`${citation.kind}-${citation.recording_id}-${citation.segment_id ?? citation.task_id}`}
                     citation={citation}
                     index={index + 1}
-                    onOpen={onOpenCitation}
+                    onOpen={(recordingId, ms) => {
+                      askSpeech.stop();
+                      onOpenCitation(recordingId, ms);
+                    }}
                   />
                 ))}
               </div>
@@ -451,6 +497,9 @@ function Message({
   onCopy,
   onCitation,
   onFollowUp,
+  speech,
+  onRead,
+  onStop,
 }: {
   message: AskMessage;
   copied: boolean;
@@ -458,10 +507,15 @@ function Message({
   onCopy: (withSources: boolean) => void;
   onCitation: (recordingId: number, ms: number) => void;
   onFollowUp: (question: string) => void;
+  speech: AskSpeechState;
+  onRead: () => void;
+  onStop: () => void;
 }) {
   if (message.role === "user") return <UserBubble text={message.text} />;
 
   const sources = uniqueCitations(message);
+  const speaking = speech.activeMessageId === message.id
+    && (speech.status === "loading" || speech.status === "playing");
   return (
     <article className="space-y-3">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -501,6 +555,16 @@ function Message({
         <Button variant="ghost" size="xs" onClick={() => onCopy(false)}>
           {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy"}
         </Button>
+        {speaking ? (
+          <Button variant="ghost" size="xs" onClick={onStop}>
+            <StopCircle />Stop
+          </Button>
+        ) : (
+          <Button variant="ghost" size="xs" onClick={onRead} title={speech.error ?? undefined}>
+            {speech.lastMessageId === message.id ? <ArrowCounterClockwise /> : <SpeakerHigh />}
+            {speech.lastMessageId === message.id ? "Replay" : "Read"}
+          </Button>
+        )}
         {!!sources.length && (
           <Button variant="ghost" size="xs" onClick={() => onCopy(true)}>Copy with sources</Button>
         )}

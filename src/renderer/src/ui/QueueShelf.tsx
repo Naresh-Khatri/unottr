@@ -8,6 +8,7 @@ import {
 } from "@/ipc/client";
 import type { RecordingSummary } from "@/ipc/types";
 import { IN_FLIGHT } from "@/ipc/types";
+import { isTtsVoiceDownload } from "@/ipc/types";
 import { countdownEta, etaLabel } from "@/lib/format";
 import { jobActivity, jobPhaseOf, modelPhaseLabel } from "@/lib/activity";
 import { useActivities } from "@/lib/ActivityProvider";
@@ -99,7 +100,9 @@ export function QueueShelf({ onOpen }: { onOpen: (id: number) => void }) {
   const primaryLabel = active
     ? active.title ?? active.filename
     : primaryModel
-      ? primaryModel.model === "support" ? "Support models" : `${primaryModel.model} model`
+      ? primaryModel.model === "support"
+        ? "Support models"
+        : isTtsVoiceDownload(primaryModel.model) ? "Speech voice" : `${primaryModel.model} model`
       : primaryBackfill ? "Adding existing recordings"
         : primaryIncoming?.filename ?? primaryAction?.label ?? "Background work";
   const primaryDetail = activeView?.label

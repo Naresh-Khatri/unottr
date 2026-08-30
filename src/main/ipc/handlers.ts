@@ -13,8 +13,10 @@ import type {
   SystemStats,
   TaskStatus,
   TerminologyRuleInput,
+  TtsVoiceId,
+  TtsVoiceStatus,
 } from "../../shared/ipc";
-import { SUPPORT_MODELS } from "../../shared/ipc";
+import { SUPPORT_MODELS, ttsVoiceDownloadId } from "../../shared/ipc";
 import * as ai from "../ai/generate";
 import * as askAi from "../ai/ask";
 import { detectAgents } from "../ai/cli";
@@ -51,10 +53,13 @@ import {
 } from "../models/sortformer";
 import { logsDir, pcmCacheDir } from "../paths";
 import { sampleHardware } from "../system/stats";
+import { installVoice, removeVoice, voiceById, voiceStatus, voiceStatuses } from "../tts/voice";
+import { ttsManager } from "../tts/manager";
 
 interface DownloadEntry {
   controller: AbortController;
   status: ModelDownloadProgress;
+  task?: Promise<void>;
 }
 
 /** Live model downloads stay queryable so navigation never erases their UI state. */
@@ -111,6 +116,7 @@ export const setTrayAvailable = (v: boolean): void => {
 };
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+const voiceArg = (v: unknown): TtsVoiceId => voiceById(str(v) ?? "").id;
 const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
 
 function terminologyInput(a: Args): TerminologyRuleInput {
@@ -717,6 +723,72 @@ const handlers: Record<string, Handler> = {
 
   cancel_model_download(a) {
     downloads.get(str(a?.tier) ?? "")?.controller.abort();
+  },
+
+  tts_voice_status: (): TtsVoiceStatus => voiceStatus(settingsDb.load(db()).tts_voice_id),
+
+  tts_voice_catalog: (): TtsVoiceStatus[] => voiceStatuses(),
+
+  download_tts_voice(a) {
+    const voiceId = voiceArg(a?.voice_id);
+    const downloadId = ttsVoiceDownloadId(voiceId);
+    const entry = beginDownload(downloadId);
+    if (!entry) return;
+    const task = installVoice(voiceId, {
+      signal: entry.controller.signal,
+      onPhase: (phase) => publishDownload(downloadId, entry, { phase }),
+      onProgress: (pct) => publishDownload(downloadId, entry, { pct }),
+    })
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        console.warn("TTS voice download did not complete:", error);
+        if (downloads.get(downloadId) !== entry) return;
+        const message = isCancelled(error)
+          ? "cancelled"
+          : error instanceof Error ? error.message : String(error);
+        publishDownload(downloadId, entry, { pct: 0, phase: "done", error: message });
+      })
+      .finally(() => {
+        if (downloads.get(downloadId) === entry) downloads.delete(downloadId);
+      });
+    entry.task = task;
+  },
+
+  cancel_tts_voice_download(a) {
+    downloads.get(ttsVoiceDownloadId(voiceArg(a?.voice_id)))?.controller.abort();
+  },
+
+  async remove_tts_voice(a) {
+    const voiceId = voiceArg(a?.voice_id);
+    const downloadId = ttsVoiceDownloadId(voiceId);
+    const running = downloads.get(downloadId);
+    running?.controller.abort();
+    await running?.task?.catch(() => {});
+    ttsManager.shutdown();
+    await removeVoice(voiceId);
+    if (settingsDb.load(db()).tts_voice_id === voiceId) {
+      settingsDb.setRaw(db(), settingsDb.keys.ASK_SPEAK_ANSWERS, "0");
+    }
+  },
+
+  tts_warm: () => ttsManager.warm(settingsDb.load(db()).tts_voice_id),
+
+  async tts_speak(a) {
+    const requestId = str(a?.request_id);
+    const sentences = Array.isArray(a?.sentences) ? a.sentences : null;
+    if (!requestId || requestId.length > 128) throw new Error("tts_speak: invalid request_id");
+    if (!sentences || sentences.length === 0 || sentences.length > 120) {
+      throw new Error("tts_speak: invalid sentence count");
+    }
+    if (!sentences.every((sentence) => typeof sentence === "string"
+      && sentence.trim().length > 0 && sentence.length <= 480)) {
+      throw new Error("tts_speak: invalid sentence");
+    }
+    await ttsManager.speak(requestId, sentences, settingsDb.load(db()).tts_voice_id);
+  },
+
+  tts_stop() {
+    ttsManager.stop();
   },
 
   async clear_cache() {

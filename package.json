@@ -11,6 +11,7 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
+    "benchmark:tts": "node scripts/benchmark-tts.mjs",
     "smoke:native": "UNOTTR_NATIVE_SMOKE=1 vitest run test/native-addons.test.ts --reporter=verbose",
     "stage:macos:ffmpeg": "./scripts/stage-ffmpeg-macos.sh",
     "stage:macos:icon": "./scripts/stage-macos-icon.sh",
@@ -26,6 +27,8 @@
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@types/tar-stream": "^3.1.4",
+    "@types/unbzip2-stream": "^1.4.3",
     "@vitejs/plugin-react": "^5.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -56,6 +59,8 @@
     "drizzle-orm": "^0.45.2",
     "electron-log": "^5.4.4",
     "sherpa-onnx-node": "^1.13.6",
+    "tar-stream": "^3.2.1",
+    "unbzip2-stream": "^1.4.3",
     "zod": "^4.4.3"
   },
   "optionalDependencies": {

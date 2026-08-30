@@ -223,6 +223,8 @@ export interface Settings {
   cache_dir: string | null;
   autostart: boolean;
   close_to_tray: boolean;
+  ask_speak_answers: boolean;
+  tts_voice_id: TtsVoiceId;
   tray_available: boolean; // runtime fact, not a persisted setting
   first_run_complete: boolean; // ui-only, gates first-run wizard
   ffmpeg_ok: boolean; // runtime fact, re-checked on every get/set_settings call
@@ -250,6 +252,17 @@ export interface SupportModels {
 
 /** `ModelDownloadProgress.model` for the support set, which has no tier of its own. */
 export const SUPPORT_MODELS = "support";
+export const TTS_VOICE_IDS = [
+  "en_US-norman-medium",
+  "en_US-ljspeech-medium",
+  "en_US-lessac-medium",
+] as const;
+export type TtsVoiceId = (typeof TTS_VOICE_IDS)[number];
+export const DEFAULT_TTS_VOICE_ID: TtsVoiceId = "en_US-lessac-medium";
+export const TTS_VOICE_DOWNLOAD_PREFIX = "tts_voice:";
+export const ttsVoiceDownloadId = (voiceId: TtsVoiceId): string =>
+  `${TTS_VOICE_DOWNLOAD_PREFIX}${voiceId}`;
+export const isTtsVoiceDownload = (id: string): boolean => id.startsWith(TTS_VOICE_DOWNLOAD_PREFIX);
 
 export interface DiskUsage {
   models_bytes: number;
@@ -281,13 +294,34 @@ export type ModelDownloadPhase =
   | "done";
 
 export interface ModelDownloadProgress {
-  model: string; // tier name, or SUPPORT_MODELS — never a registry filename
+  model: string; // tier name, support set, or a prefixed TTS voice id
   /** 0..1. Reaches 1 only once the file is verified and renamed into place, never mid-stream. */
   pct: number;
   phase: ModelDownloadPhase;
   /** Set when the download stopped early — `cancelled`, or a download_failed reason. Terminal. */
   error?: string;
 }
+
+export interface TtsVoiceStatus {
+  voice_id: TtsVoiceId;
+  display_name: string;
+  language: string;
+  state: "missing" | "installed";
+  download_bytes: number;
+  installed_bytes: number;
+}
+
+export interface TtsSpeakInput {
+  request_id: string;
+  sentences: string[];
+}
+
+export type TtsEvent =
+  | { type: "ready" }
+  | { type: "audio"; request_id: string; sequence: number; samples: Float32Array; sample_rate: number }
+  | { type: "done"; request_id: string }
+  | { type: "stopped"; request_id: string }
+  | { type: "error"; request_id: string | null; message: string };
 
 // Live resource meters. Polled by the renderer while the window is visible; there
 // is no event for these because the ui decides its own cadence.

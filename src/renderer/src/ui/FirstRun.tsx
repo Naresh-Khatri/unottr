@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
 import {
-  ArrowLeft, ArrowRight, CheckCircle, FilmSlate, FolderOpen, Info,
+  ArrowLeft, ArrowRight, CheckCircle, FilmSlate, FolderOpen, Info, SpeakerHigh, StopCircle,
 } from "@phosphor-icons/react";
 import { api, onModelDownloadProgress, os } from "@/ipc/client";
-import type { AiAgentDiscovery, AiConnection, BackfillEstimate, ModelInfo, SupportModels, WatchFolder } from "@/ipc/types";
-import { SUPPORT_MODELS } from "@/ipc/types";
+import type {
+  AiAgentDiscovery, AiConnection, BackfillEstimate, ModelInfo, SupportModels, TtsVoiceId, TtsVoiceStatus, WatchFolder,
+} from "@/ipc/types";
+import { DEFAULT_TTS_VOICE_ID, SUPPORT_MODELS, ttsVoiceDownloadId } from "@/ipc/types";
 import { bytesLabel, durationLabel } from "@/lib/format";
 import { modelPhaseLabel } from "@/lib/activity";
 import { useActivities } from "@/lib/ActivityProvider";
 import { Button } from "@/components/ui/button";
 import { ActivityBar, ActivityLine, ActivityMark } from "@/components/activity-indicator";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InstalledAgentSetup } from "./AiConnections";
 
 const TIERS: { tier: ModelInfo["tier"]; label: string }[] = [
@@ -40,6 +45,12 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
   const [finishing, setFinishing] = useState(false);
   const [agents, setAgents] = useState<AiAgentDiscovery[] | null>(null);
   const [connections, setConnections] = useState<AiConnection[]>([]);
+  const [voices, setVoices] = useState<TtsVoiceStatus[]>([]);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<TtsVoiceId>(DEFAULT_TTS_VOICE_ID);
+  const [speechBusy, setSpeechBusy] = useState(false);
+  const [speechPct, setSpeechPct] = useState(0);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const [speechEnabled, setSpeechEnabled] = useState(false);
   const { modelDownloads, backfills } = useActivities();
 
   useEffect(() => {
@@ -50,15 +61,33 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
     api.supportModels().then(setSupport);
     api.aiDetectAgents().then(setAgents, () => setAgents([]));
     api.aiConnections().then(setConnections, () => {});
+    api.ttsVoiceCatalog().then(setVoices);
+    api.getSettings().then((settings) => {
+      setSelectedVoiceId(settings.tts_voice_id);
+      setSpeechEnabled(settings.ask_speak_answers);
+    });
   }, []);
 
   const showAgents = agents === null || agents.some((a) => a.installed);
-  const steps = ["Welcome", "Folder", "Model", ...(showAgents ? ["AI"] : []), "Backfill", "Tip"];
+  const steps = ["Welcome", "Folder", "Model", "Speech", ...(showAgents ? ["AI"] : []), "Backfill", "Tip"];
   const current = steps[step] ?? "Tip";
 
   useEffect(
     () =>
       onModelDownloadProgress((p) => {
+        if (p.model === ttsVoiceDownloadId(selectedVoiceId)) {
+          if (p.error) {
+            setSpeechBusy(false);
+            setSpeechError(p.error === "cancelled" ? "Download cancelled." : p.error);
+            return;
+          }
+          setSpeechPct(p.pct);
+          if (p.pct >= 1) {
+            setSpeechBusy(false);
+            api.ttsVoiceCatalog().then(setVoices);
+          }
+          return;
+        }
         if (p.model === SUPPORT_MODELS) {
           if (p.error) {
             setSupportBusy(false);
@@ -85,7 +114,7 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
           api.listModels().then(setModels);
         }
       }),
-    [tier],
+    [tier, selectedVoiceId],
   );
 
   useEffect(() => {
@@ -107,6 +136,8 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
   const setupReady = modelReady && supportReady;
   const modelDownload = modelDownloads[tier];
   const supportDownload = modelDownloads[SUPPORT_MODELS];
+  const voice = voices.find((item) => item.voice_id === selectedVoiceId) ?? null;
+  const speechDownload = modelDownloads[ttsVoiceDownloadId(selectedVoiceId)];
   const backfill = folder ? backfills[folder.id] : undefined;
 
   async function pickFolder() {
@@ -156,6 +187,18 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
       setBackfillError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setConfirmingBackfill(false);
+    }
+  }
+
+  async function startSpeechDownload() {
+    setSpeechBusy(true);
+    setSpeechPct(0);
+    setSpeechError(null);
+    try {
+      await api.downloadTtsVoice(selectedVoiceId);
+    } catch (reason) {
+      setSpeechBusy(false);
+      setSpeechError(reason instanceof Error ? reason.message : String(reason));
     }
   }
 
@@ -307,6 +350,83 @@ export function FirstRun({ onDone }: { onDone: () => void }) {
                   onChanged={async () => setConnections(await api.aiConnections())}
                 />
               )}
+            </div>
+          )}
+
+          {current === "Speech" && (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col items-center gap-2 py-2 text-center">
+                <SpeakerHigh className="size-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Ask can read completed answers aloud with a local English voice. The app does not include
+                  the voice unless you download it.
+                </p>
+              </div>
+              <Select
+                value={selectedVoiceId}
+                disabled={speechBusy}
+                onValueChange={async (value) => {
+                  const voiceId = value as TtsVoiceId;
+                  setSelectedVoiceId(voiceId);
+                  setSpeechPct(0);
+                  setSpeechError(null);
+                  await api.setSetting("tts_voice_id", voiceId);
+                }}
+              >
+                <SelectTrigger aria-label="Speech voice"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {voices.map((item) => (
+                    <SelectItem key={item.voice_id} value={item.voice_id}>
+                      <span>{item.display_name}</span>
+                      {item.state === "installed" && (
+                        <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+                          <CheckCircle />Downloaded
+                        </span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {voice?.display_name ?? "English voice"} · {bytesLabel(voice?.download_bytes ?? 67_203_672)} · CPU
+              </p>
+              {voice?.state === "installed" ? (
+                <>
+                  <p className="flex items-center gap-1.5 text-sm text-primary">
+                    <CheckCircle />Voice ready
+                  </p>
+                  <div className="flex items-center justify-between rounded-lg border p-3">
+                    <Label htmlFor="first-run-speech">Read Ask answers aloud</Label>
+                    <Switch
+                      id="first-run-speech"
+                      checked={speechEnabled}
+                      onCheckedChange={async (enabled) => {
+                        setSpeechEnabled(enabled);
+                        await api.setSetting("ask_speak_answers", enabled ? "1" : "0");
+                      }}
+                    />
+                  </div>
+                </>
+              ) : speechBusy ? (
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {modelPhaseLabel(speechDownload?.phase ?? "connecting")}
+                  </span>
+                  <ActivityBar
+                    value={speechDownload?.pct ?? speechPct}
+                    indeterminate={speechDownload?.phase !== "downloading"}
+                  />
+                  <Button variant="outline" onClick={() => api.cancelTtsVoiceDownload(selectedVoiceId)}>
+                    <StopCircle />Cancel download
+                  </Button>
+                </div>
+              ) : (
+                <Button onClick={startSpeechDownload}>
+                  <SpeakerHigh />{speechError ? "Retry voice download" : "Download voice"}
+                </Button>
+              )}
+              {speechError && !speechBusy && <p className="text-sm text-destructive">{speechError}</p>}
+              <p className="text-xs text-muted-foreground">Optional. You can skip this and download it later in Settings.</p>
             </div>
           )}
 

@@ -15,6 +15,7 @@ import type {
   ProbeProgress,
   RecordingDiscovered,
   TranscriptChanged,
+  TtsEvent,
 } from "../shared/ipc";
 
 function emit(event: string, payload: unknown): void {
@@ -37,4 +38,5 @@ export const events = {
   askProgress: (p: AskProgress) => emit("ask_progress", p),
   overviewChanged: (p: OverviewChanged) => emit("overview_changed", p),
   overviewProgress: (p: OverviewProgress) => emit("overview_progress", p),
+  ttsEvent: (event: TtsEvent) => emit("tts_event", event),
 };

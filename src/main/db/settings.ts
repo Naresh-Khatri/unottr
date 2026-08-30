@@ -2,7 +2,7 @@
 // so no caller touches the table directly and they can't disagree on what a key means.
 
 import { eq } from "drizzle-orm";
-import type { Device, Settings } from "../../shared/ipc";
+import { DEFAULT_TTS_VOICE_ID, TTS_VOICE_IDS, type Device, type Settings, type TtsVoiceId } from "../../shared/ipc";
 import type { Db } from "./client";
 import { settings } from "./schema";
 
@@ -16,6 +16,8 @@ export const keys = {
   CACHE_DIR: "cache_dir", // overrides the pcm/thumbs cache subdirs only
   AUTOSTART: "autostart", // "1" | "0"
   CLOSE_TO_TRAY: "close_to_tray", // "1" | "0", default "1"
+  ASK_SPEAK_ANSWERS: "ask_speak_answers", // "1" | "0", default "1"
+  TTS_VOICE_ID: "tts_voice_id",
   CLOSE_TO_TRAY_EXPLAINED: "close_to_tray_explained",
   FIRST_RUN_COMPLETE: "first_run_complete", // ui-only, gates the wizard
   AI_PSEUDONYMIZE: "ai_pseudonymize", // "1" | "0", default "0"
@@ -86,6 +88,8 @@ export function load(db: Db): StoredSettings {
     cache_dir: nonEmpty(getRaw(db, keys.CACHE_DIR)),
     autostart: getRaw(db, keys.AUTOSTART) === "1",
     close_to_tray: (getRaw(db, keys.CLOSE_TO_TRAY) ?? "1") === "1",
+    ask_speak_answers: (getRaw(db, keys.ASK_SPEAK_ANSWERS) ?? "1") === "1",
+    tts_voice_id: (getRaw(db, keys.TTS_VOICE_ID) ?? DEFAULT_TTS_VOICE_ID) as TtsVoiceId,
   };
 }
 
@@ -115,6 +119,8 @@ export function validate(key: string, value: string): string | null {
       return ok(value.length > 0);
     case keys.DIARIZE_THRESHOLD:
       return ok(value.trim() !== "" && Number.isFinite(num) && num >= 0 && num <= 1);
+    case keys.TTS_VOICE_ID:
+      return ok(TTS_VOICE_IDS.includes(value as TtsVoiceId));
     // "" clears the override
     case keys.FFMPEG_PATH:
     case keys.FFPROBE_PATH:
@@ -122,6 +128,7 @@ export function validate(key: string, value: string): string | null {
       return null;
     case keys.AUTOSTART:
     case keys.CLOSE_TO_TRAY:
+    case keys.ASK_SPEAK_ANSWERS:
     case keys.FIRST_RUN_COMPLETE:
     case keys.AI_PSEUDONYMIZE:
       return ok(value === "0" || value === "1");

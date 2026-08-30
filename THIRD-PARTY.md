@@ -57,6 +57,9 @@ inside the AppImage) and Node.js (MIT). Runtime npm dependencies — React, driz
 better-sqlite3, chokidar, electron-log and the UI libraries — are MIT or ISC; `pnpm licenses
 list --prod` prints the current set.
 
+The optional voice installer uses `tar-stream` and `unbzip2-stream`, both MIT, to inspect and
+extract the downloaded archive without relying on a host `tar` executable.
+
 The Apple Silicon build also bundles
 [`apple-silicon-metrics`](https://github.com/levibuzolic/apple-silicon-metrics) (MIT) for
 sudo-less CPU and GPU temperature, usage, and power readings.
@@ -82,6 +85,18 @@ into the model cache on first run / on demand (decision #16), same as any other 
 | `ggml-silero-v5.1.2.bin` | VAD | [ggml-org/whisper-vad](https://huggingface.co/ggml-org/whisper-vad) | MIT ([Silero VAD](https://github.com/snakers4/silero-vad)) |
 | `sherpa-pyannote-segmentation-3.0.onnx` | speech/overlap segmentation | [csukuangfj/sherpa-onnx-pyannote-segmentation-3-0](https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0) | MIT (ONNX export of [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)) |
 | `3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx`, `3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx`, `wespeaker_en_voxceleb_CAM++.onnx` | speaker embeddings | [csukuangfj/speaker-embedding-models](https://huggingface.co/csukuangfj/speaker-embedding-models) | Apache-2.0 ([3D-Speaker](https://github.com/modelscope/3D-Speaker) / [WeSpeaker](https://github.com/wenet-e2e/wespeaker) CAM++) |
+| `vits-piper-en_US-norman-medium` | Optional local speech for completed Ask answers | [sherpa-onnx TTS models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models), converted from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/norman/medium) | MIT model; model card identifies its LibriVox training recordings as public domain |
+| `vits-piper-en_US-ljspeech-medium` | Optional local speech for completed Ask answers | [sherpa-onnx TTS models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models), converted from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/ljspeech/medium) | MIT model; model card identifies LJSpeech as public domain |
+| `vits-piper-en_US-lessac-medium` | Optional local speech for completed Ask answers | [sherpa-onnx TTS models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models), converted from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/lessac/medium) | MIT model; recordings are from the Lessac Blizzard 2013 dataset under its separate dataset terms |
+
+The Norman archive is pinned to
+`https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-norman-medium.tar.bz2`
+at 67,203,672 bytes with SHA-256
+`1f32065d480abe9abc7c7f91442125d0b34c1cc065d1e600466cac408eabf3b8`.
+The LJSpeech archive is 67,169,893 bytes with SHA-256
+`3dfb4b759d8be032a4903a9538d128b0fda2a06ab1de6cbc2d93a97e2dd83dba`.
+The Lessac archive is 67,230,653 bytes with SHA-256
+`9e3febfacf0abf4270172d2958bcec246032b7e88efc2720840cc80c93de334e`.
 
 pyannote's own segmentation-3.0 weights carry an additional gated-access research notice
 on Hugging Face for the original (non-ONNX) upload; the ONNX export used here is what

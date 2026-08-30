@@ -229,15 +229,22 @@ export function diskUsage(): DiskUsage {
   return { models_bytes: dirSize(modelsDir()), cache_bytes: dirSize(pcmCacheDir()) };
 }
 
-/** Non-recursive on purpose — models/pcm are both flat directories, never nested. */
 function dirSize(dir: string): number {
   let total = 0;
+  const pending = [dir];
   try {
-    for (const name of readdirSync(dir)) {
-      try {
-        total += statSync(join(dir, name)).size;
-      } catch {
-        // raced with a delete; skip it
+    while (pending.length) {
+      const current = pending.pop();
+      if (!current) continue;
+      for (const name of readdirSync(current)) {
+        try {
+          const path = join(current, name);
+          const stat = statSync(path);
+          if (stat.isDirectory()) pending.push(path);
+          else if (stat.isFile()) total += stat.size;
+        } catch {
+          // raced with a delete; skip it
+        }
       }
     }
   } catch {

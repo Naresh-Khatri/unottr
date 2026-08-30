@@ -112,6 +112,7 @@ let server: Server;
 let base: string;
 /** Bytes to serve before hanging up, so a test can interrupt mid-stream. */
 let cut: number | null = null;
+let wrongRange = false;
 
 beforeAll(async () => {
   server = createServer((req, res) => {
@@ -120,7 +121,7 @@ beforeAll(async () => {
     const body = BODY.subarray(from);
     if (range) {
       res.writeHead(206, {
-        "content-range": `bytes ${from}-${BODY.length - 1}/${BODY.length}`,
+        "content-range": `bytes ${wrongRange ? from + 1 : from}-${BODY.length - 1}/${BODY.length}`,
         "content-length": String(body.length),
       });
     } else {
@@ -211,6 +212,42 @@ describe("model store", () => {
     } finally {
       cut = null;
       rmSync(resumeDir, { recursive: true, force: true });
+    }
+  });
+
+  it("installs an already complete partial file without fetching it again", async () => {
+    const completeDir = mkdtempSync(join(tmpdir(), "unottr-complete-part-"));
+    const s = spec();
+    const part = `${modelPath(s, completeDir)}.part`;
+    const phases: string[] = [];
+    try {
+      writeFileSync(part, BODY);
+      const path = await ensure({ ...s, baseUrl: "http://127.0.0.1:1" }, {
+        dir: completeDir,
+        onPhase: (phase) => phases.push(phase),
+      });
+      expect(readFileSync(path).equals(BODY)).toBe(true);
+      expect(existsSync(part)).toBe(false);
+      expect(phases).toEqual(["verifying", "installing", "done"]);
+    } finally {
+      rmSync(completeDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a resume response for the wrong byte range", async () => {
+    const wrongRangeDir = mkdtempSync(join(tmpdir(), "unottr-wrong-range-"));
+    const s = spec();
+    const part = `${modelPath(s, wrongRangeDir)}.part`;
+    try {
+      writeFileSync(part, BODY.subarray(0, 10_000));
+      wrongRange = true;
+      await expect(ensure(s, { dir: wrongRangeDir })).rejects.toMatchObject({
+        detail: { kind: "download_failed" },
+      });
+      expect(statSync(part).size).toBe(10_000);
+    } finally {
+      wrongRange = false;
+      rmSync(wrongRangeDir, { recursive: true, force: true });
     }
   });
 
