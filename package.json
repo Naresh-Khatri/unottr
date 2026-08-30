@@ -58,6 +58,8 @@
     "chokidar": "^5.0.0",
     "drizzle-orm": "^0.45.2",
     "electron-log": "^5.4.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "sherpa-onnx-node": "^1.13.6",
     "tar-stream": "^3.2.1",
     "unbzip2-stream": "^1.4.3",

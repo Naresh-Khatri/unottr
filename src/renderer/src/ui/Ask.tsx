@@ -45,6 +45,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
   Sheet,
   SheetContent,
@@ -54,6 +55,7 @@ import {
 } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { AskComposer } from "./AskComposer";
+import { AskMarkdown } from "./AskMarkdown";
 
 const STARTERS = [
   "What decisions were made?",
@@ -522,28 +524,26 @@ function Message({
         <Quotes /> Ask
         {message.provider && <span className="font-normal">with {message.provider}</span>}
       </div>
-      <div className="space-y-3 text-sm leading-7">
+      <div className="space-y-4">
         {message.blocks.map((block, index) => (
-          <p key={index}>
-            {block.text}{" "}
-            {block.citations.map((citation) => {
-              const sourceNumber = Math.max(1, sources.findIndex((source) => sameCitation(source, citation)) + 1);
-              return (
-                <Button
-                  key={`${citation.kind}-${citation.segment_id ?? citation.task_id}-${sourceNumber}`}
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  disabled={citation.unavailable}
-                  title={citation.unavailable ? "Source unavailable" : `${citation.recording_title}, ${hms(citation.start_ms)}`}
-                  className="mx-0.5 inline-flex h-5 min-w-5 rounded-full px-1 text-[10px]"
-                  onClick={() => !citation.unavailable && onCitation(citation.recording_id, citation.start_ms)}
-                >
-                  {sourceNumber}
-                </Button>
-              );
-            })}
-          </p>
+          <div key={index} className="space-y-2">
+            <AskMarkdown>{block.text}</AskMarkdown>
+            {!!block.citations.length && (
+              <div className="flex flex-wrap items-center gap-1" aria-label="Sources for this part of the answer">
+                {block.citations.map((citation) => {
+                  const sourceNumber = Math.max(1, sources.findIndex((source) => sameCitation(source, citation)) + 1);
+                  return (
+                    <CitationMarker
+                      key={`${citation.kind}-${citation.segment_id ?? citation.task_id}-${sourceNumber}`}
+                      citation={citation}
+                      number={sourceNumber}
+                      onOpen={onCitation}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-1">
@@ -582,6 +582,61 @@ function Message({
         </div>
       )}
     </article>
+  );
+}
+
+function CitationMarker({ citation, number, onOpen }: {
+  citation: AskCitation;
+  number: number;
+  onOpen: (recordingId: number, ms: number) => void;
+}) {
+  const label = citation.unavailable
+    ? `Source ${number} unavailable`
+    : `Source ${number}: ${citation.recording_title} at ${hms(citation.start_ms)}`;
+
+  return (
+    <HoverCard>
+      <HoverCardTrigger
+        render={<button type="button" />}
+        className={cn(
+          "inline-flex h-5 min-w-5 items-center justify-center rounded-full border bg-background px-1.5 text-[10px] font-semibold tabular-nums text-muted-foreground transition-colors",
+          "hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+          citation.unavailable && "cursor-not-allowed opacity-50",
+        )}
+        aria-label={label}
+        aria-disabled={citation.unavailable}
+        onClick={() => !citation.unavailable && onOpen(citation.recording_id, citation.start_ms)}
+      >
+        {number}
+      </HoverCardTrigger>
+      <HoverCardContent side="top" align="center" className="w-80 p-0">
+        <div className="border-b px-3 py-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 truncate text-sm font-medium">{citation.recording_title}</p>
+            <Badge variant="outline" className="shrink-0">Source {number}</Badge>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {citation.speaker ?? "Unattributed"} · {dateLabel(citation.meeting_date)} · {hms(citation.start_ms)}
+          </p>
+        </div>
+        <div className="space-y-2 px-3 py-2.5">
+          {citation.excerpt ? (
+            <p className="line-clamp-4 text-xs leading-5">“{citation.excerpt}”</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">This source is no longer available.</p>
+          )}
+          <div className="flex flex-wrap items-center gap-1">
+            {citation.kind === "workspace" && <Badge variant="secondary">Workspace state</Badge>}
+            {citation.source_changed && <Badge variant="outline">Source changed</Badge>}
+            {citation.unavailable ? (
+              <Badge variant="outline">Unavailable</Badge>
+            ) : (
+              <span className="ml-auto text-[11px] text-muted-foreground">Click to open at {hms(citation.start_ms)}</span>
+            )}
+          </div>
+        </div>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
