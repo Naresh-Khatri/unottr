@@ -18,6 +18,14 @@ Require-Path (Join-Path $resources "bin\win32-x64\ffprobe.exe")
 Require-Path (Join-Path $resources "bin\win32-x64\ffmpeg-LICENSE.txt")
 Require-Path (Join-Path $asarUnpacked "node_modules\better-sqlite3\prebuilds\win32-x64.node")
 
+foreach ($name in @("ffmpeg.exe", "ffprobe.exe")) {
+  $binary = Join-Path $resources "bin\win32-x64\$name"
+  $process = Start-Process -FilePath $binary -ArgumentList "-version" -Wait -PassThru -NoNewWindow
+  if ($process.ExitCode -ne 0) {
+    throw "Packaged $name failed with exit code $($process.ExitCode)"
+  }
+}
+
 $whisper = Join-Path $asarUnpacked "node_modules\@fugood\node-whisper-win32-x64"
 $sherpa = Join-Path $asarUnpacked "node_modules\sherpa-onnx-win-x64"
 Require-Path $whisper

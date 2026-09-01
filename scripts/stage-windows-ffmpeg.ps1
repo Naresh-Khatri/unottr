@@ -42,8 +42,15 @@ try {
   }
 
   New-Item -ItemType Directory -Force -Path $destination | Out-Null
-  Copy-Item (Join-Path $source.FullName "bin\ffmpeg.exe") $destination -Force
-  Copy-Item (Join-Path $source.FullName "bin\ffprobe.exe") $destination -Force
+  $ffmpeg = Join-Path $destination "ffmpeg.exe"
+  $ffprobe = Join-Path $destination "ffprobe.exe"
+  Copy-Item (Join-Path $source.FullName "bin\ffmpeg.exe") $ffmpeg -Force
+  Copy-Item (Join-Path $source.FullName "bin\ffprobe.exe") $ffprobe -Force
+  # Invoke-WebRequest marks downloaded files as Internet content. Expand-Archive can carry
+  # that mark onto the executables, after which Windows may let PowerShell inspect them but
+  # reject a later CreateProcess call from Node/Electron. The digest above authenticates the
+  # archive; remove the zone metadata before validating and packaging the binaries.
+  @($ffmpeg, $ffprobe) | Unblock-File
   Copy-Item (Join-Path $source.FullName "LICENSE.txt") (Join-Path $destination "ffmpeg-LICENSE.txt") -Force
   @(
     "release=$($release.tag_name)"
@@ -52,14 +59,14 @@ try {
     "source=$($asset.browser_download_url)"
   ) | Set-Content -Path (Join-Path $destination "ffmpeg-source.txt") -Encoding utf8
 
-  $configuration = & (Join-Path $destination "ffmpeg.exe") -version | Select-String "configuration:" | Select-Object -First 1
+  $configuration = & $ffmpeg -version | Select-String "configuration:" | Select-Object -First 1
   if (-not $configuration) {
     throw "Could not read the staged FFmpeg configuration"
   }
   if ($configuration.Line -match "--enable-gpl|--enable-nonfree") {
     throw "The staged FFmpeg build is not LGPL-only"
   }
-  & (Join-Path $destination "ffprobe.exe") -version | Select-Object -First 2
+  & $ffprobe -version | Select-Object -First 2
 } finally {
   if (Test-Path $temporary) {
     Remove-Item -Recurse -Force $temporary
