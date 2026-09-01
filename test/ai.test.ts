@@ -349,12 +349,13 @@ describe("connection labels", () => {
 
   it("stores installed agents separately from HTTP endpoints and accepts only an HTTP fallback", () => {
     const db = fresh();
-    const claude = connections.save(db, { preset: "claude-code", executable_path: "/bin/true" });
+    const executable = process.execPath;
+    const claude = connections.save(db, { preset: "claude-code", executable_path: executable });
     const api = connections.save(db, { preset: "anthropic", base_url: "https://api.anthropic.com/v1" });
 
     expect(claude).toMatchObject({
       kind: "cli",
-      executable_path: "/bin/true",
+      executable_path: executable,
       base_url: "",
       subscription_managed: true,
     });

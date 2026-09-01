@@ -17,35 +17,35 @@ const entry = join(config, "autostart", "unottr.desktop");
 
 describe("autostart", () => {
   it("writes and removes the desktop entry", () => {
-    expect(getAutostart()).toBe(false);
+    expect(getAutostart("linux")).toBe(false);
 
-    setAutostart(true);
-    expect(getAutostart()).toBe(true);
+    setAutostart(true, "linux");
+    expect(getAutostart("linux")).toBe(true);
     const text = readFileSync(entry, "utf8");
     // --hidden is what keeps a session login from popping the window open
     expect(text).toContain('Exec="/opt/unottr/unottr" --hidden');
     expect(text).toContain("Type=Application");
 
-    setAutostart(false);
-    expect(getAutostart()).toBe(false);
+    setAutostart(false, "linux");
+    expect(getAutostart("linux")).toBe(false);
     expect(existsSync(entry)).toBe(false);
   });
 
   it("is idempotent in both directions", () => {
-    setAutostart(false);
-    setAutostart(true);
-    setAutostart(true);
-    expect(getAutostart()).toBe(true);
-    setAutostart(false);
-    expect(getAutostart()).toBe(false);
+    setAutostart(false, "linux");
+    setAutostart(true, "linux");
+    setAutostart(true, "linux");
+    expect(getAutostart("linux")).toBe(true);
+    setAutostart(false, "linux");
+    expect(getAutostart("linux")).toBe(false);
   });
 
   it("prefers APPIMAGE over the electron binary once packaged", () => {
     process.env.APPIMAGE = "/home/u/Apps/unottr.AppImage";
-    setAutostart(true);
+    setAutostart(true, "linux");
     expect(readFileSync(entry, "utf8")).toContain('Exec="/home/u/Apps/unottr.AppImage" --hidden');
     delete process.env.APPIMAGE;
-    setAutostart(false);
+    setAutostart(false, "linux");
   });
 
   it("does not write a Freedesktop entry on macOS", () => {

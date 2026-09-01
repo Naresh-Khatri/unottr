@@ -47,7 +47,7 @@ describe.skipIf(!enabled)("host native addons", () => {
     expect(model).toBeDefined();
 
     const cli = discover();
-    expect(check(cli)).toBe(true);
+    expect(check(cli), `FFmpeg discovery returned ${JSON.stringify(cli)}`).toBe(true);
     const dir = await mkdtemp(join(tmpdir(), "unottr-native-smoke-"));
     const pcmPath = join(dir, "jfk.pcm");
     let transcriber: Transcriber | undefined;

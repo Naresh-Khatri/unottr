@@ -34,11 +34,15 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Stage Windows resources
+        shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           pnpm stage:windows:ffmpeg
           pnpm stage:windows:icon
+          $ffmpegDir = Join-Path $env:GITHUB_WORKSPACE "resources\bin\win32-x64"
+          "UNOTTR_FFMPEG=$(Join-Path $ffmpegDir 'ffmpeg.exe')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "UNOTTR_FFPROBE=$(Join-Path $ffmpegDir 'ffprobe.exe')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Prepare native pipeline smoke data
         shell: pwsh
@@ -49,11 +53,14 @@ jobs:
           "UNOTTR_NATIVE_PIPELINE_SMOKE=1" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           pnpm exec tsx test/prepare-native-smoke.ts
 
-      - name: Check source and native dependencies
-        run: |
-          pnpm typecheck
-          pnpm test
-          pnpm smoke:native
+      - name: Check source
+        run: pnpm typecheck
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Check native dependencies
+        run: pnpm smoke:native
 
       - name: Package unsigned preview
         run: pnpm dist --win nsis --x64 --publish never
