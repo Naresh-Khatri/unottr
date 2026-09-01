@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join, win32 } from "node:path";
+import { posix, win32 } from "node:path";
 
 export interface AppPaths {
   data: string;
@@ -14,18 +14,19 @@ export function resolvePaths(
   home: string = homedir(),
   env: NodeJS.ProcessEnv = process.env,
 ): AppPaths {
+  const join = platform === "win32" ? win32.join : posix.join;
+
   // one override isolates every mutable path
   const override = env.UNOTTR_DATA_DIR || undefined;
   const cacheOverride = env.UNOTTR_CACHE_DIR || undefined;
   const stateOverride = env.UNOTTR_STATE_DIR || undefined;
 
   if (platform === "win32") {
-    const windowsJoin = win32.join;
-    const local = env.LOCALAPPDATA || windowsJoin(home, "AppData", "Local");
-    const root = override ?? windowsJoin(local, "unottr");
-    const cache = cacheOverride ?? windowsJoin(root, "cache");
-    const state = stateOverride ?? windowsJoin(root, "state");
-    return { data: root, cache, state, logs: windowsJoin(state, "logs") };
+    const local = env.LOCALAPPDATA || join(home, "AppData", "Local");
+    const root = override ?? join(local, "unottr");
+    const cache = cacheOverride ?? join(root, "cache");
+    const state = stateOverride ?? join(root, "state");
+    return { data: root, cache, state, logs: join(state, "logs") };
   }
 
   if (platform === "darwin") {
@@ -57,8 +58,10 @@ export function resolvePaths(
 
 export const paths = resolvePaths();
 
-export const dbFile = (): string => join(paths.data, "unottr.db");
-export const modelsDir = (): string => join(paths.data, "models");
-export const pcmCacheDir = (): string => join(paths.cache, "pcm");
-export const thumbsCacheDir = (): string => join(paths.cache, "thumbs");
+const nativeJoin = process.platform === "win32" ? win32.join : posix.join;
+
+export const dbFile = (): string => nativeJoin(paths.data, "unottr.db");
+export const modelsDir = (): string => nativeJoin(paths.data, "models");
+export const pcmCacheDir = (): string => nativeJoin(paths.cache, "pcm");
+export const thumbsCacheDir = (): string => nativeJoin(paths.cache, "thumbs");
 export const logsDir = (): string => paths.logs;

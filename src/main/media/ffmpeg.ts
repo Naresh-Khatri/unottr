@@ -4,7 +4,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, posix, win32 } from "node:path";
 import { err, isCancelled } from "../errors";
 import type { AudioStream, Probe } from "./types";
 import { TARGET_SAMPLE_RATE } from "./types";
@@ -33,15 +33,16 @@ export function bundledCandidates(
   } = {},
 ): string[] {
   const platform = host.platform ?? process.platform;
+  const path = platform === "win32" ? win32 : posix;
   const platformDir = `${platform}-${host.arch ?? process.arch}`;
   const file = executableName(name, platform);
   const resourcesPath = host.resourcesPath ?? process.resourcesPath;
   const bases = [
-    resourcesPath ? join(resourcesPath, "bin") : null,
-    join(dirname(host.execPath ?? process.execPath), "bin"),
-    join(host.cwd ?? process.cwd(), "resources", "bin"),
+    resourcesPath ? path.join(resourcesPath, "bin") : null,
+    path.join(path.dirname(host.execPath ?? process.execPath), "bin"),
+    path.join(host.cwd ?? process.cwd(), "resources", "bin"),
   ].filter((dir): dir is string => dir !== null);
-  return bases.flatMap((dir) => [join(dir, platformDir, file), join(dir, file)]);
+  return bases.flatMap((dir) => [path.join(dir, platformDir, file), path.join(dir, file)]);
 }
 
 function bundledOr(name: string): string {

@@ -226,8 +226,8 @@ describe("bundled FFmpeg discovery", () => {
         cwd: "C:\\checkout",
       }).slice(0, 2),
     ).toEqual([
-      "C:\\Program Files\\unottr\\resources/bin/win32-x64/ffmpeg.exe",
-      "C:\\Program Files\\unottr\\resources/bin/ffmpeg.exe",
+      "C:\\Program Files\\unottr\\resources\\bin\\win32-x64\\ffmpeg.exe",
+      "C:\\Program Files\\unottr\\resources\\bin\\ffmpeg.exe",
     ]);
   });
 });

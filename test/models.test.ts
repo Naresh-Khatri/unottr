@@ -71,8 +71,8 @@ describe("catalog", () => {
 
 describe("device", () => {
   it("takes an explicit choice at the user's word without probing", () => {
-    expect(resolve("cpu")).toBe("cpu");
-    expect(resolve("gpu")).toBe("gpu");
+    expect(resolve("cpu", "linux", "x64")).toBe("cpu");
+    expect(resolve("gpu", "linux", "x64")).toBe("gpu");
   });
 
   it("resolves auto to cpu when the vulkan loader has no drivers", () => {
