@@ -729,6 +729,7 @@ const settings: Settings = {
   ask_speak_answers: true,
   tts_voice_id: "en_US-lessac-medium",
   tray_available: true,
+  autostart_available: true,
   first_run_complete: true,
   ffmpeg_ok: true,
 };

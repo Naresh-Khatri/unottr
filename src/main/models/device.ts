@@ -49,6 +49,7 @@ export function resolve(
   platform: NodeJS.Platform = process.platform,
   arch: string = process.arch,
 ): Resolved {
+  if (platform === "win32") return "cpu";
   switch (device) {
     case "cpu":
       return "cpu";

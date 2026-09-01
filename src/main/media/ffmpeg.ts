@@ -14,6 +14,13 @@ export interface FfmpegCli {
   ffprobe: string;
 }
 
+export function executableName(
+  name: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return platform === "win32" && !name.toLowerCase().endsWith(".exe") ? `${name}.exe` : name;
+}
+
 /** platform resource -> legacy resource -> PATH */
 export function bundledCandidates(
   name: string,
@@ -25,14 +32,16 @@ export function bundledCandidates(
     cwd?: string;
   } = {},
 ): string[] {
-  const platformDir = `${host.platform ?? process.platform}-${host.arch ?? process.arch}`;
+  const platform = host.platform ?? process.platform;
+  const platformDir = `${platform}-${host.arch ?? process.arch}`;
+  const file = executableName(name, platform);
   const resourcesPath = host.resourcesPath ?? process.resourcesPath;
   const bases = [
     resourcesPath ? join(resourcesPath, "bin") : null,
     join(dirname(host.execPath ?? process.execPath), "bin"),
     join(host.cwd ?? process.cwd(), "resources", "bin"),
   ].filter((dir): dir is string => dir !== null);
-  return bases.flatMap((dir) => [join(dir, platformDir, name), join(dir, name)]);
+  return bases.flatMap((dir) => [join(dir, platformDir, file), join(dir, file)]);
 }
 
 function bundledOr(name: string): string {

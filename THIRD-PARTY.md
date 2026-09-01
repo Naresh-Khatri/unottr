@@ -15,6 +15,10 @@ cosmetic. Full license text ships alongside the binaries as `ffmpeg-LICENSE.txt`
 
 Source: <https://github.com/BtbN/FFmpeg-Builds>. Upstream project: <https://ffmpeg.org>.
 
+The Windows preview workflow downloads BtbN's `win64-lgpl` archive, checks the SHA-256
+digest reported by GitHub, rejects GPL and nonfree configurations, and ships the archive's
+licence beside `ffmpeg.exe` and `ffprobe.exe`.
+
 The Apple Silicon tester app builds FFmpeg from the upstream commit pinned in
 `scripts/stage-ffmpeg-macos.sh`. It uses the same LGPL v3 boundary and rejects
 `--enable-gpl` or `--enable-nonfree` before staging. The source revision, configure flags,

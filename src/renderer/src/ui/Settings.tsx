@@ -124,9 +124,7 @@ export function SettingsScreen({ onFfmpegChange }: { onFfmpegChange?: (ok: boole
         {!settings.ffmpeg_ok && (
           <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             <Warning className="size-4 shrink-0" />
-            ffmpeg/ffprobe not found — install it (<code>pacman -S ffmpeg</code>,{" "}
-            <code>apt install ffmpeg</code>, or <code>dnf install ffmpeg</code>) or point at a
-            binary below.
+            ffmpeg/ffprobe not found. Reinstall the app or choose both binaries below.
           </div>
         )}
 
@@ -910,7 +908,12 @@ function GeneralCard({ settings, autostartOn, onAutostartChange, onCloseToTrayCh
       <CardContent className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <Label htmlFor="autostart">Start unottr on login</Label>
-          <Switch id="autostart" checked={autostartOn} onCheckedChange={onAutostartChange} />
+          <Switch
+            id="autostart"
+            checked={autostartOn}
+            disabled={!settings.autostart_available}
+            onCheckedChange={onAutostartChange}
+          />
         </div>
         <div className="flex items-center justify-between">
           <Label htmlFor="close-to-tray">Keep running in tray when closed</Label>

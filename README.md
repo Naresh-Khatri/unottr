@@ -148,8 +148,8 @@ works, but have a GPU.
 
 ## What it needs
 
-- **Linux x64 or an Apple Silicon Mac** running macOS 13 or newer. Windows and Intel Macs
-  are not supported.
+- **Linux x64 or an Apple Silicon Mac** running macOS 13 or newer. Known testers can build
+  an unsigned, CPU-only Windows x64 preview. Intel Macs are not supported.
 - **ffmpeg / ffprobe** are bundled in packaged builds. A development run finds them in
   `resources/bin/` or on `PATH`.
 - **Vulkan on Linux or Metal on Apple Silicon** runs Whisper on the GPU. Linux can fall

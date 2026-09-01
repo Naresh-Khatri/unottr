@@ -215,6 +215,21 @@ describe("bundled FFmpeg discovery", () => {
       "/Applications/unottr.app/Contents/Resources/bin/ffmpeg",
     ]);
   });
+
+  it("uses executable suffixes in Windows resource paths", () => {
+    expect(
+      bundledCandidates("ffmpeg", {
+        platform: "win32",
+        arch: "x64",
+        resourcesPath: "C:\\Program Files\\unottr\\resources",
+        execPath: "C:\\Program Files\\unottr\\unottr.exe",
+        cwd: "C:\\checkout",
+      }).slice(0, 2),
+    ).toEqual([
+      "C:\\Program Files\\unottr\\resources/bin/win32-x64/ffmpeg.exe",
+      "C:\\Program Files\\unottr\\resources/bin/ffmpeg.exe",
+    ]);
+  });
 });
 
 // -------------------------------------------------------------------- ffmpeg, for real

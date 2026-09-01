@@ -244,6 +244,7 @@ export interface Settings {
   ask_speak_answers: boolean;
   tts_voice_id: TtsVoiceId;
   tray_available: boolean; // runtime fact, not a persisted setting
+  autostart_available: boolean; // disabled on platforms without an implementation
   first_run_complete: boolean; // ui-only, gates first-run wizard
   ffmpeg_ok: boolean; // runtime fact, re-checked on every get/set_settings call
 }

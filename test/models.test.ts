@@ -101,6 +101,11 @@ describe("device", () => {
       resetGpuCache();
     }
   });
+
+  it("keeps the Windows preview on CPU even when GPU is requested", () => {
+    expect(resolve("auto", "win32", "x64")).toBe("cpu");
+    expect(resolve("gpu", "win32", "x64")).toBe("cpu");
+  });
 });
 
 // --------------------------------------------------------------------------- download

@@ -12,9 +12,11 @@
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
     "benchmark:tts": "node scripts/benchmark-tts.mjs",
-    "smoke:native": "UNOTTR_NATIVE_SMOKE=1 vitest run test/native-addons.test.ts --reporter=verbose",
+    "smoke:native": "node scripts/run-native-smoke.mjs",
     "stage:macos:ffmpeg": "./scripts/stage-ffmpeg-macos.sh",
     "stage:macos:icon": "./scripts/stage-macos-icon.sh",
+    "stage:windows:ffmpeg": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage-windows-ffmpeg.ps1",
+    "stage:windows:icon": "node scripts/stage-windows-icon.mjs",
     "seed": "tsx test/seed.ts",
     "dist": "electron-vite build && electron-builder"
   },
@@ -41,6 +43,7 @@
     "shadcn": "^4.18.0",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.12",
     "tw-animate-css": "^1.4.0",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
@@ -68,9 +71,11 @@
   "optionalDependencies": {
     "@fugood/node-whisper-darwin-arm64": "^1.1.1",
     "@fugood/node-whisper-linux-x64-vulkan": "^1.1.1",
+    "@fugood/node-whisper-win32-x64": "^1.1.1",
     "apple-silicon-metrics": "^0.1.2",
     "sherpa-onnx-darwin-arm64": "^1.13.6",
-    "sherpa-onnx-linux-x64": "^1.13.6"
+    "sherpa-onnx-linux-x64": "^1.13.6",
+    "sherpa-onnx-win-x64": "^1.13.6"
   },
   "packageManager": "pnpm@11.20.0+sha512.9a6f330a95b66446ea088faf1521405a8a01f07fde7124cc9958dfed52d4bb436737e65b08f85f37b46fcba375092558ac51262b816844b22f63406ed166bfee"
 }

@@ -1,0 +1,83 @@
+name: Windows preview
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  package:
+    name: Build unsigned Windows x64 preview
+    runs-on: windows-2025
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Stage Windows resources
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          pnpm stage:windows:ffmpeg
+          pnpm stage:windows:icon
+
+      - name: Prepare native pipeline smoke data
+        shell: pwsh
+        run: |
+          $smokeData = Join-Path $env:RUNNER_TEMP "unottr-native-smoke"
+          $env:UNOTTR_DATA_DIR = $smokeData
+          "UNOTTR_DATA_DIR=$smokeData" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "UNOTTR_NATIVE_PIPELINE_SMOKE=1" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          pnpm exec tsx test/prepare-native-smoke.ts
+
+      - name: Check source and native dependencies
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm smoke:native
+
+      - name: Package unsigned preview
+        run: pnpm dist --win nsis --x64 --publish never
+
+      - name: Inspect packaged files
+        shell: pwsh
+        run: ./scripts/inspect-windows-package.ps1
+
+      - name: Create installer checksum
+        shell: pwsh
+        run: |
+          $installer = @(Get-ChildItem release -File -Filter "*-windows-x64-preview.exe")
+          if ($installer.Count -ne 1) {
+            throw "Expected one Windows preview installer, found $($installer.Count)"
+          }
+          $hash = (Get-FileHash $installer[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer[0].Name)" | Set-Content "$($installer[0].FullName).sha256" -Encoding ascii
+
+      - name: Upload Windows preview
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-x64-preview-${{ github.sha }}
+          path: |
+            release/*-windows-x64-preview.exe
+            release/*-windows-x64-preview.exe.sha256
+          if-no-files-found: error
+          retention-days: 14

@@ -26,6 +26,42 @@ describe("application paths", () => {
     });
   });
 
+  it("keeps Windows data and caches under LocalAppData", () => {
+    expect(
+      resolvePaths("win32", "C:\\Users\\tester", {
+        APPDATA: "C:\\Users\\tester\\AppData\\Roaming",
+        LOCALAPPDATA: "D:\\Profiles\\tester\\Local",
+      }),
+    ).toEqual({
+      data: "D:\\Profiles\\tester\\Local\\unottr",
+      cache: "D:\\Profiles\\tester\\Local\\unottr\\cache",
+      state: "D:\\Profiles\\tester\\Local\\unottr\\state",
+      logs: "D:\\Profiles\\tester\\Local\\unottr\\state\\logs",
+    });
+  });
+
+  it("falls back to the standard LocalAppData location on Windows", () => {
+    expect(resolvePaths("win32", "C:\\Users\\tester", {})).toEqual({
+      data: "C:\\Users\\tester\\AppData\\Local\\unottr",
+      cache: "C:\\Users\\tester\\AppData\\Local\\unottr\\cache",
+      state: "C:\\Users\\tester\\AppData\\Local\\unottr\\state",
+      logs: "C:\\Users\\tester\\AppData\\Local\\unottr\\state\\logs",
+    });
+  });
+
+  it("lets one data override isolate every mutable Windows path", () => {
+    expect(
+      resolvePaths("win32", "C:\\Users\\tester", {
+        UNOTTR_DATA_DIR: "D:\\unottr-test",
+      }),
+    ).toEqual({
+      data: "D:\\unottr-test",
+      cache: "D:\\unottr-test\\cache",
+      state: "D:\\unottr-test\\state",
+      logs: "D:\\unottr-test\\state\\logs",
+    });
+  });
+
   it("lets one data override isolate every mutable Mac path", () => {
     expect(resolvePaths("darwin", "/Users/tester", { UNOTTR_DATA_DIR: "/tmp/unottr-test" })).toEqual({
       data: "/tmp/unottr-test",

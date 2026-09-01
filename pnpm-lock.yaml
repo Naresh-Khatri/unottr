@@ -126,6 +126,9 @@ importers:
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
@@ -145,6 +148,9 @@ importers:
       '@fugood/node-whisper-linux-x64-vulkan':
         specifier: ^1.1.1
         version: 1.1.1
+      '@fugood/node-whisper-win32-x64':
+        specifier: ^1.1.1
+        version: 1.1.1
       apple-silicon-metrics:
         specifier: ^0.1.2
         version: 0.1.2
@@ -152,6 +158,9 @@ importers:
         specifier: ^1.13.6
         version: 1.13.6
       sherpa-onnx-linux-x64:
+        specifier: ^1.13.6
+        version: 1.13.6
+      sherpa-onnx-win-x64:
         specifier: ^1.13.6
         version: 1.13.6
 

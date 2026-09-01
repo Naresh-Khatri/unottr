@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 
 export interface AppPaths {
   data: string;
@@ -18,6 +18,15 @@ export function resolvePaths(
   const override = env.UNOTTR_DATA_DIR || undefined;
   const cacheOverride = env.UNOTTR_CACHE_DIR || undefined;
   const stateOverride = env.UNOTTR_STATE_DIR || undefined;
+
+  if (platform === "win32") {
+    const windowsJoin = win32.join;
+    const local = env.LOCALAPPDATA || windowsJoin(home, "AppData", "Local");
+    const root = override ?? windowsJoin(local, "unottr");
+    const cache = cacheOverride ?? windowsJoin(root, "cache");
+    const state = stateOverride ?? windowsJoin(root, "state");
+    return { data: root, cache, state, logs: windowsJoin(state, "logs") };
+  }
 
   if (platform === "darwin") {
     const data = override ?? join(home, "Library", "Application Support", "unottr");

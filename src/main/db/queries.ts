@@ -214,6 +214,7 @@ export function getSettings(db: Db, trayAvailable: boolean): Settings {
   return {
     ...s,
     tray_available: trayAvailable,
+    autostart_available: process.platform === "linux",
     first_run_complete: settingsDb.getRaw(db, settingsDb.keys.FIRST_RUN_COMPLETE) === "1",
     ffmpeg_ok,
   };

@@ -1,4 +1,4 @@
-import { readlinkSync } from "node:fs";
+import { mkdirSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 import { app, protocol } from "electron";
 import { closeDatabase, db } from "./db";
@@ -7,10 +7,16 @@ import { onJobCounts, startIngest, stopIngest } from "./ingest/runtime";
 import { registerHandlers, setTrayAvailable } from "./ipc/handlers";
 import { initLogging } from "./logging";
 import { MEDIA_SCHEME, registerMediaProtocol } from "./media-protocol";
+import { paths } from "./paths";
 import { closeAppleHardware } from "./system/apple";
 import { ttsManager } from "./tts/manager";
 import { Tray } from "./tray";
 import { attachTray, createWindow, markQuitting, showMainWindow } from "./window";
+
+if (process.platform === "win32") {
+  mkdirSync(paths.data, { recursive: true });
+  app.setPath("userData", paths.data);
+}
 
 // must run before app.ready. `stream` is what lets protocol.handle answer a range request
 // with a 206 body; without `standard` the <video> src is treated as opaque.

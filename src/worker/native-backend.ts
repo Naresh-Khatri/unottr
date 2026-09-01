@@ -1,10 +1,10 @@
 export type WhisperVariant = "default" | "vulkan";
 
-/** Darwin default = Metal; Linux keeps the release's Vulkan package */
+/** macOS uses Metal, Linux keeps Vulkan, and the first Windows preview is CPU-only. */
 export function whisperVariant(
   platform: NodeJS.Platform = process.platform,
 ): WhisperVariant {
-  return platform === "darwin" ? "default" : "vulkan";
+  return platform === "linux" ? "vulkan" : "default";
 }
 
 export const WHISPER_VARIANT = whisperVariant();

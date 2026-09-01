@@ -202,6 +202,27 @@ acceptance criteria in `docs/plan/05-ui.md`, re-pointed at the Electron app by p
       cleanly, no leftover entry.
 - [ ] Autostart is off by default on a fresh data dir.
 
+## Windows x64 preview
+
+- [ ] Download the installer and `.sha256` file from the same `Windows preview` workflow
+      artifact. Verify the SHA-256 hash before running the installer.
+- [ ] On a clean Windows 11 x64 machine with no Node.js, pnpm, FFmpeg, Visual Studio, or
+      Vulkan SDK, install for the current user without an administrator prompt.
+- [ ] Confirm the installed app loads Whisper, sherpa-onnx, and better-sqlite3 without a
+      missing-module or missing-DLL error.
+- [ ] Confirm bundled `ffmpeg.exe` and `ffprobe.exe` pass the Settings preflight without a
+      system FFmpeg installation.
+- [ ] Complete first run, download the Small and speaker models, then transcribe and diarize
+      a real MP4 or multitrack MKV on CPU.
+- [ ] Play and seek the source recording, search the transcript, and export it.
+- [ ] Restart during an active transcription and confirm the saved job resumes.
+- [ ] Install a newer preview over the current version and confirm that the database, models,
+      settings, and watched folders remain.
+- [ ] Uninstall the app and confirm `%LOCALAPPDATA%\unottr` remains.
+- [ ] Open the log folder from Settings and confirm `unottr.log` contains no transcript text,
+      recording contents, or API keys.
+- [ ] Record Windows 10 as best effort until the same checks pass on Windows 10 22H2 x64.
+
 ## First-run flow
 
 - [ ] Launch with `UNOTTR_DATA_DIR=$(mktemp -d)` (a genuinely empty data dir) -> the

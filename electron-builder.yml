@@ -98,3 +98,44 @@ mac:
   extraResources:
     - from: resources/bin/darwin-arm64
       to: bin/darwin-arm64
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: resources/icons/icon.ico
+  requestedExecutionLevel: asInvoker
+  electronLanguages: [en-US]
+  artifactName: ${productName}-${version}-windows-${arch}-preview.${ext}
+  files:
+    - "!node_modules/@fugood/node-whisper-darwin-*/**"
+    - "!node_modules/@fugood/node-whisper-linux-*/**"
+    - "!node_modules/@fugood/node-whisper-win32-arm64*/**"
+    - "!node_modules/@fugood/node-whisper-win32-x64-cuda/**"
+    - "!node_modules/@fugood/node-whisper-win32-x64-vulkan/**"
+    - "!node_modules/sherpa-onnx-darwin-*/**"
+    - "!node_modules/sherpa-onnx-linux-*/**"
+    - "!node_modules/sherpa-onnx-win-ia32/**"
+    - "!node_modules/better-sqlite3/prebuilds/darwin-*"
+    - "!node_modules/better-sqlite3/prebuilds/linux*"
+    - "!node_modules/better-sqlite3/prebuilds/win32-arm64.node"
+  asarUnpack:
+    - node_modules/@fugood/node-whisper-win32-x64/**
+    - node_modules/sherpa-onnx-win-x64/**
+  extraResources:
+    - from: resources/bin/win32-x64
+      to: bin/win32-x64
+      filter:
+        - ffmpeg.exe
+        - ffprobe.exe
+        - ffmpeg-LICENSE.txt
+        - ffmpeg-source.txt
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false

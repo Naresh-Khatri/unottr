@@ -66,8 +66,11 @@ export function setRaw(db: Db, key: string, value: string): void {
     .run();
 }
 
-/** What core honours. The three runtime-only fields of the wire type are added in queries.ts. */
-export type StoredSettings = Omit<Settings, "tray_available" | "first_run_complete" | "ffmpeg_ok">;
+/** What core honours. Runtime-only fields of the wire type are added in queries.ts. */
+export type StoredSettings = Omit<
+  Settings,
+  "tray_available" | "autostart_available" | "first_run_complete" | "ffmpeg_ok"
+>;
 
 const nonEmpty = (v: string | null): string | null => (v ? v : null);
 
