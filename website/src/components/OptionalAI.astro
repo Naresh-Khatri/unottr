@@ -1,0 +1,29 @@
+---
+import { CitationPreview } from "./islands/CitationPreview";
+---
+
+<section id="ai-proof" class="relative z-10 bg-[#eee8ff] py-[clamp(7rem,12vw,11rem)] text-ink [background-image:linear-gradient(90deg,transparent_49.95%,rgb(71_49_128/8%)_50%,transparent_50.05%)]">
+  <div class="mx-auto w-[min(100%-2rem,87.5rem)]">
+    <div class="grid translate-y-8 grid-cols-[1fr_0.92fr] items-end gap-[clamp(3rem,8vw,8rem)] opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none max-[900px]:grid-cols-1" data-reveal>
+      <div>
+        <p class="inline-flex items-center gap-[0.65rem] font-mono text-[0.69rem] font-bold tracking-[0.1em] text-[#6040cb] uppercase before:h-px before:w-[1.6rem] before:bg-current before:content-['']">Answers with evidence</p>
+        <h2 class="mt-[1.6rem] max-w-[11ch] text-[clamp(2.65rem,4.8vw,5rem)] leading-[0.98] font-[540] tracking-[-0.065em] text-balance">Every answer points back to the meeting.</h2>
+      </div>
+      <div class="pb-2 text-[1.02rem] leading-[1.75] text-[#65597a] [&_p+_p]:mt-4">
+        <p>
+          Ask what was decided, trace a topic across meetings, or find everything one person
+          said. Every answer cites transcript evidence.
+        </p>
+        <p>
+          Nothing runs until you ask. Select any citation to see the speaker, timestamp, and exact
+          words behind the answer.
+        </p>
+      </div>
+    </div>
+
+    <div class="mx-auto mt-[clamp(4rem,8vw,7rem)] w-[min(74rem,92%)] translate-y-8 opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none max-sm:w-full [&>div]:overflow-hidden [&>div]:rounded-[1.4rem] [&>div]:border [&>div]:border-[rgb(57_38_101/16%)] [&>div]:shadow-[0_3rem_7rem_-4rem_rgb(46_29_91/42%)]" data-reveal>
+      <CitationPreview client:visible />
+      <p class="mt-4 text-[0.8rem] text-[#6d6180]">Select a source to see the speaker, timestamp, and words behind the answer.</p>
+    </div>
+  </div>
+</section>

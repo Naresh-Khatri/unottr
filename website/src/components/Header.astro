@@ -1,0 +1,25 @@
+---
+interface Props {
+  current?: "home" | "pricing";
+}
+
+const { current = "home" } = Astro.props;
+---
+
+<header class="pointer-events-none fixed top-[1.15rem] left-0 z-100 w-full px-4 max-sm:top-[0.7rem] max-sm:px-[0.65rem]">
+  <div class="pointer-events-auto mx-auto grid min-h-15 w-full max-w-[62rem] grid-cols-[1fr_auto_1fr] items-center rounded-full border border-white/18 bg-[rgb(49_39_122/68%)] py-[0.45rem] pr-[0.55rem] pl-[0.9rem] text-white shadow-[0_1.25rem_3.5rem_rgb(33_17_89/22%)] backdrop-blur-[18px] backdrop-saturate-140 max-[900px]:grid-cols-[1fr_auto] max-sm:min-h-13 max-sm:py-[0.35rem] max-sm:pr-[0.4rem] max-sm:pl-[0.7rem]">
+    <a href="/#top" class="inline-flex w-max items-center gap-[0.65rem] text-[1.05rem] font-[680] tracking-[-0.035em] max-sm:text-[0.92rem]" aria-label="unottr home">
+      <img src="/unottr-mark.svg" alt="" width="23" height="23" class="size-[1.45rem] max-sm:size-[1.3rem]" />
+      <span>unottr</span>
+    </a>
+
+    <nav class="flex items-center gap-[clamp(1.2rem,2.5vw,2.2rem)] max-[900px]:hidden [&_a]:text-[0.82rem] [&_a]:font-[520] [&_a]:text-white/72 [&_a]:transition-colors [&_a]:duration-200 [&_a:hover]:text-white" aria-label="Primary navigation">
+      <a href="/#how-it-works">How it works</a>
+      <a href="/#privacy">Privacy</a>
+      <a href="/#optional-ai">Optional AI</a>
+      <a href="/pricing" aria-current={current === "pricing" ? "page" : undefined} class:list={[current === "pricing" && "!text-white"]}>Pricing</a>
+    </nav>
+
+    <a href={current === "pricing" ? "#purchase" : "/pricing"} class="inline-flex min-h-11.5 items-center justify-center justify-self-end rounded-full bg-white/90 px-[1.35rem] text-[0.84rem] font-[680] text-[#31245f] shadow-[inset_0_0_0_1px_rgb(255_255_255/54%)] transition duration-200 hover:-translate-y-px hover:bg-white active:translate-y-0 max-sm:min-h-10 max-sm:px-4 max-sm:text-[0.76rem]">Buy unottr</a>
+  </div>
+</header>

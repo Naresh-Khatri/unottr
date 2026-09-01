@@ -1,3 +1,6 @@
+packages:
+  - website
+
 allowBuilds:
   better-sqlite3: true
   electron: true
@@ -7,3 +10,9 @@ allowBuilds:
   # postinstall is just a platform-package presence check; the binary comes from the
   # optional @fugood/node-whisper-linux-x64-vulkan dep, which needs no build
   '@fugood/whisper.node': false
+
+minimumReleaseAgeExclude:
+  - '@astrojs/internal-helpers@0.11.0'
+  - '@astrojs/markdown-satteri@0.4.0'
+  - '@astrojs/react@6.0.5'
+  - astro@7.2.10

@@ -1,0 +1,16 @@
+{
+  "name": "unottr",
+  "short_name": "unottr",
+  "description": "Private, local meeting transcription and search.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#17112b",
+  "theme_color": "#5146c2",
+  "icons": [
+    {
+      "src": "/unottr-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

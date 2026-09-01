@@ -1,0 +1,18 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+
+@theme {
+  --font-sans: "Geist Variable", "Helvetica Neue", sans-serif;
+  --font-mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
+  --color-paper: #f4f0ff;
+  --color-paper-raised: #fffaff;
+  --color-ink: #21163a;
+  --color-ink-muted: #6f6483;
+  --color-clay: #7357db;
+  --color-clay-dark: #5136bd;
+  --color-rule: #d8cfeb;
+  --color-night: #17112b;
+  --color-night-raised: #21183b;
+  --color-night-muted: #b7adc9;
+  --color-night-rule: #3d3155;
+}

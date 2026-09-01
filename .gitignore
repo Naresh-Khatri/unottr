@@ -1,6 +1,10 @@
 /node_modules
 /out
 /release
+/website/node_modules
+/website/.astro
+/website/dist
+/website/public/trash
 *.pcm
 *.db
 *.db-wal

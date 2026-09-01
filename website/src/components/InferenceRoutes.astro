@@ -1,0 +1,135 @@
+<section
+  id="optional-ai"
+  class="relative z-10 isolate min-h-[68rem] overflow-hidden bg-[#d9c7ff] text-ink"
+  aria-labelledby="inference-routes-title"
+>
+  <img
+    class="pointer-events-none absolute inset-0 -z-3 h-full w-full object-cover object-center select-none max-[900px]:object-[62%_center]"
+    src="/images/hero-concepts/dream-sky-terrace.png"
+    alt=""
+    width="1672"
+    height="941"
+    loading="lazy"
+    decoding="async"
+    aria-hidden="true"
+  />
+  <div
+    class="pointer-events-none absolute inset-0 -z-2 bg-[linear-gradient(90deg,rgb(238_228_255/96%)_0%,rgb(231_216_255/78%)_35%,rgb(74_49_142/8%)_68%,rgb(29_18_70/20%)_100%),linear-gradient(180deg,rgb(246_238_255/38%)_0%,transparent_42%,rgb(19_11_48/82%)_100%)] max-[900px]:bg-[linear-gradient(180deg,rgb(238_228_255/94%)_0%,rgb(225_208_255/78%)_38%,rgb(20_12_52/86%)_100%)]"
+    aria-hidden="true"
+  ></div>
+  <div
+    class="pointer-events-none absolute inset-x-0 bottom-0 -z-1 h-44 bg-gradient-to-b from-transparent to-[#eee8ff]"
+    aria-hidden="true"
+  ></div>
+
+  <div class="mx-auto w-[min(100%-2rem,87.5rem)] py-[clamp(7rem,11vw,10rem)]">
+    <div
+      class="grid translate-y-8 grid-cols-[0.92fr_0.72fr] gap-[clamp(3rem,9vw,10rem)] opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none max-[900px]:grid-cols-1"
+      data-reveal
+    >
+      <div>
+        <p class="inline-flex items-center gap-[0.65rem] font-mono text-[0.69rem] font-bold tracking-[0.1em] text-[#5a3ac4] uppercase before:h-px before:w-[1.6rem] before:bg-current before:content-['']">
+          Optional AI
+        </p>
+        <h2
+          id="inference-routes-title"
+          class="mt-[1.6rem] max-w-[9ch] text-[clamp(3rem,5.5vw,6rem)] leading-[0.92] font-[540] tracking-[-0.07em] text-balance"
+        >
+          Use your preferred AI.
+        </h2>
+      </div>
+      <p class="max-w-[35rem] self-end pb-2 text-[1.05rem] leading-[1.75] text-[#55466f]">
+        Connect unottr to an agent on your computer, run a model locally, or bring your own API
+        key for a hosted model.
+      </p>
+    </div>
+
+    <ol
+      class="mt-[clamp(4.5rem,8vw,7rem)] grid w-[min(100%,54rem)] gap-3 text-white"
+      aria-label="AI connection options"
+    >
+      <li
+        class="grid translate-y-8 grid-cols-[2.75rem_0.85fr_1fr_auto] items-center gap-[clamp(1rem,2.5vw,2.2rem)] rounded-[1.4rem] border border-white/16 bg-[linear-gradient(110deg,rgb(24_14_61/88%),rgb(45_27_99/72%))] px-[clamp(1.15rem,2.5vw,2.15rem)] py-[clamp(1.25rem,2.2vw,1.85rem)] opacity-0 shadow-[0_1.8rem_4rem_-2.5rem_rgb(21_9_63/76%),inset_0_1px_rgb(255_255_255/6%)] backdrop-blur-[18px] transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none max-[900px]:grid-cols-[2.25rem_1fr] max-[900px]:items-start"
+        data-reveal
+      >
+        <span class="font-mono text-[0.68rem] tracking-[0.08em] text-[#d6c8ff]" aria-hidden="true">01</span>
+        <div>
+          <h3 class="text-[clamp(1.1rem,1.7vw,1.45rem)] leading-tight font-[610] tracking-[-0.025em]">Installed agents</h3>
+          <p class="mt-2 text-[0.78rem] leading-5 text-white/58">Uses the agent's existing sign-in.</p>
+        </div>
+        <div class="flex items-center gap-2.5 max-[900px]:col-start-2" role="group" aria-label="Claude Code and Codex CLI">
+          <span class="grid size-12 place-items-center rounded-xl border border-white/14 bg-white/8 shadow-[inset_0_1px_rgb(255_255_255/8%)]" title="Claude Code">
+            <img class="size-6 object-contain" src="/images/providers/claude-code.svg" alt="Claude Code" width="24" height="24" loading="lazy" />
+          </span>
+          <span class="relative grid size-12 place-items-center rounded-xl border border-white/14 bg-white/8 shadow-[inset_0_1px_rgb(255_255_255/8%)]" title="Codex CLI, beta">
+            <img class="size-6 object-contain" src="/images/providers/codex.svg" alt="Codex CLI" width="24" height="24" loading="lazy" />
+            <span class="absolute -top-1 -right-1 grid size-4 place-items-center rounded-full bg-[#d8b4ff] font-mono text-[0.55rem] font-bold text-[#2a195f]" aria-hidden="true">β</span>
+          </span>
+        </div>
+        <span class="w-max rounded-full border border-white/22 bg-white/8 px-3 py-1.5 font-mono text-[0.6rem] tracking-[0.07em] text-white/86 uppercase max-[900px]:col-start-2">
+          Requires an installed agent
+        </span>
+      </li>
+
+      <li
+        class="grid translate-y-8 grid-cols-[2.75rem_0.85fr_1fr_auto] items-center gap-[clamp(1rem,2.5vw,2.2rem)] rounded-[1.4rem] border border-white/16 bg-[linear-gradient(110deg,rgb(24_14_61/88%),rgb(45_27_99/72%))] px-[clamp(1.15rem,2.5vw,2.15rem)] py-[clamp(1.25rem,2.2vw,1.85rem)] opacity-0 shadow-[0_1.8rem_4rem_-2.5rem_rgb(21_9_63/76%),inset_0_1px_rgb(255_255_255/6%)] backdrop-blur-[18px] transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none max-[900px]:grid-cols-[2.25rem_1fr] max-[900px]:items-start"
+        data-reveal
+      >
+        <span class="font-mono text-[0.68rem] tracking-[0.08em] text-[#d6c8ff]" aria-hidden="true">02</span>
+        <div>
+          <h3 class="text-[clamp(1.1rem,1.7vw,1.45rem)] leading-tight font-[610] tracking-[-0.025em]">Local model servers</h3>
+          <p class="mt-2 text-[0.78rem] leading-5 text-white/58">Inference stays on this computer.</p>
+        </div>
+        <div class="flex items-center gap-2.5 max-[900px]:col-start-2" role="group" aria-label="Ollama and LM Studio">
+          <span class="grid size-12 place-items-center rounded-xl border border-white/14 bg-white/8 shadow-[inset_0_1px_rgb(255_255_255/8%)]" title="Ollama">
+            <img class="h-7 w-6 object-contain" src="/images/providers/ollama.svg" alt="Ollama" width="24" height="28" loading="lazy" />
+          </span>
+          <span class="grid size-12 place-items-center rounded-xl border border-white/14 bg-white/8 shadow-[inset_0_1px_rgb(255_255_255/8%)]" title="LM Studio">
+            <img class="size-6 object-contain" src="/images/providers/lm-studio.svg" alt="LM Studio" width="24" height="24" loading="lazy" />
+          </span>
+        </div>
+        <span class="w-max rounded-full border border-[#d8c9ff]/30 bg-[#a98bff]/12 px-3 py-1.5 font-mono text-[0.6rem] tracking-[0.07em] text-[#eee8ff] uppercase max-[900px]:col-start-2">
+          Runs locally
+        </span>
+      </li>
+
+      <li
+        class="grid translate-y-8 grid-cols-[2.75rem_0.85fr_1fr_auto] items-center gap-[clamp(1rem,2.5vw,2.2rem)] rounded-[1.4rem] border border-white/16 bg-[linear-gradient(110deg,rgb(24_14_61/88%),rgb(45_27_99/72%))] px-[clamp(1.15rem,2.5vw,2.15rem)] py-[clamp(1.25rem,2.2vw,1.85rem)] opacity-0 shadow-[0_1.8rem_4rem_-2.5rem_rgb(21_9_63/76%),inset_0_1px_rgb(255_255_255/6%)] backdrop-blur-[18px] transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none max-[900px]:grid-cols-[2.25rem_1fr] max-[900px]:items-start"
+        data-reveal
+      >
+        <span class="font-mono text-[0.68rem] tracking-[0.08em] text-[#d6c8ff]" aria-hidden="true">03</span>
+        <div>
+          <h3 class="text-[clamp(1.1rem,1.7vw,1.45rem)] leading-tight font-[610] tracking-[-0.025em]">Hosted APIs</h3>
+          <p class="mt-2 text-[0.78rem] leading-5 text-white/58">You choose the provider and model.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2.5 max-[900px]:col-start-2" role="group" aria-label="OpenAI, Anthropic, Mistral, and OpenAI-compatible endpoints">
+          <span class="grid size-12 place-items-center rounded-xl border border-white/14 bg-white/8 shadow-[inset_0_1px_rgb(255_255_255/8%)]" title="OpenAI">
+            <img class="size-6 object-contain" src="/images/providers/openai.svg" alt="OpenAI" width="24" height="24" loading="lazy" />
+          </span>
+          <span class="grid size-12 place-items-center rounded-xl border border-white/14 bg-white/8 shadow-[inset_0_1px_rgb(255_255_255/8%)]" title="Anthropic">
+            <img class="size-6 object-contain" src="/images/providers/anthropic.svg" alt="Anthropic" width="24" height="24" loading="lazy" />
+          </span>
+          <span class="grid size-12 place-items-center rounded-xl border border-white/14 bg-white/8 shadow-[inset_0_1px_rgb(255_255_255/8%)]" title="Mistral">
+            <img class="size-6 object-contain" src="/images/providers/mistral.svg" alt="Mistral" width="24" height="24" loading="lazy" />
+          </span>
+          <span class="grid size-12 place-items-center rounded-xl border border-dashed border-white/20 bg-white/6 text-xl font-[350] text-white/80" title="Other OpenAI-compatible endpoints" role="img" aria-label="Other OpenAI-compatible endpoints">+</span>
+        </div>
+        <span class="w-max rounded-full border border-white/22 bg-white/8 px-3 py-1.5 font-mono text-[0.6rem] tracking-[0.07em] text-white/86 uppercase max-[900px]:col-start-2">
+          Uses your API key
+        </span>
+      </li>
+    </ol>
+
+    <div
+      class="mt-5 w-[min(100%,54rem)] translate-y-8 rounded-2xl border border-[#5b3db0]/14 bg-[rgb(244_237_255/58%)] px-[clamp(1.25rem,2.5vw,1.8rem)] py-[1.15rem] opacity-0 shadow-[0_1.25rem_3rem_-2.5rem_rgb(38_20_82/34%)] backdrop-blur-[12px] transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none"
+      data-reveal
+    >
+      <p class="font-mono text-[0.65rem] font-bold tracking-[0.08em] text-[#5b3db0] uppercase">What leaves your device</p>
+      <p class="mt-2.5 max-w-[46rem] text-[0.85rem] leading-6 text-[#55466f]">
+        Localhost connections keep AI inference on your computer. Other connections receive only
+        the transcript context and question needed for your request. Audio, video, and unrelated
+        files are never sent.
+      </p>
+    </div>
+  </div>
+</section>

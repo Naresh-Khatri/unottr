@@ -1,0 +1,168 @@
+---
+import "lenis/dist/lenis.css";
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath?: string;
+  image?: string;
+  imageAlt?: string;
+  noindex?: boolean;
+  structuredData?: Record<string, unknown> | Record<string, unknown>[];
+}
+
+const {
+  title,
+  description,
+  canonicalPath,
+  image = "/images/social/unottr-og.jpg",
+  imageAlt = "unottr running on a laptop above lavender clouds and alpine peaks",
+  noindex = false,
+  structuredData,
+} = Astro.props;
+
+const siteUrl = new URL(import.meta.env.PUBLIC_SITE_URL ?? "https://unottr.com");
+const canonicalUrl = new URL(canonicalPath ?? Astro.url.pathname, siteUrl);
+const socialImageUrl = new URL(image, siteUrl);
+const pageSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "@id": `${canonicalUrl.href}#webpage`,
+  url: canonicalUrl.href,
+  name: title,
+  description,
+  inLanguage: "en",
+  isPartOf: {
+    "@type": "WebSite",
+    "@id": `${siteUrl.href}#website`,
+    url: siteUrl.href,
+    name: "unottr",
+  },
+  primaryImageOfPage: {
+    "@type": "ImageObject",
+    url: socialImageUrl.href,
+    width: 1200,
+    height: 630,
+  },
+};
+const schemas = [
+  pageSchema,
+  ...(Array.isArray(structuredData)
+    ? structuredData
+    : structuredData
+      ? [structuredData]
+      : []),
+];
+const serializedSchemas = schemas.map((schema) =>
+  JSON.stringify(schema).replaceAll("<", "\\u003c"),
+);
+---
+
+<!doctype html>
+<html lang="en" class="scroll-p-24 scroll-auto bg-night scheme-light motion-reduce:scroll-auto">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="author" content="Naresh Khatri" />
+    <meta name="application-name" content="unottr" />
+    <meta name="apple-mobile-web-app-title" content="unottr" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="robots" content={noindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"} />
+    <meta name="theme-color" content="#5146c2" />
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="alternate" hreflang="en" href={canonicalUrl} />
+    <link rel="icon" href="/unottr-mark.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="unottr" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={socialImageUrl} />
+    <meta property="og:image:secure_url" content={socialImageUrl} />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={imageAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImageUrl} />
+    <meta name="twitter:image:alt" content={imageAlt} />
+    {serializedSchemas.map((schema) => <script is:inline type="application/ld+json" set:html={schema} />)}
+    <title>{title}</title>
+  </head>
+  <body class="min-h-dvh min-w-80 overflow-x-hidden bg-night font-sans text-ink antialiased selection:bg-[#f8b5ff]/38 selection:text-ink [&_a]:touch-manipulation [&_button]:touch-manipulation [&_:focus-visible]:outline-3 [&_:focus-visible]:outline-offset-3 [&_:focus-visible]:outline-[#f4bdff]">
+    <a class="fixed top-3 left-3 z-200 -translate-y-[160%] rounded-full bg-white px-4 py-3 font-bold text-ink transition-transform duration-200 ease-out focus:translate-y-0 motion-reduce:transition-none" href="#main-content">Skip to content</a>
+    <slot />
+    <script>
+      import Lenis from "lenis";
+
+      const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+      let lenis: Lenis | undefined;
+
+      const notifyScrollFrame = () => {
+        window.dispatchEvent(new Event("lenis-scroll"));
+      };
+
+      const configureSmoothScroll = () => {
+        if (motionPreference.matches) {
+          lenis?.destroy();
+          lenis = undefined;
+          return;
+        }
+
+        if (lenis) return;
+        lenis = new Lenis({
+          autoRaf: true,
+          anchors: true,
+          lerp: 0.08,
+          smoothWheel: true,
+          syncTouch: false,
+          wheelMultiplier: 0.9,
+          overscroll: false,
+        });
+        lenis.on("scroll", notifyScrollFrame);
+      };
+
+      configureSmoothScroll();
+      motionPreference.addEventListener("change", configureSmoothScroll);
+      window.addEventListener(
+        "pagehide",
+        () => {
+          lenis?.destroy();
+          motionPreference.removeEventListener("change", configureSmoothScroll);
+        },
+        { once: true },
+      );
+
+      const revealTargets = document.querySelectorAll<HTMLElement>("[data-reveal]");
+      const reduceMotion = motionPreference.matches;
+
+      const reveal = (target: HTMLElement) => {
+        target.classList.remove("opacity-0", "translate-y-8");
+        target.classList.add("opacity-100", "translate-y-0");
+      };
+
+      if (reduceMotion || !("IntersectionObserver" in window)) {
+        revealTargets.forEach(reveal);
+      } else {
+        const observer = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (!entry.isIntersecting) return;
+              reveal(entry.target as HTMLElement);
+              observer.unobserve(entry.target);
+            });
+          },
+          { rootMargin: "0px 0px -12% 0px", threshold: 0.12 },
+        );
+
+        revealTargets.forEach((target) => observer.observe(target));
+      }
+    </script>
+  </body>
+</html>

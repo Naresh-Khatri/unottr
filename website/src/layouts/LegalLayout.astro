@@ -1,0 +1,33 @@
+---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import SiteLayout from "./SiteLayout.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  eyebrow: string;
+  heading: string;
+  intro: string;
+}
+
+const { title, description, eyebrow, heading, intro } = Astro.props;
+---
+
+<SiteLayout title={title} description={description}>
+  <Header />
+  <main id="main-content" class="min-h-dvh bg-[#f4f0ff] pt-36 text-ink">
+    <article class="mx-auto w-[min(100%-2rem,58rem)] pb-[clamp(7rem,12vw,11rem)]">
+      <header class="border-b border-rule pb-12">
+        <p class="font-mono text-[0.68rem] font-bold tracking-[0.1em] text-[#6848c7] uppercase">{eyebrow}</p>
+        <h1 class="mt-6 text-[clamp(3.2rem,7vw,6.8rem)] leading-[0.9] font-[540] tracking-[-0.075em]">{heading}</h1>
+        <p class="mt-7 max-w-[42rem] text-[1.05rem] leading-8 text-ink-muted">{intro}</p>
+        <p class="mt-5 font-mono text-[0.68rem] text-[#867a97]">Effective September 1, 2026</p>
+      </header>
+      <div class="legal-copy pt-12 text-[0.96rem] leading-7 text-[#554a67] [&_h2]:mt-12 [&_h2]:text-[1.55rem] [&_h2]:leading-tight [&_h2]:font-[620] [&_h2]:tracking-[-0.035em] [&_h2]:text-ink [&_p]:mt-4 [&_ul]:mt-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5">
+        <slot />
+      </div>
+    </article>
+  </main>
+  <Footer />
+</SiteLayout>

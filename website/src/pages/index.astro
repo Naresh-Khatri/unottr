@@ -1,0 +1,56 @@
+---
+import FinalCta from "../components/FinalCta.astro";
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import Hero from "../components/Hero.astro";
+import InferenceRoutes from "../components/InferenceRoutes.astro";
+import Manifesto from "../components/Manifesto.astro";
+import OptionalAI from "../components/OptionalAI.astro";
+import Privacy from "../components/Privacy.astro";
+import Workflow from "../components/Workflow.astro";
+import SiteLayout from "../layouts/SiteLayout.astro";
+import { product } from "../data/product";
+
+const title = "unottr · Private, local meeting transcription";
+const description =
+  "Turn recordings into private, searchable, speaker-labelled transcripts on your computer. Find exact moments and ask optional AI questions with citations.";
+const siteUrl = new URL(import.meta.env.PUBLIC_SITE_URL ?? "https://unottr.com");
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "unottr",
+  applicationCategory: "BusinessApplication",
+  applicationSubCategory: "Meeting transcription software",
+  operatingSystem: "Linux x64, macOS 15 or later on Apple Silicon",
+  description,
+  image: new URL("/images/social/unottr-og.jpg", siteUrl).href,
+  offers: {
+    "@type": "Offer",
+    price: product.price,
+    priceCurrency: product.currency,
+    category: "one-time purchase",
+    url: new URL("/pricing", siteUrl).href,
+  },
+  featureList: [
+    "Local meeting transcription",
+    "Speaker-labelled transcripts",
+    "Full-text meeting search",
+    "Timestamped playback",
+    "Optional AI answers with transcript citations",
+  ],
+};
+---
+
+<SiteLayout title={title} description={description} structuredData={structuredData}>
+  <Header />
+  <main id="main-content">
+    <Hero />
+    <Manifesto />
+    <Workflow />
+    <Privacy />
+    <InferenceRoutes />
+    <OptionalAI />
+    <FinalCta />
+  </main>
+  <Footer />
+</SiteLayout>

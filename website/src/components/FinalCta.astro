@@ -1,0 +1,25 @@
+---
+import { ArrowRightIcon } from "@phosphor-icons/react";
+import { formatPrice, product } from "../data/product";
+
+const price = formatPrice(product.price, product.currency);
+---
+
+<section id="buy" class="relative z-10 grid min-h-[92svh] place-items-center overflow-hidden bg-[#5448c2] text-white">
+  <div class="absolute inset-[-4%] scale-[1.04] bg-[url('/images/hero-concepts/dream-lavender-lake.webp')] bg-cover bg-center bg-no-repeat" aria-hidden="true"></div>
+  <div class="absolute inset-[-4%] bg-[linear-gradient(180deg,rgb(38_25_108/18%),rgb(23_14_65/42%)),radial-gradient(circle_at_center,transparent_0%,rgb(27_17_75/28%)_78%)]" aria-hidden="true"></div>
+  <div class="relative z-1 mx-auto w-[min(100%-2rem,87.5rem)] translate-y-8 py-32 text-center opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none" data-reveal>
+    <p class="font-mono text-[0.69rem] font-bold tracking-[0.11em] uppercase">One-time purchase · {price}</p>
+    <h2 class="mt-6 text-[clamp(3rem,7.2vw,7.4rem)] leading-[0.9] font-[530] tracking-[-0.075em] text-shadow-[0_0.2em_0.9em_rgb(34_18_88/25%)] max-sm:[&_br]:hidden">Your meeting history,<br />under your control.</h2>
+    <p class="mx-auto mt-[1.8rem] max-w-[38rem] text-[1.05rem] leading-[1.6] text-white/82">
+      Buy unottr once and build a searchable record of what your team said, decided, and agreed to do.
+    </p>
+    <div class="mt-8 flex items-center justify-center gap-3 max-sm:flex-col">
+      <a href="/pricing" class="inline-flex min-h-12 items-center justify-center gap-[0.4rem] rounded-full bg-white px-[1.35rem] text-[0.88rem] font-[680] text-[#31245f] transition duration-200 hover:-translate-y-px hover:bg-[#f8e9ff] active:translate-y-0">
+        See pricing
+        <ArrowRightIcon size={17} weight="bold" aria-hidden="true" />
+      </a>
+    </div>
+    <p class="mt-[1.3rem] text-[0.74rem] text-white/64">Linux x64 · Apple Silicon · License covers unottr {product.licenseVersion}</p>
+  </div>
+</section>

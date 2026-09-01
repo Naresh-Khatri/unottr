@@ -1,0 +1,32 @@
+---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import Pricing from "../components/Pricing.astro";
+import SiteLayout from "../layouts/SiteLayout.astro";
+import { product } from "../data/product";
+
+const title = "$79 one-time pricing · unottr";
+const description = "Buy unottr 1.x once for $79. Get private local transcription, speaker labels, meeting search, timestamps, and optional AI connections without a subscription.";
+const siteUrl = new URL(import.meta.env.PUBLIC_SITE_URL ?? "https://unottr.com");
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "Offer",
+  name: `unottr ${product.licenseVersion} personal license`,
+  price: product.price,
+  priceCurrency: product.currency,
+  category: "one-time purchase",
+  url: new URL("/pricing", siteUrl).href,
+  itemOffered: {
+    "@type": "SoftwareApplication",
+    name: "unottr",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Linux x64, macOS 15 or later on Apple Silicon",
+  },
+};
+---
+
+<SiteLayout title={title} description={description} canonicalPath="/pricing" structuredData={structuredData}>
+  <Header current="pricing" />
+  <Pricing />
+  <Footer />
+</SiteLayout>

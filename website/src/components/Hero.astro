@@ -1,0 +1,121 @@
+---
+import { ProductPreview } from "./islands/ProductPreview";
+---
+
+<section id="top" class="relative h-[360svh] bg-[#5146c2] max-[900px]:h-[310svh] motion-reduce:h-svh" data-parallax-hero aria-labelledby="hero-title">
+  <div class="sticky top-0 isolate h-svh overflow-hidden [--foreground-y:0vh] [--mist-y:0vh] [--opening-opacity:1] [--peak-y:0vh] [--product-opacity:1] [--product-y:0vh] [--reveal-opacity:0] [--reveal-y:1.5rem] [--scroll-opacity:1] [--sky-y:0vh]" data-parallax-stage>
+    <img
+      class="pointer-events-none absolute top-0 left-0 z-0 block h-[170%] w-full max-w-none translate-y-[var(--sky-y)] object-cover object-top select-none will-change-transform motion-reduce:translate-y-0"
+      src="/images/hero/cloud-sky-tall.webp"
+      alt=""
+      width="1122"
+      height="1402"
+      fetchpriority="high"
+      decoding="async"
+      aria-hidden="true"
+    />
+
+    <div class="pointer-events-none absolute inset-0 z-1 bg-[linear-gradient(180deg,rgb(31_27_108/16%)_0%,transparent_40%),radial-gradient(circle_at_50%_48%,transparent_15%,rgb(23_15_74/16%)_100%)]" aria-hidden="true"></div>
+
+    <div class="pointer-events-none absolute inset-0 z-2 text-white opacity-[var(--opening-opacity)] will-change-[opacity] motion-reduce:opacity-100">
+      <p class="absolute top-[13.5%] left-1/2 -translate-x-1/2 font-mono text-[0.69rem] font-[650] tracking-[0.12em] uppercase max-sm:top-[12.5%] max-sm:w-full max-sm:text-center">Private meeting memory</p>
+      <h1 id="hero-title" class="absolute top-[20%] left-[3.5vw] flex w-[calc(100%-7vw)] items-baseline justify-between gap-8 text-[clamp(4.25rem,7.35vw,8rem)] leading-[0.82] font-[540] tracking-[-0.075em] text-shadow-[0_0.12em_0.8em_rgb(44_23_123/12%)] max-[900px]:top-[17%] max-[900px]:left-4 max-[900px]:block max-[900px]:w-[calc(100%-2rem)] max-[900px]:text-center max-[900px]:text-[clamp(3.6rem,13vw,7rem)] max-[900px]:leading-[0.88] max-sm:top-[18%]">
+        <span class="whitespace-nowrap max-[900px]:block">Your meetings</span>
+        <span class="text-right whitespace-nowrap max-[900px]:block max-[900px]:text-center">stay yours.</span>
+      </h1>
+      <p class="absolute top-[39%] left-[7vw] max-w-[23rem] text-[clamp(0.88rem,1.25vw,1.15rem)] leading-[1.4] font-[520] text-white/82 max-[900px]:top-[37%] max-[900px]:right-6 max-[900px]:left-6 max-[900px]:max-w-none max-[900px]:text-center max-sm:top-[36%] max-sm:text-[0.82rem]">Recorded on your computer</p>
+      <p class="absolute top-[39%] right-[7vw] max-w-[23rem] text-right text-[clamp(0.88rem,1.25vw,1.15rem)] leading-[1.4] font-[520] text-white/82 max-[900px]:hidden">
+        Search every word. Return to the exact moment.
+      </p>
+    </div>
+
+    <img
+      class="pointer-events-none absolute bottom-[-25%] left-1/2 z-3 block w-[min(96rem,96vw)] max-w-none -translate-x-1/2 translate-y-[var(--peak-y)] drop-shadow-[0_2.2rem_4rem_rgb(35_20_95/28%)] select-none will-change-transform max-[900px]:bottom-[-14%] max-[900px]:w-[138vw] max-sm:bottom-[-4%] max-sm:w-[174vw] motion-reduce:translate-y-0"
+      src="/images/hero/cloud-peak.webp"
+      alt=""
+      width="1672"
+      height="941"
+      decoding="async"
+      aria-hidden="true"
+    />
+
+    <div class="absolute top-[66%] left-1/2 z-5 w-[min(47rem,64vw)] -translate-x-1/2 translate-y-[calc(-50%+var(--product-y))] text-white opacity-[var(--product-opacity)] will-change-[opacity,transform] max-[900px]:top-[64%] max-[900px]:w-[min(92vw,42rem)] max-sm:top-[65%] max-sm:w-[94vw] motion-reduce:translate-y-[-50%] [&_.product-preview-shell]:border-white/18 [&_.product-preview-shell]:shadow-[0_2.5rem_7rem_-2rem_rgb(25_13_78/70%),0_0_0_1px_rgb(255_255_255/7%)] max-sm:[&_.product-preview-shell]:rounded-[0.9rem]">
+      <div class="absolute inset-[8%_-8%_-14%] -z-1 rounded-[50%] bg-[rgb(246_163_255/28%)] blur-[4rem]" aria-hidden="true"></div>
+      <ProductPreview client:load />
+      <p class="mt-[0.8rem] text-center text-xs text-white/72 text-shadow-[0_1px_0.8rem_rgb(34_20_89/70%)] max-[900px]:hidden">Select any transcript line to reopen the recording at that moment.</p>
+    </div>
+
+    <img
+      class="pointer-events-none absolute top-[39%] left-[-5%] z-4 block w-[110%] max-w-none translate-y-[var(--mist-y)] opacity-52 mix-blend-screen select-none will-change-transform max-[900px]:top-[47%] max-[900px]:w-[145%] motion-reduce:translate-y-0"
+      src="/images/hero/cloud-mist.webp"
+      alt=""
+      width="1672"
+      height="941"
+      decoding="async"
+      aria-hidden="true"
+    />
+
+    <div class="pointer-events-none absolute right-4 bottom-[6.5rem] left-4 z-7 translate-y-[var(--reveal-y)] text-center text-white opacity-[var(--reveal-opacity)] will-change-[opacity,transform] max-[900px]:bottom-[4.5rem] motion-reduce:hidden">
+      <p class="font-mono text-[0.67rem] font-[650] tracking-[0.11em] uppercase max-sm:text-[0.58rem]">Local by default. AI only when you ask.</p>
+      <h2 class="mt-[0.8rem] text-[clamp(2.25rem,4.5vw,4.8rem)] leading-[0.92] font-[540] tracking-[-0.06em] text-shadow-[0_0.12em_0.6em_rgb(40_17_104/30%)] max-sm:text-4xl">Recall the moment.<br />Keep the context.</h2>
+      <div class="pointer-events-auto mt-[1.35rem] flex items-center justify-center gap-[0.7rem] max-sm:flex-col">
+        <a href="/pricing" class="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-[1.2rem] text-[0.82rem] font-[680] text-[#30235f] transition duration-200 hover:-translate-y-px hover:bg-[#f8e9ff] active:translate-y-0">Buy unottr</a>
+        <a href="#how-it-works" class="inline-flex min-h-11 items-center justify-center rounded-full border border-white/30 bg-[rgb(45_31_113/38%)] px-[1.1rem] text-[0.82rem] font-[650] text-white backdrop-blur-xl transition-colors duration-200 hover:bg-[rgb(45_31_113/58%)]">See how it works</a>
+      </div>
+    </div>
+
+    <img
+      class="pointer-events-none absolute bottom-0 left-0 z-6 block w-full max-w-none translate-y-[var(--foreground-y)] drop-shadow-[0_-1rem_2.8rem_rgb(29_16_84/18%)] select-none will-change-transform motion-reduce:translate-y-0"
+      src="/images/hero/cloud-foreground.webp"
+      alt=""
+      width="1672"
+      height="941"
+      decoding="async"
+      aria-hidden="true"
+    />
+
+    <div class="absolute bottom-5 left-1/2 z-8 flex -translate-x-1/2 items-center gap-[0.55rem] font-mono text-[0.62rem] tracking-[0.08em] text-white/65 uppercase opacity-[var(--scroll-opacity)] motion-reduce:hidden max-sm:hidden" aria-hidden="true">
+      <span class="block h-[0.2rem] w-9 overflow-hidden rounded-full bg-white/28 before:block before:h-full before:w-1/2 before:animate-pulse before:rounded-[inherit] before:bg-white"></span>
+      Scroll to remember
+    </div>
+  </div>
+</section>
+
+<script>
+  const hero = document.querySelector<HTMLElement>("[data-parallax-hero]");
+  const stage = hero?.querySelector<HTMLElement>("[data-parallax-stage]");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let frame = 0;
+
+  const updateParallax = () => {
+    frame = 0;
+    if (!hero || !stage || reducedMotion.matches) return;
+
+    const rect = hero.getBoundingClientRect();
+    const distance = Math.max(1, hero.offsetHeight - window.innerHeight);
+    const progress = Math.min(1, Math.max(0, -rect.top / distance));
+    const reveal = Math.min(1, Math.max(0, (progress - 0.58) * 4));
+    const productOpacity = Math.min(1, Math.max(0, 1 - (progress - 0.46) * 3.5));
+    stage.style.setProperty("--hero-progress", progress.toFixed(4));
+    stage.style.setProperty("--sky-y", `${(-progress * 68).toFixed(2)}vh`);
+    stage.style.setProperty("--peak-y", `${(-progress * 34).toFixed(2)}vh`);
+    stage.style.setProperty("--product-y", `${(-progress * 28).toFixed(2)}vh`);
+    stage.style.setProperty("--mist-y", `${(-progress * 22).toFixed(2)}vh`);
+    stage.style.setProperty("--foreground-y", `${(progress * 4).toFixed(2)}vh`);
+    stage.style.setProperty("--opening-opacity", Math.max(0, 1 - progress * 2.2).toFixed(3));
+    stage.style.setProperty("--product-opacity", productOpacity.toFixed(3));
+    stage.style.setProperty("--reveal-opacity", reveal.toFixed(3));
+    stage.style.setProperty("--reveal-y", `${((1 - reveal) * 1.5).toFixed(2)}rem`);
+    stage.style.setProperty("--scroll-opacity", Math.max(0, 1 - progress * 4).toFixed(3));
+  };
+
+  const requestParallax = () => {
+    if (frame) return;
+    frame = window.requestAnimationFrame(updateParallax);
+  };
+
+  updateParallax();
+  window.addEventListener("scroll", requestParallax, { passive: true });
+  window.addEventListener("lenis-scroll", requestParallax);
+  window.addEventListener("resize", requestParallax, { passive: true });
+</script>

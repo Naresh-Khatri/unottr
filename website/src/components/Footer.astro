@@ -1,0 +1,15 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer class="relative z-10 border-t border-white/10 bg-night text-[#bdb2cd]">
+  <div class="mx-auto flex min-h-28 w-[min(100%-2rem,87.5rem)] items-center justify-between gap-8 text-[0.78rem] max-sm:flex-col max-sm:items-start max-sm:justify-center max-sm:py-8">
+    <p>unottr · Built by Naresh Khatri · {year}</p>
+    <nav class="flex flex-wrap gap-5 [&_a]:transition-colors [&_a]:duration-200 [&_a:hover]:text-white" aria-label="Footer navigation">
+      <a href="/pricing">Pricing</a>
+      <a href="/#how-it-works">How it works</a>
+      <a href="/privacy">Privacy policy</a>
+      <a href="/terms">Terms</a>
+    </nav>
+  </div>
+</footer>
