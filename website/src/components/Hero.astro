@@ -1,9 +1,5 @@
----
-import { ProductPreview } from "./islands/ProductPreview";
----
-
-<section id="top" class="relative h-[360svh] bg-[#5146c2] max-[900px]:h-[310svh] motion-reduce:h-svh" data-parallax-hero aria-labelledby="hero-title">
-  <div class="sticky top-0 isolate h-svh overflow-hidden [--foreground-y:0vh] [--mist-y:0vh] [--opening-opacity:1] [--peak-y:0vh] [--product-opacity:1] [--product-y:0vh] [--reveal-opacity:0] [--reveal-y:1.5rem] [--scroll-opacity:1] [--sky-y:0vh]" data-parallax-stage>
+<section id="top" class="relative h-[280svh] bg-[#5146c2] max-[900px]:h-[240svh] motion-reduce:h-svh" data-parallax-hero aria-labelledby="hero-title">
+  <div class="sticky top-0 isolate h-svh overflow-hidden [--foreground-y:0vh] [--mist-y:0vh] [--opening-opacity:1] [--peak-y:0vh] [--reveal-opacity:0] [--reveal-y:1.5rem] [--scroll-opacity:1] [--sky-y:0vh]" data-parallax-stage>
     <img
       class="pointer-events-none absolute top-0 left-0 z-0 block h-[170%] w-full max-w-none translate-y-[var(--sky-y)] object-cover object-top select-none will-change-transform motion-reduce:translate-y-0"
       src="/images/hero/cloud-sky-tall.webp"
@@ -38,12 +34,6 @@ import { ProductPreview } from "./islands/ProductPreview";
       decoding="async"
       aria-hidden="true"
     />
-
-    <div class="absolute top-[66%] left-1/2 z-5 w-[min(47rem,64vw)] -translate-x-1/2 translate-y-[calc(-50%+var(--product-y))] text-white opacity-[var(--product-opacity)] will-change-[opacity,transform] max-[900px]:top-[64%] max-[900px]:w-[min(92vw,42rem)] max-sm:top-[65%] max-sm:w-[94vw] motion-reduce:translate-y-[-50%] [&_.product-preview-shell]:border-white/18 [&_.product-preview-shell]:shadow-[0_2.5rem_7rem_-2rem_rgb(25_13_78/70%),0_0_0_1px_rgb(255_255_255/7%)] max-sm:[&_.product-preview-shell]:rounded-[0.9rem]">
-      <div class="absolute inset-[8%_-8%_-14%] -z-1 rounded-[50%] bg-[rgb(246_163_255/28%)] blur-[4rem]" aria-hidden="true"></div>
-      <ProductPreview client:load />
-      <p class="mt-[0.8rem] text-center text-xs text-white/72 text-shadow-[0_1px_0.8rem_rgb(34_20_89/70%)] max-[900px]:hidden">Select any transcript line to reopen the recording at that moment.</p>
-    </div>
 
     <img
       class="pointer-events-none absolute top-[39%] left-[-5%] z-4 block w-[110%] max-w-none translate-y-[var(--mist-y)] opacity-52 mix-blend-screen select-none will-change-transform max-[900px]:top-[47%] max-[900px]:w-[145%] motion-reduce:translate-y-0"
@@ -95,15 +85,12 @@ import { ProductPreview } from "./islands/ProductPreview";
     const distance = Math.max(1, hero.offsetHeight - window.innerHeight);
     const progress = Math.min(1, Math.max(0, -rect.top / distance));
     const reveal = Math.min(1, Math.max(0, (progress - 0.58) * 4));
-    const productOpacity = Math.min(1, Math.max(0, 1 - (progress - 0.46) * 3.5));
     stage.style.setProperty("--hero-progress", progress.toFixed(4));
     stage.style.setProperty("--sky-y", `${(-progress * 68).toFixed(2)}vh`);
     stage.style.setProperty("--peak-y", `${(-progress * 34).toFixed(2)}vh`);
-    stage.style.setProperty("--product-y", `${(-progress * 28).toFixed(2)}vh`);
     stage.style.setProperty("--mist-y", `${(-progress * 22).toFixed(2)}vh`);
     stage.style.setProperty("--foreground-y", `${(progress * 4).toFixed(2)}vh`);
     stage.style.setProperty("--opening-opacity", Math.max(0, 1 - progress * 2.2).toFixed(3));
-    stage.style.setProperty("--product-opacity", productOpacity.toFixed(3));
     stage.style.setProperty("--reveal-opacity", reveal.toFixed(3));
     stage.style.setProperty("--reveal-y", `${((1 - reveal) * 1.5).toFixed(2)}rem`);
     stage.style.setProperty("--scroll-opacity", Math.max(0, 1 - progress * 4).toFixed(3));
