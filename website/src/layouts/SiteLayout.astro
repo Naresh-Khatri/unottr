@@ -22,7 +22,7 @@ const {
   structuredData,
 } = Astro.props;
 
-const siteUrl = new URL(import.meta.env.PUBLIC_SITE_URL ?? "https://unottr.com");
+const siteUrl = new URL(import.meta.env.PUBLIC_SITE_URL ?? "https://unottr.pages.dev");
 const canonicalUrl = new URL(canonicalPath ?? Astro.url.pathname, siteUrl);
 const socialImageUrl = new URL(image, siteUrl);
 const pageSchema = {

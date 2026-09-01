@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 
-const siteUrl = new URL(import.meta.env.PUBLIC_SITE_URL ?? "https://unottr.com");
+const siteUrl = new URL(import.meta.env.PUBLIC_SITE_URL ?? "https://unottr.pages.dev");
 const pages = [
   { path: "/", priority: "1.0", changeFrequency: "weekly" },
   { path: "/pricing", priority: "0.9", changeFrequency: "monthly" },

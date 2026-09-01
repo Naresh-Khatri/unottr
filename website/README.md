@@ -9,7 +9,7 @@ The pricing page reads its checkout destination from `PUBLIC_CHECKOUT_URL`. If t
 missing, the page shows an honest unavailable state instead of a dead purchase link.
 
 Canonical URLs, Open Graph URLs, the sitemap, and `robots.txt` use `PUBLIC_SITE_URL`. It defaults
-to `https://unottr.com`.
+to `https://unottr.pages.dev`.
 
 Release downloads can be supplied with `PUBLIC_LINUX_DOWNLOAD_URL` and
 `PUBLIC_MACOS_DOWNLOAD_URL`. This keeps commercial downloads independent from the private source
@@ -42,7 +42,7 @@ Set these build environment variables:
 | `SKIP_DEPENDENCY_INSTALL` | `1` |
 | `NODE_VERSION` | `24` |
 | `PNPM_VERSION` | `11.20.0` |
-| `PUBLIC_SITE_URL` | Canonical production origin, defaults to `https://unottr.com` |
+| `PUBLIC_SITE_URL` | Canonical production origin, defaults to `https://unottr.pages.dev` |
 | `PUBLIC_CHECKOUT_URL` | Hosted checkout URL |
 | `PUBLIC_LINUX_DOWNLOAD_URL` | Licensed Linux download URL |
 | `PUBLIC_MACOS_DOWNLOAD_URL` | Licensed macOS download URL |

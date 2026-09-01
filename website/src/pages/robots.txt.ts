@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 
-const siteUrl = new URL(import.meta.env.PUBLIC_SITE_URL ?? "https://unottr.com");
+const siteUrl = new URL(import.meta.env.PUBLIC_SITE_URL ?? "https://unottr.pages.dev");
 
 export const GET: APIRoute = () => {
   const sitemapUrl = new URL("/sitemap.xml", siteUrl);
