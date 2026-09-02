@@ -39,7 +39,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           pnpm stage:windows:ffmpeg
+          ./scripts/inspect-windows-ffmpeg-state.ps1 -Checkpoint "inside staging step after FFmpeg"
           pnpm stage:windows:icon
+          ./scripts/inspect-windows-ffmpeg-state.ps1 -Checkpoint "inside staging step after icon"
           $ffmpegDir = Join-Path $env:GITHUB_WORKSPACE "resources\bin\win32-x64"
           "UNOTTR_FFMPEG=$(Join-Path $ffmpegDir 'ffmpeg.exe')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "UNOTTR_FFPROBE=$(Join-Path $ffmpegDir 'ffprobe.exe')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append

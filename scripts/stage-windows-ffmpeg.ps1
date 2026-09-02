@@ -10,6 +10,13 @@ $assetName = "ffmpeg-N-125875-g5d4d3bdc61-win64-lgpl-shared.zip"
 $downloadUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$releaseTag/$assetName"
 $expected = "6a2e25e2280df8f2071c14155a314ef32ec08100d56e5f32e41a9d7fd8b50cd3"
 
+[ordered]@{
+  script_root = $PSScriptRoot
+  repository_root = $repositoryRoot
+  temporary = $temporary
+  destination = $destination
+} | ConvertTo-Json
+
 $headers = @{
   Accept = "application/vnd.github+json"
   "User-Agent" = "unottr-windows-preview"
@@ -73,3 +80,5 @@ try {
     Remove-Item -Recurse -Force $temporary
   }
 }
+
+Write-Host "FFmpeg staging finished: destination_exists=$(Test-Path $destination)"
