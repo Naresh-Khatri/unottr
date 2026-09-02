@@ -44,6 +44,10 @@ jobs:
           "UNOTTR_FFMPEG=$(Join-Path $ffmpegDir 'ffmpeg.exe')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "UNOTTR_FFPROBE=$(Join-Path $ffmpegDir 'ffprobe.exe')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Inspect FFmpeg after staging
+        shell: pwsh
+        run: ./scripts/inspect-windows-ffmpeg-state.ps1 -Checkpoint "after staging"
+
       - name: Prepare native pipeline smoke data
         shell: pwsh
         run: |
@@ -53,11 +57,24 @@ jobs:
           "UNOTTR_NATIVE_PIPELINE_SMOKE=1" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           pnpm exec tsx test/prepare-native-smoke.ts
 
+      - name: Inspect FFmpeg after smoke-data preparation
+        shell: pwsh
+        run: ./scripts/inspect-windows-ffmpeg-state.ps1 -Checkpoint "after smoke-data preparation"
+
       - name: Check source
         run: pnpm typecheck
 
+      - name: Inspect FFmpeg after typecheck
+        shell: pwsh
+        run: ./scripts/inspect-windows-ffmpeg-state.ps1 -Checkpoint "after typecheck"
+
       - name: Run unit tests
         run: pnpm test
+
+      - name: Inspect FFmpeg after unit tests
+        if: ${{ always() }}
+        shell: pwsh
+        run: ./scripts/inspect-windows-ffmpeg-state.ps1 -Checkpoint "after unit tests"
 
       - name: Check native dependencies
         run: pnpm smoke:native
