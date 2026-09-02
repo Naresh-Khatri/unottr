@@ -54,7 +54,12 @@ try {
   # that mark onto the executables, after which Windows may let PowerShell inspect them but
   # reject a later CreateProcess call from Node/Electron. The digest above authenticates the
   # archive; remove the zone metadata before validating and packaging the runtime.
-  @($ffmpeg, $ffprobe) + @(Get-ChildItem $destination -File -Filter "*.dll") | Unblock-File
+  $runtimeFiles = @($ffmpeg, $ffprobe) + @(
+    Get-ChildItem $destination -File -Filter "*.dll" | ForEach-Object { $_.FullName }
+  )
+  foreach ($runtimeFile in $runtimeFiles) {
+    Unblock-File -LiteralPath $runtimeFile
+  }
   Copy-Item (Join-Path $source.FullName "LICENSE.txt") (Join-Path $destination "ffmpeg-LICENSE.txt") -Force
   @(
     "release=$releaseTag"
