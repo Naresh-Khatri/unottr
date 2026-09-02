@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +15,49 @@ const enabled = process.env.UNOTTR_NATIVE_SMOKE === "1";
 const pipelineEnabled = process.env.UNOTTR_NATIVE_PIPELINE_SMOKE === "1";
 
 describe.skipIf(!enabled)("host native addons", () => {
+  // Production keeps speech add-ons in workers. Run the main-process FFmpeg check before
+  // loading those add-ons into this shared test process, where Windows DLL state can leak.
+  it.skipIf(!pipelineEnabled)("runs FFmpeg, VAD, and CPU transcription", async () => {
+    const model = findWhisper("base.en");
+    expect(model).toBeDefined();
+
+    const cli = discover();
+    const usable = check(cli);
+    if (!usable) {
+      const diagnostics = Object.entries(cli).map(([name, binary]) => {
+        const result = spawnSync(binary, ["-version"], { encoding: "utf8" });
+        return {
+          name,
+          binary,
+          status: result.status,
+          signal: result.signal,
+          error: result.error?.message,
+          stderr: result.stderr?.trim(),
+        };
+      });
+      expect(usable, `FFmpeg launch failed: ${JSON.stringify(diagnostics)}`).toBe(true);
+    }
+
+    const dir = await mkdtemp(join(tmpdir(), "unottr-native-smoke-"));
+    const pcmPath = join(dir, "jfk.pcm");
+    let transcriber: Transcriber | undefined;
+    try {
+      await extractPcm(cli, join(modelsDir(), "jfk.wav"), { audioIndex: 0, out: pcmPath });
+      const pcm = await readFile(pcmPath);
+      const speech = await detectSpeech(pcm, modelPath(VAD));
+      expect(speech.length).toBeGreaterThan(0);
+
+      transcriber = await Transcriber.load(modelPath(model!), "cpu", defaultOptions());
+      const utterances = await transcriber.run(pcm);
+      expect(utterances.map((utterance) => utterance.text).join(" ")).toMatch(
+        /ask not what your country can do for you/i,
+      );
+    } finally {
+      await transcriber?.release();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 180_000);
+
   it("loads the host Whisper package", async () => {
     const variant = whisperVariant();
     console.info(
@@ -41,30 +85,4 @@ describe.skipIf(!enabled)("host native addons", () => {
       db.close();
     }
   });
-
-  it.skipIf(!pipelineEnabled)("runs FFmpeg, VAD, and CPU transcription", async () => {
-    const model = findWhisper("base.en");
-    expect(model).toBeDefined();
-
-    const cli = discover();
-    expect(check(cli), `FFmpeg discovery returned ${JSON.stringify(cli)}`).toBe(true);
-    const dir = await mkdtemp(join(tmpdir(), "unottr-native-smoke-"));
-    const pcmPath = join(dir, "jfk.pcm");
-    let transcriber: Transcriber | undefined;
-    try {
-      await extractPcm(cli, join(modelsDir(), "jfk.wav"), { audioIndex: 0, out: pcmPath });
-      const pcm = await readFile(pcmPath);
-      const speech = await detectSpeech(pcm, modelPath(VAD));
-      expect(speech.length).toBeGreaterThan(0);
-
-      transcriber = await Transcriber.load(modelPath(model!), "cpu", defaultOptions());
-      const utterances = await transcriber.run(pcm);
-      expect(utterances.map((utterance) => utterance.text).join(" ")).toMatch(
-        /ask not what your country can do for you/i,
-      );
-    } finally {
-      await transcriber?.release();
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 180_000);
 });
