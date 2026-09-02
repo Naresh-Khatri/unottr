@@ -10,12 +10,16 @@ $assetName = "ffmpeg-N-125875-g5d4d3bdc61-win64-lgpl-shared.zip"
 $downloadUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$releaseTag/$assetName"
 $expected = "6a2e25e2280df8f2071c14155a314ef32ec08100d56e5f32e41a9d7fd8b50cd3"
 
-[ordered]@{
-  script_root = $PSScriptRoot
-  repository_root = $repositoryRoot
-  temporary = $temporary
-  destination = $destination
-} | ConvertTo-Json
+function Get-Sha256([string]$Path) {
+  $stream = [System.IO.File]::OpenRead($Path)
+  $hasher = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return [System.BitConverter]::ToString($hasher.ComputeHash($stream)).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $hasher.Dispose()
+    $stream.Dispose()
+  }
+}
 
 $headers = @{
   Accept = "application/vnd.github+json"
@@ -29,7 +33,7 @@ if ($env:GITHUB_TOKEN) {
 try {
   New-Item -ItemType Directory -Path $temporary | Out-Null
   Invoke-WebRequest -Uri $downloadUrl -Headers $headers -OutFile $archive
-  $actual = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+  $actual = Get-Sha256 $archive
   if ($actual -ne $expected) {
     throw "FFmpeg archive checksum mismatch: expected $expected, got $actual"
   }
@@ -80,5 +84,3 @@ try {
     Remove-Item -Recurse -Force $temporary
   }
 }
-
-Write-Host "FFmpeg staging finished: destination_exists=$(Test-Path $destination)"
