@@ -5,8 +5,10 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $destination = Join-Path $repositoryRoot "resources\bin\win32-x64"
 $temporary = Join-Path ([System.IO.Path]::GetTempPath()) ("unottr-ffmpeg-" + [guid]::NewGuid())
 $archive = Join-Path $temporary "ffmpeg.zip"
-$assetName = "ffmpeg-master-latest-win64-lgpl.zip"
-$apiUrl = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest"
+$releaseTag = "autobuild-2026-07-31-14-10"
+$assetName = "ffmpeg-N-125875-g5d4d3bdc61-win64-lgpl.zip"
+$downloadUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$releaseTag/$assetName"
+$expected = "5d65df0c0ca5346d82df8ade9c2e12db45d1f978f18ff908b42f03f5223dfc90"
 
 $headers = @{
   Accept = "application/vnd.github+json"
@@ -19,17 +21,7 @@ if ($env:GITHUB_TOKEN) {
 
 try {
   New-Item -ItemType Directory -Path $temporary | Out-Null
-  $release = Invoke-RestMethod -Uri $apiUrl -Headers $headers
-  $asset = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
-  if (-not $asset) {
-    throw "The BtbN release does not contain $assetName"
-  }
-  if (-not $asset.digest -or -not $asset.digest.StartsWith("sha256:")) {
-    throw "GitHub did not return a SHA-256 digest for $assetName"
-  }
-
-  Invoke-WebRequest -Uri $asset.browser_download_url -Headers $headers -OutFile $archive
-  $expected = $asset.digest.Substring(7).ToLowerInvariant()
+  Invoke-WebRequest -Uri $downloadUrl -Headers $headers -OutFile $archive
   $actual = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actual -ne $expected) {
     throw "FFmpeg archive checksum mismatch: expected $expected, got $actual"
@@ -53,20 +45,28 @@ try {
   @($ffmpeg, $ffprobe) | Unblock-File
   Copy-Item (Join-Path $source.FullName "LICENSE.txt") (Join-Path $destination "ffmpeg-LICENSE.txt") -Force
   @(
-    "release=$($release.tag_name)"
+    "release=$releaseTag"
     "asset=$assetName"
     "sha256=$actual"
-    "source=$($asset.browser_download_url)"
+    "source=$downloadUrl"
   ) | Set-Content -Path (Join-Path $destination "ffmpeg-source.txt") -Encoding utf8
 
-  $configuration = & $ffmpeg -version | Select-String "configuration:" | Select-Object -First 1
+  $ffmpegVersion = & $ffmpeg -version 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw "Staged ffmpeg.exe failed with exit code $LASTEXITCODE"
+  }
+  $configuration = $ffmpegVersion | Select-String "configuration:" | Select-Object -First 1
   if (-not $configuration) {
     throw "Could not read the staged FFmpeg configuration"
   }
   if ($configuration.Line -match "--enable-gpl|--enable-nonfree") {
     throw "The staged FFmpeg build is not LGPL-only"
   }
-  & $ffprobe -version | Select-Object -First 2
+  $ffprobeVersion = & $ffprobe -version 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw "Staged ffprobe.exe failed with exit code $LASTEXITCODE"
+  }
+  $ffprobeVersion | Select-Object -First 2
 } finally {
   if (Test-Path $temporary) {
     Remove-Item -Recurse -Force $temporary

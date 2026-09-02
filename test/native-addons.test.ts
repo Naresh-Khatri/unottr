@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,9 +27,12 @@ describe.skipIf(!enabled)("host native addons", () => {
     if (!usable) {
       const diagnostics = Object.entries(cli).map(([name, binary]) => {
         const result = spawnSync(binary, ["-version"], { encoding: "utf8" });
+        const exists = existsSync(binary);
         return {
           name,
           binary,
+          exists,
+          bytes: exists ? statSync(binary).size : null,
           status: result.status,
           signal: result.signal,
           error: result.error?.message,
