@@ -6,9 +6,9 @@ $destination = Join-Path $repositoryRoot "resources\bin\win32-x64"
 $temporary = Join-Path ([System.IO.Path]::GetTempPath()) ("unottr-ffmpeg-" + [guid]::NewGuid())
 $archive = Join-Path $temporary "ffmpeg.zip"
 $releaseTag = "autobuild-2026-07-31-14-10"
-$assetName = "ffmpeg-N-125875-g5d4d3bdc61-win64-lgpl.zip"
+$assetName = "ffmpeg-N-125875-g5d4d3bdc61-win64-lgpl-shared.zip"
 $downloadUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$releaseTag/$assetName"
-$expected = "5d65df0c0ca5346d82df8ade9c2e12db45d1f978f18ff908b42f03f5223dfc90"
+$expected = "6a2e25e2280df8f2071c14155a314ef32ec08100d56e5f32e41a9d7fd8b50cd3"
 
 $headers = @{
   Accept = "application/vnd.github+json"
@@ -38,11 +38,12 @@ try {
   $ffprobe = Join-Path $destination "ffprobe.exe"
   Copy-Item (Join-Path $source.FullName "bin\ffmpeg.exe") $ffmpeg -Force
   Copy-Item (Join-Path $source.FullName "bin\ffprobe.exe") $ffprobe -Force
+  Copy-Item (Join-Path $source.FullName "bin\*.dll") $destination -Force
   # Invoke-WebRequest marks downloaded files as Internet content. Expand-Archive can carry
   # that mark onto the executables, after which Windows may let PowerShell inspect them but
   # reject a later CreateProcess call from Node/Electron. The digest above authenticates the
-  # archive; remove the zone metadata before validating and packaging the binaries.
-  @($ffmpeg, $ffprobe) | Unblock-File
+  # archive; remove the zone metadata before validating and packaging the runtime.
+  @($ffmpeg, $ffprobe) + @(Get-ChildItem $destination -File -Filter "*.dll") | Unblock-File
   Copy-Item (Join-Path $source.FullName "LICENSE.txt") (Join-Path $destination "ffmpeg-LICENSE.txt") -Force
   @(
     "release=$releaseTag"

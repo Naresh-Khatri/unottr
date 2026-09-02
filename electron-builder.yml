@@ -128,6 +128,7 @@ win:
       filter:
         - ffmpeg.exe
         - ffprobe.exe
+        - "*.dll"
         - ffmpeg-LICENSE.txt
         - ffmpeg-source.txt
 

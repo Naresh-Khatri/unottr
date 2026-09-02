@@ -18,6 +18,18 @@ Require-Path (Join-Path $resources "bin\win32-x64\ffprobe.exe")
 Require-Path (Join-Path $resources "bin\win32-x64\ffmpeg-LICENSE.txt")
 Require-Path (Join-Path $asarUnpacked "node_modules\better-sqlite3\prebuilds\win32-x64.node")
 
+foreach ($name in @(
+  "avcodec-63.dll",
+  "avdevice-63.dll",
+  "avfilter-12.dll",
+  "avformat-63.dll",
+  "avutil-61.dll",
+  "swresample-7.dll",
+  "swscale-10.dll"
+)) {
+  Require-Path (Join-Path $resources "bin\win32-x64\$name")
+}
+
 foreach ($name in @("ffmpeg.exe", "ffprobe.exe")) {
   $binary = Join-Path $resources "bin\win32-x64\$name"
   $process = Start-Process -FilePath $binary -ArgumentList "-version" -Wait -PassThru -NoNewWindow
